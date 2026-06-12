@@ -435,9 +435,53 @@ textarea.auto-ok{border-color:var(--p)!important;background:linear-gradient(135d
   .foto-cell img{max-width:50px;max-height:38px;display:block!important}
   .foto-placeholder,.foto-del,.foto-input{display:none!important}
 }
+
+/* ══════════════════════════════════════════════════
+   MOBILE RESPONSIVE — SUPERMAD
+   ══════════════════════════════════════════════════ */
+#btnHamburger{display:none;align-items:center;justify-content:center;width:40px;height:40px;background:transparent;border:none;cursor:pointer;border-radius:8px;flex-shrink:0;padding:0}
+#btnHamburger .hb-bar{display:block;width:22px;height:2.5px;background:var(--p3);border-radius:2px;margin:4px 0;transition:all .25s}
+#sidebarBackdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99}
+#sidebarBackdrop.open{display:block}
+
+@media(max-width:768px){
+  #sidebar{transform:translateX(-100%);transition:transform .28s cubic-bezier(.4,0,.2,1);z-index:200;width:260px}
+  #sidebar.open{transform:translateX(0);box-shadow:4px 0 32px rgba(0,0,0,.3)}
+  #main{margin-left:0!important}
+  #btnHamburger{display:flex!important}
+  #topbar{padding:0 12px!important;gap:8px}
+  .page{padding:12px 10px!important}
+  .page-title{font-size:1rem!important}
+  .card-body{padding:12px 10px!important}
+  .form-grid{grid-template-columns:1fr!important}
+  .form-grid .full{grid-column:1!important}
+  .row{grid-template-columns:1fr!important}
+  .guru-table{font-size:.73rem!important}
+  .guru-table th,.guru-table td{padding:7px 8px!important}
+  .rtbl{font-size:.73rem!important}
+  .rtbl th,.rtbl td{padding:7px 8px!important}
+  .skor-btns button{min-width:38px!important;min-height:38px!important;font-size:.82rem!important}
+  .stepper{gap:3px!important;overflow-x:auto;flex-wrap:nowrap!important}
+  .step{padding:6px 8px!important;font-size:.68rem!important;white-space:nowrap}
+  .step-num{width:22px!important;height:22px!important;font-size:.7rem!important}
+  .stat-grid{grid-template-columns:1fr 1fr!important}
+  .guru-active-bar{padding:8px 10px!important;font-size:.74rem!important}
+  .gab-nama{font-size:.8rem!important}
+  .ie-grid{grid-template-columns:1fr!important}
+  .modal-content{width:95vw!important;max-width:95vw!important}
+}
+@media(max-width:420px){
+  #sidebar{width:80vw!important}
+  .stat-grid{grid-template-columns:1fr!important}
+  .skor-btns button{min-width:34px!important;min-height:34px!important}
+  .page{padding:8px!important}
+}
+
 </style>
 </head>
 <body>
+
+<div id="sidebarBackdrop" onclick="closeSidebar()"></div>
 
 <!-- SIDEBAR -->
 <aside id="sidebar">
@@ -474,6 +518,11 @@ textarea.auto-ok{border-color:var(--p)!important;background:linear-gradient(135d
 <!-- MAIN -->
 <div id="main">
   <div id="topbar">
+  <button id="btnHamburger" onclick="toggleSidebar()" aria-label="Menu" title="Menu">
+    <span class="hb-bar"></span>
+    <span class="hb-bar"></span>
+    <span class="hb-bar"></span>
+  </button>
     <div class="tb-title" id="topbarTitle">Dashboard</div>
     <span class="tb-badge" id="tbTingkatBadge" style="display:none;background:var(--p3);color:#fff;border-color:var(--p)"></span>
     <span class="tb-badge" id="tbTaBadge" style="font-weight:800">TA 2025/2026</span>
@@ -3767,6 +3816,41 @@ function lanjutKeAsesmen() {
   if (!validasiPelaksanaan()) return;
   showPage('asesmen');
 }
+
+
+// ══════════════════════════════════════════════
+// MOBILE SIDEBAR TOGGLE
+// ══════════════════════════════════════════════
+function toggleSidebar() {
+  var sb = document.getElementById('sidebar');
+  var bd = document.getElementById('sidebarBackdrop');
+  var isOpen = sb && sb.classList.contains('open');
+  if (isOpen) {
+    closeSidebar();
+  } else {
+    if (sb) sb.classList.add('open');
+    if (bd) bd.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+}
+
+function closeSidebar() {
+  var sb = document.getElementById('sidebar');
+  var bd = document.getElementById('sidebarBackdrop');
+  if (sb) sb.classList.remove('open');
+  if (bd) bd.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// Close sidebar when nav item clicked on mobile
+document.addEventListener('DOMContentLoaded', function() {
+  var navItems = document.querySelectorAll('.nav-item');
+  navItems.forEach(function(item) {
+    item.addEventListener('click', function() {
+      if (window.innerWidth <= 768) closeSidebar();
+    });
+  });
+});
 
 </script>
 
