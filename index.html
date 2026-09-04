@@ -56,6 +56,17 @@ const SUPA_URL = 'https://djnbttyjyzknujrepdfe.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqbmJ0dHlqeXprbnVqcmVwZGZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1Mzc3MDksImV4cCI6MjEwMjExMzcwOX0.UfrTknQM7EU_3BiSGBy9bPtOeXh5u14X4ujRNxRlYcM';
 const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
 
+// ── HEARTBEAT — Pengetuk Hati Supabase 💓 ──────────────────
+// Ping setiap 4 menit agar koneksi tetap hidup
+setInterval(async () => {
+  try {
+    await sb.from('supermad_madrasah').select('id').limit(1);
+    console.log('💓 Heartbeat:', new Date().toLocaleTimeString('id-ID'));
+  } catch(e) {
+    console.warn('💔 Heartbeat gagal:', e.message);
+  }
+}, 4 * 60 * 1000);
+
 // ── TOAST ──────────────────────────────────────────────────────
 function Toast({msg, type, onClose}) {
   useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); }, []);
