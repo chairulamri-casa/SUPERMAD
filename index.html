@@ -2289,6 +2289,87 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
   const grouped = {};
   jadwalList.forEach(j=>{ if(!grouped[j.tanggal])grouped[j.tanggal]=[]; grouped[j.tanggal].push(j); });
 
+  function cetakJadwal() {
+    const win = window.open('','_blank');
+    const bulan = {};
+    jadwalList.filter(j=>j.status!=='dibatalkan').forEach(j=>{
+      const tgl = new Date(j.tanggal+'T00:00:00');
+      const key = tgl.toLocaleDateString('id-ID',{month:'long',year:'numeric'});
+      if(!bulan[key]) bulan[key]=[];
+      const guru = guruList.find(g=>g.id===j.guru_id);
+      bulan[key].push({...j, namaGuru: guru?guru.nama:'—'});
+    });
+    var rows = '';
+    var no = 1;
+    Object.keys(bulan).forEach(function(bln) {
+      rows += '<tr><td colspan="7" style="background:#0f4238;color:#fff;font-weight:700;padding:8px 10px;font-size:10pt">'+ bln +'</td></tr>';
+      bulan[bln].forEach(function(j) {
+        var tgl = new Date(j.tanggal+'T00:00:00').toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+        var jam = j.jam_mulai ? j.jam_mulai.slice(0,5)+(j.jam_selesai?' – '+j.jam_selesai.slice(0,5):'') : '—';
+        var status = j.status==='selesai'?'✅ Selesai':'🗓️ Terjadwal';
+        var statusColor = j.status==='selesai'?'#16a34a':'#2563eb';
+        rows += '<tr style="border-bottom:1px solid #e5e7eb">'+
+          '<td style="padding:7px 10px;text-align:center">'+(no++)+'</td>'+
+          '<td style="padding:7px 10px">'+tgl+'</td>'+
+          '<td style="padding:7px 10px">'+jam+'</td>'+
+          '<td style="padding:7px 10px;font-weight:700">'+j.namaGuru+'</td>'+
+          '<td style="padding:7px 10px">'+(j.mapel||'—')+'</td>'+
+          '<td style="padding:7px 10px;text-align:center">'+(j.kelas||'—')+'</td>'+
+          '<td style="padding:7px 10px;text-align:center;font-weight:700;color:'+statusColor+'">'+status+'</td>'+
+          '</tr>';
+      });
+    });
+    var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'+
+      '<title>Jadwal Supervisi — '+sesi.mad.nama+'</title>'+
+      '<style>*{box-sizing:border-box;margin:0;padding:0}'+
+      'body{font-family:Times New Roman,serif;font-size:11pt;padding:15mm;color:#000}'+
+      '.no-print{display:flex;gap:8px;margin-bottom:16px}'+
+      '@media print{.no-print{display:none!important}@page{size:A4;margin:15mm}}'+
+      'table{width:100%;border-collapse:collapse;font-size:10pt}'+
+      'th{background:#0f4238;color:#fff;padding:8px 10px;text-align:left}'+
+      'td{padding:7px 10px;border-bottom:1px solid #e5e7eb}'+
+      'tr:nth-child(even){background:#f9fafb}'+
+      '.kop{display:flex;align-items:center;gap:12px;border-bottom:3px double #000;padding-bottom:10px;margin-bottom:14px}'+
+      '.ttd{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:30px}'+
+      '.ttd-line{border-top:1px solid #000;margin-top:50px;padding-top:5px;font-size:10pt}'+
+      '</style></head><body>'+
+      '<div class="no-print">'+
+      '<button onclick="window.print()" style="padding:7px 18px;background:#0f4238;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">🖨️ Cetak</button>'+
+      '<button onclick="window.print()" style="padding:7px 18px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">📥 Simpan PDF</button>'+
+      '<button onclick="window.close()" style="padding:7px 14px;background:#eee;border:none;border-radius:6px;cursor:pointer">✕ Tutup</button>'+
+      '</div>'+
+      '<div class="kop">'+
+      '<div style="flex:1">'+
+      '<div style="font-size:9pt">KEMENTERIAN AGAMA REPUBLIK INDONESIA</div>'+
+      '<div style="font-weight:900;font-size:13pt;text-transform:uppercase">'+sesi.mad.nama+'</div>'+
+      '<div style="font-size:9pt">'+[sesi.mad.naungan,sesi.mad.alamat,sesi.mad.kota_kab,sesi.mad.provinsi].filter(Boolean).join(' | ')+'</div>'+
+      '</div></div>'+
+      '<h2 style="text-align:center;font-size:12pt;text-transform:uppercase;margin:12px 0 2px">JADWAL SUPERVISI PEMBELAJARAN</h2>'+
+      '<div style="text-align:center;font-size:9pt;margin-bottom:14px;border-bottom:2px solid #000;padding-bottom:8px">'+
+      'Semester '+filterSmt+' · Tahun Ajaran '+filterTA+' · Berbasis PM-KBC / KMA 1503/2025'+
+      '</div>'+
+      '<table><tr>'+
+      '<th style="width:5%;text-align:center">No</th>'+
+      '<th style="width:25%">Hari/Tanggal</th>'+
+      '<th style="width:12%">Jam</th>'+
+      '<th style="width:22%">Nama Guru</th>'+
+      '<th style="width:18%">Mata Pelajaran</th>'+
+      '<th style="width:8%;text-align:center">Kelas</th>'+
+      '<th style="width:10%;text-align:center">Status</th>'+
+      '</tr>'+rows+'</table>'+
+      '<div class="ttd">'+
+      '<div style="text-align:center"><div>Mengetahui,</div><div style="font-size:9pt">Kepala '+sesi.mad.nama+'</div>'+
+      '<div class="ttd-line"><b>'+(sesi.mad.nama_kepala||'...................')+'</b><br>NIP. '+(sesi.mad.nip_kepala||'—')+'</div></div>'+
+      '<div style="text-align:center"><div>Supervisor,</div><div style="font-size:9pt"> </div>'+
+      '<div class="ttd-line"><b>'+sesi.pengguna.nama+'</b><br>NIP. '+(sesi.pengguna.nip||'—')+'</div></div>'+
+      '</div>'+
+      '<div style="margin-top:16px;text-align:center;font-size:8pt;color:#666;border-top:1px solid #ccc;padding-top:8px">'+
+      'SUPERMAD — Supervisi Pembelajaran Madrasah PM-KBC · supermad.my.id</div>'+
+      '</body></html>';
+    win.document.write(html);
+    win.document.close();
+  }
+
   return (
     <div>
       {/* Stats */}
@@ -2305,10 +2386,18 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
       {/* Header + Tombol */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
         <div style={{fontWeight:800,color:'var(--p3)'}}>🗓️ Jadwal Supervisi — {filterSmt} {filterTA}</div>
-        <button onClick={()=>{setShowForm(!showForm);setEditJadwal(null);setForm({...blankForm,tanggal:today});}}
-          className="btn btn-primary btn-sm">
-          {showForm?'✕ Batal':'+ Jadwal Baru'}
-        </button>
+        <div style={{display:'flex',gap:6}}>
+          {jadwalList.length>0 && (
+            <button onClick={cetakJadwal}
+              className="btn btn-outline btn-sm">
+              🖨️ Cetak Jadwal
+            </button>
+          )}
+          <button onClick={()=>{setShowForm(!showForm);setEditJadwal(null);setForm({...blankForm,tanggal:today});}}
+            className="btn btn-primary btn-sm">
+            {showForm?'✕ Batal':'+ Jadwal Baru'}
+          </button>
+        </div>
       </div>
 
       {/* Form */}
