@@ -2219,6 +2219,215 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
 
 
 
+// ── JADWAL SUPERVISI ─────────────────────────────────────────
+function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiSupervisi}) {
+  const [jadwalList, setJadwalList] = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [showForm, setShowForm]     = useState(false);
+  const [editJadwal, setEditJadwal] = useState(null);
+  const [saving, setSaving]         = useState(false);
+  const today = new Date().toISOString().split('T')[0];
+  const blankForm = {guru_id:'',tanggal:today,jam_mulai:'07:30',jam_selesai:'08:30',kelas:'',mapel:'',catatan:''};
+  const [form, setForm] = useState(blankForm);
+
+  useEffect(()=>{ loadJadwal(); }, [filterSmt, filterTA]);
+
+  async function loadJadwal() {
+    setLoading(true);
+    const {data} = await sb.from('supermad_jadwal')
+      .select('*').eq('madrasah_id', sesi.mad.id)
+      .eq('semester', filterSmt).eq('tahun_ajaran', filterTA)
+      .order('tanggal').order('jam_mulai');
+    setJadwalList(data||[]);
+    setLoading(false);
+  }
+
+  async function simpan(e) {
+    e.preventDefault();
+    if (!form.guru_id) { showToast('Pilih guru!','error'); return; }
+    setSaving(true);
+    const guru = guruList.find(g=>g.id===form.guru_id);
+    const payload = {
+      madrasah_id:sesi.mad.id, guru_id:form.guru_id,
+      tanggal:form.tanggal, jam_mulai:form.jam_mulai||null,
+      jam_selesai:form.jam_selesai||null, kelas:form.kelas,
+      mapel:form.mapel||(guru?guru.mapel:''), semester:filterSmt,
+      tahun_ajaran:filterTA, catatan:form.catatan,
+      status:'terjadwal', dibuat_oleh:sesi.pengguna.id,
+      updated_at:new Date().toISOString(),
+    };
+    let err;
+    if (editJadwal) { ({error:err}=await sb.from('supermad_jadwal').update(payload).eq('id',editJadwal.id)); }
+    else { ({error:err}=await sb.from('supermad_jadwal').insert(payload)); }
+    setSaving(false);
+    if (err) { showToast('Gagal: '+err.message,'error'); return; }
+    showToast(editJadwal?'✅ Jadwal diupdate!':'✅ Jadwal ditambahkan!');
+    setShowForm(false); setEditJadwal(null); setForm(blankForm);
+    loadJadwal();
+  }
+
+  async function hapus(j) {
+    if (!window.confirm('Hapus jadwal ini?')) return;
+    await sb.from('supermad_jadwal').delete().eq('id',j.id);
+    showToast('🗑️ Jadwal dihapus.'); loadJadwal();
+  }
+
+  async function batal(j) {
+    await sb.from('supermad_jadwal').update({status:'dibatalkan',updated_at:new Date().toISOString()}).eq('id',j.id);
+    showToast('Jadwal dibatalkan.'); loadJadwal();
+  }
+
+  const total   = jadwalList.length;
+  const selesai = jadwalList.filter(j=>j.status==='selesai').length;
+  const hariIni = jadwalList.filter(j=>j.tanggal===today&&j.status==='terjadwal').length;
+  const pct     = total>0?Math.round(selesai/total*100):0;
+
+  const sColor = {terjadwal:'#2563eb',selesai:'#16a34a',dibatalkan:'#9ca3af'};
+  const sBg    = {terjadwal:'#dbeafe',selesai:'#d1fae5',dibatalkan:'#f3f4f6'};
+  const sLabel = {terjadwal:'🗓️ Terjadwal',selesai:'✅ Selesai',dibatalkan:'❌ Dibatalkan'};
+
+  const grouped = {};
+  jadwalList.forEach(j=>{ if(!grouped[j.tanggal])grouped[j.tanggal]=[]; grouped[j.tanggal].push(j); });
+
+  return (
+    <div>
+      {/* Stats */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
+        {[[total,'🗓️','Total Jadwal'],[selesai+'/'+total,'✅','Terlaksana ('+pct+'%)'],[hariIni,'📍','Hari Ini']].map((s,i)=>(
+          <div key={i} className="card" style={{textAlign:'center',padding:10}}>
+            <div style={{fontSize:'1.4rem'}}>{s[1]}</div>
+            <div style={{fontWeight:900,fontSize:'1.2rem',color:'var(--p3)'}}>{s[0]}</div>
+            <div style={{fontSize:'.7rem',color:'var(--text2)'}}>{s[2]}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Header + Tombol */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+        <div style={{fontWeight:800,color:'var(--p3)'}}>🗓️ Jadwal Supervisi — {filterSmt} {filterTA}</div>
+        <button onClick={()=>{setShowForm(!showForm);setEditJadwal(null);setForm({...blankForm,tanggal:today});}}
+          className="btn btn-primary btn-sm">
+          {showForm?'✕ Batal':'+ Jadwal Baru'}
+        </button>
+      </div>
+
+      {/* Form */}
+      {showForm && (
+        <div className="card" style={{marginBottom:14,background:'#f8fffe',border:'1.5px solid var(--p)'}}>
+          <div style={{fontWeight:800,color:'var(--p3)',marginBottom:12}}>
+            {editJadwal?'✏️ Edit Jadwal':'+ Jadwal Baru'}
+          </div>
+          <form onSubmit={simpan}>
+            <div className="grid2">
+              <div className="form-group">
+                <label>Guru *</label>
+                <select value={form.guru_id} required
+                  onChange={e=>{const g=guruList.find(x=>x.id===e.target.value);setForm({...form,guru_id:e.target.value,mapel:g?g.mapel:''});}}>
+                  <option value="">-- Pilih Guru --</option>
+                  {guruList.map(g=><option key={g.id} value={g.id}>{g.nama} — {g.mapel}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Tanggal *</label>
+                <input type="date" value={form.tanggal} required onChange={e=>setForm({...form,tanggal:e.target.value})}/>
+              </div>
+              <div className="form-group">
+                <label>Jam Mulai</label>
+                <input type="time" value={form.jam_mulai} onChange={e=>setForm({...form,jam_mulai:e.target.value})}/>
+              </div>
+              <div className="form-group">
+                <label>Jam Selesai</label>
+                <input type="time" value={form.jam_selesai} onChange={e=>setForm({...form,jam_selesai:e.target.value})}/>
+              </div>
+              <div className="form-group">
+                <label>Kelas</label>
+                <input value={form.kelas} placeholder="cth: VII A" onChange={e=>setForm({...form,kelas:e.target.value})}/>
+              </div>
+              <div className="form-group">
+                <label>Mata Pelajaran</label>
+                <input value={form.mapel} placeholder="otomatis dari guru" onChange={e=>setForm({...form,mapel:e.target.value})}/>
+              </div>
+              <div className="form-group" style={{gridColumn:'1/-1'}}>
+                <label>Catatan</label>
+                <input value={form.catatan} placeholder="opsional..." onChange={e=>setForm({...form,catatan:e.target.value})}/>
+              </div>
+            </div>
+            <button className="btn btn-primary" type="submit" disabled={saving}>
+              {saving?'⏳ Menyimpan...':'💾 Simpan Jadwal'}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* Daftar */}
+      {loading ? <div style={{textAlign:'center',padding:24,color:'var(--text3)'}}>⏳ Memuat...</div>
+      : Object.keys(grouped).length===0
+        ? <div className="card" style={{textAlign:'center',padding:32,color:'var(--text3)'}}>
+            Belum ada jadwal. Klik <b>+ Jadwal Baru</b> untuk mulai!
+          </div>
+        : Object.keys(grouped).sort().map(tgl=>{
+            const tglStr = new Date(tgl+'T00:00:00').toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+            const isToday = tgl===today;
+            const isPast  = tgl<today;
+            return (
+              <div key={tgl} style={{marginBottom:12}}>
+                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                  <span style={{padding:'3px 10px',borderRadius:20,fontSize:'.72rem',fontWeight:800,
+                    background:isToday?'#fef3c7':isPast?'var(--surface2)':'#dbeafe',
+                    color:isToday?'#92400e':isPast?'var(--text3)':'#1d4ed8'}}>
+                    {isToday?'📍 HARI INI':isPast?'📅 Lalu':'📅 Mendatang'}
+                  </span>
+                  <span style={{fontWeight:700,fontSize:'.82rem'}}>{tglStr}</span>
+                </div>
+                {grouped[tgl].map(j=>{
+                  const guru = guruList.find(g=>g.id===j.guru_id);
+                  return (
+                    <div key={j.id} style={{marginBottom:8,padding:'12px 14px',background:'#fff',
+                      borderRadius:10,borderLeft:'4px solid '+(sColor[j.status]||'var(--border)'),
+                      border:'1px solid '+(isToday&&j.status==='terjadwal'?'#f59e0b':'var(--border)')}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,flexWrap:'wrap'}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontWeight:700}}>{guru?guru.nama:'—'}</div>
+                          <div style={{fontSize:'.75rem',color:'var(--text2)',marginTop:2}}>
+                            {j.mapel||'—'} · Kelas {j.kelas||'—'}
+                            {j.jam_mulai?' · '+j.jam_mulai.slice(0,5)+(j.jam_selesai?' – '+j.jam_selesai.slice(0,5):''):''}
+                          </div>
+                          {j.catatan&&<div style={{fontSize:'.72rem',color:'var(--text3)',marginTop:2}}>📝 {j.catatan}</div>}
+                        </div>
+                        <div style={{display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}}>
+                          <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
+                            background:sBg[j.status],color:sColor[j.status]}}>
+                            {sLabel[j.status]}
+                          </span>
+                          {j.status==='terjadwal' && <>
+                            <button onClick={()=>onMulaiSupervisi(guru,j)}
+                              style={{padding:'4px 10px',borderRadius:6,border:'none',
+                                background:'var(--p)',color:'#fff',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
+                              📋 Mulai
+                            </button>
+                            <button onClick={()=>{setEditJadwal(j);setForm({...j});setShowForm(true);}}
+                              style={{padding:'4px 8px',borderRadius:6,border:'1px solid #d97706',
+                                background:'#fffbeb',color:'#92400e',cursor:'pointer',fontSize:'.72rem'}}>✏️</button>
+                            <button onClick={()=>batal(j)}
+                              style={{padding:'4px 8px',borderRadius:6,border:'1px solid #fca5a5',
+                                background:'#fef2f2',color:'#dc2626',cursor:'pointer',fontSize:'.72rem'}}>✕</button>
+                          </>}
+                          <button onClick={()=>hapus(j)}
+                            style={{padding:'4px 8px',borderRadius:6,border:'1px solid #e5e7eb',
+                              background:'#f9fafb',color:'#6b7280',cursor:'pointer',fontSize:'.72rem'}}>🗑️</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })
+      }
+    </div>
+  );
+}
+
 function DashboardSupervisor({sesi, showToast}) {
   const [tab, setTab]             = useState('sudah'); // default ke sudah agar langsung terlihat
   const [guruList, setGuruList]   = useState([]);
