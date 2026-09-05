@@ -93,20 +93,19 @@ function NamaMadrasah({npsn}) {
     setLoading(true); setNama('');
     if (!npsn || npsn.length < 8) return;
     sb.from('supermad_madrasah').select('nama,kota_kab,jenjang')
-      .eq('npsn', npsn).maybeSingle()
+      .eq('npsn', npsn.trim()).maybeSingle()
       .then(({data})=>{
         setNama(data ? data.nama : 'NPSN tidak ditemukan');
         setLoading(false);
       });
   }, [npsn]);
   if (loading) return <div style={{fontSize:'.72rem',color:'var(--text3)',marginTop:4}}>⏳ Mencari...</div>;
+  if (!nama || nama==='NPSN tidak ditemukan') return null;
   return (
     <div style={{marginTop:6,padding:'6px 10px',borderRadius:7,
-      background: nama==='NPSN tidak ditemukan'?'#fee2e2':'#f0fdf4',
-      border: '1px solid '+(nama==='NPSN tidak ditemukan'?'#fca5a5':'#86efac'),
-      fontSize:'.78rem',fontWeight:700,
-      color: nama==='NPSN tidak ditemukan'?'#dc2626':'#065f46'}}>
-      {nama==='NPSN tidak ditemukan' ? '❌ '+nama : '🏫 '+nama}
+      background:'#f0fdf4',border:'1px solid #86efac',
+      fontSize:'.78rem',fontWeight:700,color:'#065f46'}}>
+      🏫 {nama}
     </div>
   );
 }
