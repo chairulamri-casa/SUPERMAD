@@ -372,15 +372,43 @@ function App() {
   return (
     <div style={{minHeight:'100vh'}}>
       {/* TOPBAR */}
-      <div style={{background:'var(--p3)',color:'#fff',padding:'12px 20px',
-        display:'flex',alignItems:'center',justifyContent:'space-between',
+      <div style={{background:'var(--p3)',color:'#fff',
         position:'sticky',top:0,zIndex:100}}>
-        <div style={{display:'flex',alignItems:'center',gap:12}}>
-          <span style={{fontSize:'1.3rem'}}>🏫</span>
+        {/* Baris atas: Logo Kemenag + Nama Madrasah */}
+        <div style={{padding:'8px 20px',background:'rgba(0,0,0,0.15)',
+          display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid rgba(255,255,255,0.1)'}}>
+          <img
+            src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Lambang_Kementerian_Agama_Indonesia.svg/40px-Lambang_Kementerian_Agama_Indonesia.svg.png"
+            alt="Logo Kemenag"
+            style={{width:32,height:32,objectFit:'contain',flexShrink:0}}
+            onError={e=>e.target.style.display='none'}
+          />
           <div>
-            <div style={{fontWeight:900,fontSize:'.9rem'}}>SUPERMAD</div>
-            <div style={{fontSize:'.68rem',opacity:.7}}>
-              {sesi.mad ? sesi.mad.nama : 'Admin Kanwil'}
+            <div style={{fontSize:'.68rem',opacity:.7,letterSpacing:.5}}>
+              KEMENTERIAN AGAMA REPUBLIK INDONESIA
+            </div>
+            <div style={{fontWeight:800,fontSize:'.82rem'}}>
+              {sesi.mad
+                ? sesi.mad.nama.toUpperCase()
+                : 'KANTOR WILAYAH PROVINSI ACEH'}
+            </div>
+            {sesi.mad && sesi.mad.kota_kab && (
+              <div style={{fontSize:'.65rem',opacity:.7}}>
+                {sesi.mad.naungan||'Kemenag'} · {sesi.mad.kota_kab}
+                {sesi.mad.npsn ? ' · NPSN: '+sesi.mad.npsn : ''}
+              </div>
+            )}
+          </div>
+        </div>
+        {/* Baris bawah: SUPERMAD nav */}
+        <div style={{padding:'8px 20px',
+          display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <span style={{fontSize:'1.1rem'}}>📋</span>
+          <div>
+            <div style={{fontWeight:900,fontSize:'.85rem'}}>SUPERMAD</div>
+            <div style={{fontSize:'.62rem',opacity:.65}}>
+              Supervisi Pembelajaran PM-KBC
             </div>
           </div>
         </div>
@@ -394,6 +422,7 @@ function App() {
               padding:'6px 12px',borderRadius:7,cursor:'pointer',fontSize:'.75rem'}}>
             Keluar
           </button>
+        </div>
         </div>
       </div>
 
