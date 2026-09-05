@@ -311,8 +311,19 @@ function PilihPengguna({mad, penggunaList, onPilih, onBack}) {
 
 // ── APP UTAMA ──────────────────────────────────────────────────
 function App() {
-  const [sesi, setSesi]   = useState(null); // {mad, pengguna, mode}
-  const [step, setStep]   = useState('login'); // login | pilih_pengguna | app
+  // Restore sesi dari localStorage saat pertama load
+  const [sesi, setSesi]   = useState(()=>{
+    try {
+      const saved = localStorage.getItem('supermad_sesi');
+      return saved ? JSON.parse(saved) : null;
+    } catch(e) { return null; }
+  });
+  const [step, setStep]   = useState(()=>{
+    try {
+      const saved = localStorage.getItem('supermad_sesi');
+      return saved ? 'app' : 'login';
+    } catch(e) { return 'login'; }
+  });
   const [loginData, setLoginData] = useState(null);
   const [toast, setToast] = useState(null);
 
@@ -322,12 +333,13 @@ function App() {
 
   function handleLogin(data) {
     if (data.mode === 'kanwil') {
-      setSesi({pengguna: data.pengguna, mad: null, mode: 'admin_kanwil'});
-      setStep('app');
+      const s = {pengguna: data.pengguna, mad: null, mode: 'admin_kanwil'};
+      setSesi(s); setStep('app');
+      try { localStorage.setItem('supermad_sesi', JSON.stringify(s)); } catch(e) {}
     } else if (data.mode === 'guru') {
-      // Login langsung sebagai guru (tanpa pilih pengguna)
-      setSesi({pengguna: {...data.guru, role:'guru', nama:data.guru.nama}, mad: data.mad, mode: 'guru'});
-      setStep('app');
+      const s = {pengguna: {...data.guru, role:'guru', nama:data.guru.nama}, mad: data.mad, mode: 'guru'};
+      setSesi(s); setStep('app');
+      try { localStorage.setItem('supermad_sesi', JSON.stringify(s)); } catch(e) {}
     } else {
       setLoginData(data);
       setStep('pilih_pengguna');
@@ -335,12 +347,14 @@ function App() {
   }
 
   function handlePilihPengguna(pengguna) {
-    setSesi({pengguna, mad: loginData.mad, mode: pengguna.role});
-    setStep('app');
+    const s = {pengguna, mad: loginData.mad, mode: pengguna.role};
+    setSesi(s); setStep('app');
+    try { localStorage.setItem('supermad_sesi', JSON.stringify(s)); } catch(e) {}
   }
 
   function logout() {
     setSesi(null); setLoginData(null); setStep('login');
+    try { localStorage.removeItem('supermad_sesi'); } catch(e) {}
   }
 
   if (step === 'login') return <HalamanLogin onLogin={handleLogin} />;
