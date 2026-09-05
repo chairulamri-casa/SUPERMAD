@@ -316,13 +316,20 @@ function App() {
   const [sesi, setSesi]   = useState(()=>{
     try {
       const saved = localStorage.getItem('supermad_sesi');
-      return saved ? JSON.parse(saved) : null;
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      // Validasi: harus punya pengguna dan mode
+      if (!parsed.pengguna || !parsed.mode) return null;
+      return parsed;
     } catch(e) { return null; }
   });
   const [step, setStep]   = useState(()=>{
     try {
       const saved = localStorage.getItem('supermad_sesi');
-      return saved ? 'app' : 'login';
+      if (!saved) return 'login';
+      const parsed = JSON.parse(saved);
+      if (!parsed.pengguna || !parsed.mode) return 'login';
+      return 'app';
     } catch(e) { return 'login'; }
   });
   const [loginData, setLoginData] = useState(null);
@@ -331,6 +338,16 @@ function App() {
   function showToast(msg, type='success') {
     setToast({msg, type, key: Date.now()});
   }
+
+  // Refresh data madrasah dari DB saat restore dari localStorage
+  React.useEffect(() => {
+    if (sesi && sesi.mad && sesi.mad.id) {
+      sb.from('supermad_madrasah').select('*').eq('id', sesi.mad.id).single()
+        .then(({data}) => {
+          if (data) setSesi(prev => ({...prev, mad: data}));
+        }).catch(()=>{});
+    }
+  }, []);
 
   function handleLogin(data) {
     if (data.mode === 'kanwil') {
@@ -377,12 +394,12 @@ function App() {
         {/* Baris atas: Logo Kemenag + Nama Madrasah */}
         <div style={{padding:'8px 20px',background:'rgba(0,0,0,0.15)',
           display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid rgba(255,255,255,0.1)'}}>
-          <img
-            src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Lambang_Kementerian_Agama_Indonesia.svg/40px-Lambang_Kementerian_Agama_Indonesia.svg.png"
-            alt="Logo Kemenag"
-            style={{width:32,height:32,objectFit:'contain',flexShrink:0}}
-            onError={e=>e.target.style.display='none'}
-          />
+          <div style={{width:36,height:36,flexShrink:0,display:'flex',
+            alignItems:'center',justifyContent:'center',
+            background:'rgba(255,255,255,0.15)',borderRadius:'50%',
+            fontSize:'1.4rem'}}>
+            🕌
+          </div>
           <div>
             <div style={{fontSize:'.68rem',opacity:.7,letterSpacing:.5}}>
               KEMENTERIAN AGAMA REPUBLIK INDONESIA
