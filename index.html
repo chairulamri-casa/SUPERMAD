@@ -2030,11 +2030,23 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
                       {s.selesai} supervisi
                     </div>
                   </div>
-                  <button onClick={()=>setMadAktif(m)}
-                    style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--p)',
-                      background:'#fff',color:'var(--p)',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
-                    👤 Pengguna
-                  </button>
+                  <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+                    <button onClick={()=>setMadAktif(m)}
+                      style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--p)',
+                        background:'#fff',color:'var(--p)',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
+                      👤 Pengguna
+                    </button>
+                    <button onClick={()=>{setEditMad(m);setFormEdit({...m});}}
+                      style={{padding:'5px 10px',borderRadius:7,border:'1px solid #d97706',
+                        background:'#fffbeb',color:'#92400e',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
+                      ✏️ Edit
+                    </button>
+                    <button onClick={()=>hapusMad(m)}
+                      style={{padding:'5px 10px',borderRadius:7,border:'1px solid #fca5a5',
+                        background:'#fef2f2',color:'#dc2626',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
+                      🗑️ Hapus
+                    </button>
+                  </div>
                 </div>
               );
             })}
