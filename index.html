@@ -86,7 +86,11 @@ function Loading({text='Memuat...'}) {
 
 // ── HALAMAN LOGIN ──────────────────────────────────────────────
 function HalamanLogin({onLogin}) {
-  const [mode, setMode]     = useState('pilih'); // pilih | madrasah | kanwil | guru
+  // Deteksi URL ?kanwil untuk akses tersembunyi
+  const isKanwilMode = typeof window !== 'undefined' && 
+    (window.location.search.includes('kanwil') || 
+     window.location.hash.includes('kanwil'));
+  const [mode, setMode]     = useState(isKanwilMode ? 'kanwil' : 'pilih');
   const [token, setToken]   = useState('');
   const [npsn, setNpsn]     = useState('');
   const [kode, setKode]     = useState('');
@@ -185,10 +189,7 @@ function HalamanLogin({onLogin}) {
               onClick={() => setMode('guru')}>
               👨‍🏫 Login Guru (Token)
             </button>
-            <button className="btn btn-outline" style={{justifyContent:'center',padding:'14px'}}
-              onClick={() => setMode('kanwil')}>
-              🏛️ Login Admin Kanwil
-            </button>
+            {/* Kanwil login tersembunyi - akses via URL ?kanwil */}
             <div style={{textAlign:'center',fontSize:'.72rem',color:'var(--text3)',marginTop:8}}>
               KMA 1503/2025 · Dirjenpendis 6077/2025
             </div>
