@@ -2226,8 +2226,16 @@ function DashboardSupervisor({sesi, showToast}) {
   const [loading, setLoading]     = useState(true);
   const [guruAktif, setGuruAktif]       = useState(null); // guru yang sedang disupervisi
   const [supAktifRTL, setSupAktifRTL] = useState(null);
-  const [filterSmt, setFilterSmt]     = useState(sesi.mad.semester_aktif || 'Ganjil');
-  const [filterTA, setFilterTA]       = useState(sesi.mad.tahun_ajaran   || '2025/2026');
+  // Hitung tahun ajaran berjalan otomatis
+  const now = new Date();
+  const bln = now.getMonth() + 1; // 1-12
+  const thn = now.getFullYear();
+  const taAwal = bln >= 7 ? thn : thn - 1;
+  const taDefault = taAwal + '/' + (taAwal + 1);
+  const smtDefault = bln >= 7 ? 'Ganjil' : 'Genap';
+
+  const [filterSmt, setFilterSmt] = useState(sesi.mad.semester_aktif || smtDefault);
+  const [filterTA, setFilterTA]   = useState(sesi.mad.tahun_ajaran   || taDefault);
 
   useEffect(() => { loadData(); }, [filterSmt, filterTA]);
 
@@ -2303,9 +2311,12 @@ function DashboardSupervisor({sesi, showToast}) {
         <select value={filterTA} onChange={e=>setFilterTA(e.target.value)}
           style={{padding:'5px 10px',borderRadius:7,border:'1.5px solid var(--border)',
             fontSize:'.8rem',fontFamily:'inherit',fontWeight:700,outline:'none',cursor:'pointer'}}>
-          {['2024/2025','2025/2026','2026/2027','2027/2028'].map(ta=>(
-            <option key={ta} value={ta}>{ta}</option>
-          ))}
+          {(()=>{
+            const yr = new Date().getFullYear();
+            const tas = [];
+            for(let y=yr-1; y<=yr+2; y++) tas.push(y+'/'+(y+1));
+            return tas.map(ta=><option key={ta} value={ta}>{ta}</option>);
+          })()}
         </select>
         <span style={{fontSize:'.75rem',color:'var(--text3)',marginLeft:'auto'}}>
           {supList.filter(s=>s.status==='selesai').length} supervisi selesai periode ini
@@ -3935,7 +3946,7 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, filterSmt='Ganjil', fi
   // Identitas
   const [tanggal, setTanggal]   = useState(new Date().toISOString().split('T')[0]);
   const [kelas, setKelas]       = useState('');
-  const [semester, setSemester] = useState(filterSmt);
+  const [semester, setSemester]     = useState(filterSmt);
   const [tahunAjaran, setTahunAjaran] = useState(filterTA);
   const [jtm, setJtm]           = useState('');
   const [jurusan, setJurusan]   = useState('');
