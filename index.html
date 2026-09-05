@@ -2224,7 +2224,8 @@ function DashboardSupervisor({sesi, showToast}) {
   const [guruList, setGuruList]   = useState([]);
   const [supList, setSupList]     = useState([]);
   const [loading, setLoading]     = useState(true);
-  const [guruAktif, setGuruAktif]       = useState(null); // guru yang sedang disupervisi
+  const [guruAktif, setGuruAktif]       = useState(null);
+  const [jadwalAktif, setJadwalAktif]   = useState(null); // jadwal yang dipilih
   const [supAktifRTL, setSupAktifRTL] = useState(null);
   // Hitung tahun ajaran berjalan otomatis
   const now = new Date();
@@ -2257,6 +2258,12 @@ function DashboardSupervisor({sesi, showToast}) {
   }
 
   if (loading) return <Loading text="Memuat data supervisi..." />;
+  function mulaiDariJadwal(guru, jadwal) {
+    setGuruAktif(guru);
+    setJadwalAktif(jadwal);
+    setTab('daftar');
+  }
+
   if (supAktifRTL) return (
     <HalamanRTL
       sup={supAktifRTL.sup} guru={supAktifRTL.guru}
@@ -2267,7 +2274,9 @@ function DashboardSupervisor({sesi, showToast}) {
   if (guruAktif) return (
     <FormSupervisi
       guru={guruAktif} sesi={sesi} showToast={showToast}
-      onSelesai={() => { setGuruAktif(null); loadData(); }}
+      filterSmt={filterSmt} filterTA={filterTA}
+      jadwal={jadwalAktif}
+      onSelesai={()=>{ setGuruAktif(null); setJadwalAktif(null); setTab('sudah'); loadData(); }}
     />
   );
 
@@ -2298,6 +2307,12 @@ function DashboardSupervisor({sesi, showToast}) {
 
 
 
+      {/* Banner Jadwal Hari Ini */}
+      {(()=>{
+        const today = new Date().toISOString().split('T')[0];
+        return null; // akan diload dari HalamanJadwal
+      })()}
+
       {/* Filter Semester & TA */}
       <div style={{display:'flex',gap:8,marginBottom:12,alignItems:'center',
         padding:'10px 14px',background:'var(--surface2)',borderRadius:10,flexWrap:'wrap'}}>
@@ -2325,7 +2340,7 @@ function DashboardSupervisor({sesi, showToast}) {
 
       {/* Tab */}
       <div style={{display:'flex',gap:8,marginBottom:14}}>
-        {[['daftar','📋 Belum Supervisi'],['sudah','✅ Sudah Supervisi'],['grafik','📊 Grafik'],['riwayat','📜 Riwayat']].map(([key,label])=>(
+        {[['jadwal','🗓️ Jadwal'],['daftar','📋 Belum Supervisi'],['sudah','✅ Sudah Supervisi'],['grafik','📊 Grafik'],['riwayat','📜 Riwayat']].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'6px 14px',borderRadius:8,border:'none',cursor:'pointer',fontWeight:700,fontSize:'.8rem',
               background:tab===key?'var(--p)':'var(--surface2)',color:tab===key?'#fff':'var(--text2)'}}>
@@ -3944,8 +3959,8 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, filterSmt='Ganjil', fi
   const [saving, setSaving] = useState(false);
 
   // Identitas
-  const [tanggal, setTanggal]   = useState(new Date().toISOString().split('T')[0]);
-  const [kelas, setKelas]       = useState('');
+  const [tanggal, setTanggal]   = useState(jadwal&&jadwal.tanggal ? jadwal.tanggal : new Date().toISOString().split('T')[0]);
+  const [kelas, setKelas]       = useState(jadwal?jadwal.kelas:'');
   const [semester, setSemester]     = useState(filterSmt);
   const [tahunAjaran, setTahunAjaran] = useState(filterTA);
   const [jtm, setJtm]           = useState('');
@@ -4024,6 +4039,14 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, filterSmt='Ganjil', fi
         return; 
       }
       showToast('✅ Supervisi berhasil disimpan!');
+    // Update status jadwal jika ada
+    if (jadwal && jadwal.id) {
+      await sb.from('supermad_jadwal').update({
+        status: 'selesai',
+        supervisi_id: newSup?.id||null,
+        updated_at: new Date().toISOString()
+      }).eq('id', jadwal.id);
+    }
       onSelesai();
     } catch(err) {
       showToast('❌ Error: '+err.message, 'error');
