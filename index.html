@@ -2245,6 +2245,36 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
   async function simpan(e) {
     e.preventDefault();
     if (!form.guru_id) { showToast('Pilih guru!','error'); return; }
+    // Cek konflik jadwal guru yang sama di tanggal yang sama
+    const konflik = jadwalList.filter(j =>
+      j.guru_id === form.guru_id &&
+      j.tanggal === form.tanggal &&
+      j.status !== 'dibatalkan' &&
+      (!editJadwal || j.id !== editJadwal.id)
+    );
+    if (konflik.length > 0) {
+      const k = konflik[0];
+      const jam = k.jam_mulai ? k.jam_mulai.slice(0,5)+(k.jam_selesai?' – '+k.jam_selesai.slice(0,5):'') : '—';
+      const guru = guruList.find(g=>g.id===form.guru_id);
+      showToast('❌ '+( guru?guru.nama:'Guru')+' sudah terjadwal pada tanggal ini jam '+jam+'. Pilih tanggal lain!','error');
+      return;
+    }
+    // Cek juga konflik jam (tumpang tindih)
+    if (form.jam_mulai && form.jam_selesai) {
+      const konflikJam = jadwalList.filter(j =>
+        j.guru_id === form.guru_id &&
+        j.tanggal === form.tanggal &&
+        j.status !== 'dibatalkan' &&
+        (!editJadwal || j.id !== editJadwal.id) &&
+        j.jam_mulai && j.jam_selesai &&
+        form.jam_mulai < j.jam_selesai &&
+        form.jam_selesai > j.jam_mulai
+      );
+      if (konflikJam.length > 0) {
+        showToast('❌ Waktu supervisi tumpang tindih dengan jadwal yang sudah ada!','error');
+        return;
+      }
+    }
     setSaving(true);
     const guru = guruList.find(g=>g.id===form.guru_id);
     const payload = {
@@ -2489,10 +2519,18 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
                             {sLabel[j.status]}
                           </span>
                           {j.status==='terjadwal' && <>
-                            <button onClick={()=>onMulaiSupervisi(guru,j)}
+                            <button onClick={()=>{
+                              var t=new Date().toISOString().split('T')[0];
+                              var h=new Date().getHours();
+                              var jh=j.jam_mulai?parseInt(j.jam_mulai):0;
+                              var w=j.tanggal>t?'Jadwal belum tiba. Tetap mulai?':j.tanggal===t&&j.jam_mulai&&h<jh?'Belum waktunya (jam '+j.jam_mulai.slice(0,5)+'). Tetap mulai?':'';
+                              if(w&&!window.confirm(w))return;
+                              onMulaiSupervisi(guru,j);
+                            }}
                               style={{padding:'4px 10px',borderRadius:6,border:'none',
-                                background:'var(--p)',color:'#fff',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
-                              📋 Mulai
+                                background: j.tanggal===new Date().toISOString().split('T')[0]?'var(--p)':'#d97706',
+                                color:'#fff',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
+                              {j.tanggal===new Date().toISOString().split('T')[0]?'📋 Mulai':'📋 Mulai*'}
                             </button>
                             <button onClick={()=>{setEditJadwal(j);setForm({...j});setShowForm(true);}}
                               style={{padding:'4px 8px',borderRadius:6,border:'1px solid #d97706',
@@ -4265,9 +4303,10 @@ function TabelPenilaian({items, prefix, skor, onChange, catatan, setCatatan, lab
   );
 }
 
-function FormSupervisi({guru, sesi, showToast, onSelesai, filterSmt='Ganjil', filterTA='2025/2026'}) {
+function FormSupervisi({guru, sesi, showToast, onSelesai, filterSmt='Ganjil', filterTA='2026/2027', jadwal=null}) {
   const [tab, setTab]   = useState('identitas');
   const [saving, setSaving] = useState(false);
+  if (!guru) return <div style={{textAlign:'center',padding:40,color:'var(--text3)'}}>⏳ Memuat data guru...</div>;
 
   // Identitas
   const [tanggal, setTanggal]   = useState(jadwal&&jadwal.tanggal ? jadwal.tanggal : new Date().toISOString().split('T')[0]);
