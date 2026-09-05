@@ -2444,8 +2444,8 @@ function DashboardSupervisor({sesi, showToast}) {
   const taDefault = taAwal + '/' + (taAwal + 1);
   const smtDefault = bln >= 7 ? 'Ganjil' : 'Genap';
 
-  const [filterSmt, setFilterSmt] = useState(sesi.mad.semester_aktif || smtDefault);
-  const [filterTA, setFilterTA]   = useState(sesi.mad.tahun_ajaran   || taDefault);
+  const [filterSmt, setFilterSmt] = useState(smtDefault);
+  const [filterTA, setFilterTA]   = useState(taDefault);
 
   useEffect(() => { loadData(); }, [filterSmt, filterTA]);
 
@@ -2557,6 +2557,19 @@ function DashboardSupervisor({sesi, showToast}) {
           </button>
         ))}
       </div>
+
+      {tab === 'jadwal' && (
+        <HalamanJadwal
+          sesi={sesi} showToast={showToast}
+          guruList={guruList}
+          filterSmt={filterSmt} filterTA={filterTA}
+          onMulaiSupervisi={(guru,jadwal)=>{
+            setGuruAktif(guru);
+            setJadwalAktif(jadwal);
+            setTab('daftar');
+          }}
+        />
+      )}
 
       {tab === 'daftar' && (
         <div className="card">
