@@ -2594,6 +2594,21 @@ function DashboardSupervisor({sesi, showToast}) {
   }
 
   if (loading) return <Loading text="Memuat data supervisi..." />;
+  async function hapusSupervisi(sup) {
+    const guru = guruList.find(g=>g.id===sup.guru_id);
+    const nama = guru ? guru.nama : 'guru ini';
+    if (!window.confirm('Hapus supervisi '+nama+'? Data RTL terkait juga akan dihapus!')) return;
+    // Hapus RTL dulu
+    await sb.from('supermad_rtl').delete().eq('supervisi_id', sup.id);
+    // Reset jadwal jika terhubung
+    await sb.from('supermad_jadwal').update({status:'terjadwal',supervisi_id:null}).eq('supervisi_id', sup.id);
+    // Hapus supervisi
+    const {error} = await sb.from('supermad_supervisi').delete().eq('id', sup.id);
+    if (error) { showToast('Gagal hapus: '+error.message,'error'); return; }
+    showToast('🗑️ Supervisi '+nama+' berhasil dihapus.');
+    loadData();
+  }
+
   function mulaiDariJadwal(guru, jadwal) {
     setGuruAktif(guru);
     setJadwalAktif(jadwal);
@@ -2964,6 +2979,12 @@ function DashboardSupervisor({sesi, showToast}) {
                               border:'1.5px solid var(--p)',borderRadius:7,cursor:'pointer',
                               fontSize:'.75rem',fontWeight:700}}>
                             🔄 Supervisi Lagi
+                          </button>
+                          <button onClick={()=>hapusSupervisi(s)}
+                            style={{padding:'5px 12px',background:'#fef2f2',color:'#dc2626',
+                              border:'1.5px solid #fca5a5',borderRadius:7,cursor:'pointer',
+                              fontSize:'.75rem',fontWeight:700}}>
+                            🗑️ Hapus
                           </button>
                         </div>
                       </div>
