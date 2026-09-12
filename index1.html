@@ -4351,11 +4351,11 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, filterSmt='Ganjil', fi
     if (!kelas.trim()) { showToast('Kelas wajib diisi','warning'); setTab('identitas'); return; }
     setSaving(true);
     try {
-      const {data:newSup, error} = await sb.from('supermad_supervisi').insert({
+      const {error} = await sb.from('supermad_supervisi').insert({
         madrasah_id:         sesi.mad.id,
         guru_id:             guru.id,
         supervisor_id:       sesi.pengguna.id,
-        tahun_ajaran:        filterTA||sesi.mad.tahun_ajaran||'2026/2027',
+        tahun_ajaran:        sesi.mad.tahun_ajaran,
         semester,
         tanggal_supervisi:   tanggal,
         kelas_sem:           kelas,
@@ -4377,16 +4377,15 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, filterSmt='Ganjil', fi
         catatan_p:           catP.c, rekomendasi_p: catP.r,
         catatan_l:           catL.c, rekomendasi_l: catL.r,
         catatan_a:           catA.c, rekomendasi_a: catA.r,
-        capaian_perencanaan: isNaN(capP)?0:parseFloat(capP.toFixed(2)),
-        capaian_pelaksanaan: isNaN(capL)?0:parseFloat(capL.toFixed(2)),
-        capaian_asesmen:     isNaN(capA)?0:parseFloat(capA.toFixed(2)),
+        capaian_perencanaan: parseFloat(capP.toFixed(2)),
+        capaian_pelaksanaan: parseFloat(capL.toFixed(2)),
+        capaian_asesmen:     parseFloat(capA.toFixed(2)),
         capaian_rata:        parseFloat(capRata.toFixed(2)),
         predikat:            PREDIKAT(capRata),
         status,
-      }).select().single();
+      });
       if (error) { 
-        showToast('❌ Gagal simpan: '+error.message+' ('+error.code+')', 'error');
-        console.error('Simpan error:', error);
+        showToast('❌ Gagal simpan: '+error.message, 'error'); 
         return; 
       }
       showToast('✅ Supervisi berhasil disimpan!');
