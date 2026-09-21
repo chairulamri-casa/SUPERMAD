@@ -2245,6 +2245,36 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
   async function simpan(e) {
     e.preventDefault();
     if (!form.guru_id) { showToast('Pilih guru!','error'); return; }
+    // Cek konflik jadwal guru yang sama di tanggal yang sama
+    const konflik = jadwalList.filter(j =>
+      j.guru_id === form.guru_id &&
+      j.tanggal === form.tanggal &&
+      j.status !== 'dibatalkan' &&
+      (!editJadwal || j.id !== editJadwal.id)
+    );
+    if (konflik.length > 0) {
+      const k = konflik[0];
+      const jam = k.jam_mulai ? k.jam_mulai.slice(0,5)+(k.jam_selesai?' – '+k.jam_selesai.slice(0,5):'') : '—';
+      const guru = guruList.find(g=>g.id===form.guru_id);
+      showToast('❌ '+( guru?guru.nama:'Guru')+' sudah terjadwal pada tanggal ini jam '+jam+'. Pilih tanggal lain!','error');
+      return;
+    }
+    // Cek juga konflik jam (tumpang tindih)
+    if (form.jam_mulai && form.jam_selesai) {
+      const konflikJam = jadwalList.filter(j =>
+        j.guru_id === form.guru_id &&
+        j.tanggal === form.tanggal &&
+        j.status !== 'dibatalkan' &&
+        (!editJadwal || j.id !== editJadwal.id) &&
+        j.jam_mulai && j.jam_selesai &&
+        form.jam_mulai < j.jam_selesai &&
+        form.jam_selesai > j.jam_mulai
+      );
+      if (konflikJam.length > 0) {
+        showToast('❌ Waktu supervisi tumpang tindih dengan jadwal yang sudah ada!','error');
+        return;
+      }
+    }
     setSaving(true);
     const guru = guruList.find(g=>g.id===form.guru_id);
     const payload = {
@@ -2289,6 +2319,87 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
   const grouped = {};
   jadwalList.forEach(j=>{ if(!grouped[j.tanggal])grouped[j.tanggal]=[]; grouped[j.tanggal].push(j); });
 
+  function cetakJadwal() {
+    const win = window.open('','_blank');
+    const bulan = {};
+    jadwalList.filter(j=>j.status!=='dibatalkan').forEach(j=>{
+      const tgl = new Date(j.tanggal+'T00:00:00');
+      const key = tgl.toLocaleDateString('id-ID',{month:'long',year:'numeric'});
+      if(!bulan[key]) bulan[key]=[];
+      const guru = guruList.find(g=>g.id===j.guru_id);
+      bulan[key].push({...j, namaGuru: guru?guru.nama:'—'});
+    });
+    var rows = '';
+    var no = 1;
+    Object.keys(bulan).forEach(function(bln) {
+      rows += '<tr><td colspan="7" style="background:#0f4238;color:#fff;font-weight:700;padding:8px 10px;font-size:10pt">'+ bln +'</td></tr>';
+      bulan[bln].forEach(function(j) {
+        var tgl = new Date(j.tanggal+'T00:00:00').toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+        var jam = j.jam_mulai ? j.jam_mulai.slice(0,5)+(j.jam_selesai?' – '+j.jam_selesai.slice(0,5):'') : '—';
+        var status = j.status==='selesai'?'✅ Selesai':'🗓️ Terjadwal';
+        var statusColor = j.status==='selesai'?'#16a34a':'#2563eb';
+        rows += '<tr style="border-bottom:1px solid #e5e7eb">'+
+          '<td style="padding:7px 10px;text-align:center">'+(no++)+'</td>'+
+          '<td style="padding:7px 10px">'+tgl+'</td>'+
+          '<td style="padding:7px 10px">'+jam+'</td>'+
+          '<td style="padding:7px 10px;font-weight:700">'+j.namaGuru+'</td>'+
+          '<td style="padding:7px 10px">'+(j.mapel||'—')+'</td>'+
+          '<td style="padding:7px 10px;text-align:center">'+(j.kelas||'—')+'</td>'+
+          '<td style="padding:7px 10px;text-align:center;font-weight:700;color:'+statusColor+'">'+status+'</td>'+
+          '</tr>';
+      });
+    });
+    var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'+
+      '<title>Jadwal Supervisi — '+sesi.mad.nama+'</title>'+
+      '<style>*{box-sizing:border-box;margin:0;padding:0}'+
+      'body{font-family:Times New Roman,serif;font-size:11pt;padding:15mm;color:#000}'+
+      '.no-print{display:flex;gap:8px;margin-bottom:16px}'+
+      '@media print{.no-print{display:none!important}@page{size:A4;margin:15mm}}'+
+      'table{width:100%;border-collapse:collapse;font-size:10pt}'+
+      'th{background:#0f4238;color:#fff;padding:8px 10px;text-align:left}'+
+      'td{padding:7px 10px;border-bottom:1px solid #e5e7eb}'+
+      'tr:nth-child(even){background:#f9fafb}'+
+      '.kop{display:flex;align-items:center;gap:12px;border-bottom:3px double #000;padding-bottom:10px;margin-bottom:14px}'+
+      '.ttd{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:30px}'+
+      '.ttd-line{border-top:1px solid #000;margin-top:50px;padding-top:5px;font-size:10pt}'+
+      '</style></head><body>'+
+      '<div class="no-print">'+
+      '<button onclick="window.print()" style="padding:7px 18px;background:#0f4238;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">🖨️ Cetak</button>'+
+      '<button onclick="window.print()" style="padding:7px 18px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">📥 Simpan PDF</button>'+
+      '<button onclick="window.close()" style="padding:7px 14px;background:#eee;border:none;border-radius:6px;cursor:pointer">✕ Tutup</button>'+
+      '</div>'+
+      '<div class="kop">'+
+      '<div style="flex:1">'+
+      '<div style="font-size:9pt">KEMENTERIAN AGAMA REPUBLIK INDONESIA</div>'+
+      '<div style="font-weight:900;font-size:13pt;text-transform:uppercase">'+sesi.mad.nama+'</div>'+
+      '<div style="font-size:9pt">'+[sesi.mad.naungan,sesi.mad.alamat,sesi.mad.kota_kab,sesi.mad.provinsi].filter(Boolean).join(' | ')+'</div>'+
+      '</div></div>'+
+      '<h2 style="text-align:center;font-size:12pt;text-transform:uppercase;margin:12px 0 2px">JADWAL SUPERVISI PEMBELAJARAN</h2>'+
+      '<div style="text-align:center;font-size:9pt;margin-bottom:14px;border-bottom:2px solid #000;padding-bottom:8px">'+
+      'Semester '+filterSmt+' · Tahun Ajaran '+filterTA+' · Berbasis PM-KBC / KMA 1503/2025'+
+      '</div>'+
+      '<table><tr>'+
+      '<th style="width:5%;text-align:center">No</th>'+
+      '<th style="width:25%">Hari/Tanggal</th>'+
+      '<th style="width:12%">Jam</th>'+
+      '<th style="width:22%">Nama Guru</th>'+
+      '<th style="width:18%">Mata Pelajaran</th>'+
+      '<th style="width:8%;text-align:center">Kelas</th>'+
+      '<th style="width:10%;text-align:center">Status</th>'+
+      '</tr>'+rows+'</table>'+
+      '<div class="ttd">'+
+      '<div style="text-align:center"><div>Mengetahui,</div><div style="font-size:9pt">Kepala '+sesi.mad.nama+'</div>'+
+      '<div class="ttd-line"><b>'+(sesi.mad.nama_kepala||'...................')+'</b><br>NIP. '+(sesi.mad.nip_kepala||'—')+'</div></div>'+
+      '<div style="text-align:center"><div>Supervisor,</div><div style="font-size:9pt"> </div>'+
+      '<div class="ttd-line"><b>'+sesi.pengguna.nama+'</b><br>NIP. '+(sesi.pengguna.nip||'—')+'</div></div>'+
+      '</div>'+
+      '<div style="margin-top:16px;text-align:center;font-size:8pt;color:#666;border-top:1px solid #ccc;padding-top:8px">'+
+      'SUPERMAD — Supervisi Pembelajaran Madrasah PM-KBC · supermad.my.id</div>'+
+      '</body></html>';
+    win.document.write(html);
+    win.document.close();
+  }
+
   return (
     <div>
       {/* Stats */}
@@ -2305,10 +2416,18 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
       {/* Header + Tombol */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
         <div style={{fontWeight:800,color:'var(--p3)'}}>🗓️ Jadwal Supervisi — {filterSmt} {filterTA}</div>
-        <button onClick={()=>{setShowForm(!showForm);setEditJadwal(null);setForm({...blankForm,tanggal:today});}}
-          className="btn btn-primary btn-sm">
-          {showForm?'✕ Batal':'+ Jadwal Baru'}
-        </button>
+        <div style={{display:'flex',gap:6}}>
+          {jadwalList.length>0 && (
+            <button onClick={cetakJadwal}
+              className="btn btn-outline btn-sm">
+              🖨️ Cetak Jadwal
+            </button>
+          )}
+          <button onClick={()=>{setShowForm(!showForm);setEditJadwal(null);setForm({...blankForm,tanggal:today});}}
+            className="btn btn-primary btn-sm">
+            {showForm?'✕ Batal':'+ Jadwal Baru'}
+          </button>
+        </div>
       </div>
 
       {/* Form */}
@@ -2400,10 +2519,18 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
                             {sLabel[j.status]}
                           </span>
                           {j.status==='terjadwal' && <>
-                            <button onClick={()=>onMulaiSupervisi(guru,j)}
+                            <button onClick={()=>{
+                              var t=new Date().toISOString().split('T')[0];
+                              var h=new Date().getHours();
+                              var jh=j.jam_mulai?parseInt(j.jam_mulai):0;
+                              var w=j.tanggal>t?'Jadwal belum tiba. Tetap mulai?':j.tanggal===t&&j.jam_mulai&&h<jh?'Belum waktunya (jam '+j.jam_mulai.slice(0,5)+'). Tetap mulai?':'';
+                              if(w&&!window.confirm(w))return;
+                              onMulaiSupervisi(guru,j);
+                            }}
                               style={{padding:'4px 10px',borderRadius:6,border:'none',
-                                background:'var(--p)',color:'#fff',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
-                              📋 Mulai
+                                background: j.tanggal===new Date().toISOString().split('T')[0]?'var(--p)':'#d97706',
+                                color:'#fff',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
+                              {j.tanggal===new Date().toISOString().split('T')[0]?'📋 Mulai':'📋 Mulai*'}
                             </button>
                             <button onClick={()=>{setEditJadwal(j);setForm({...j});setShowForm(true);}}
                               style={{padding:'4px 8px',borderRadius:6,border:'1px solid #d97706',
@@ -2444,8 +2571,8 @@ function DashboardSupervisor({sesi, showToast}) {
   const taDefault = taAwal + '/' + (taAwal + 1);
   const smtDefault = bln >= 7 ? 'Ganjil' : 'Genap';
 
-  const [filterSmt, setFilterSmt] = useState(sesi.mad.semester_aktif || smtDefault);
-  const [filterTA, setFilterTA]   = useState(sesi.mad.tahun_ajaran   || taDefault);
+  const [filterSmt, setFilterSmt] = useState(smtDefault);
+  const [filterTA, setFilterTA]   = useState(taDefault);
 
   useEffect(() => { loadData(); }, [filterSmt, filterTA]);
 
@@ -2467,6 +2594,21 @@ function DashboardSupervisor({sesi, showToast}) {
   }
 
   if (loading) return <Loading text="Memuat data supervisi..." />;
+  async function hapusSupervisi(sup) {
+    const guru = guruList.find(g=>g.id===sup.guru_id);
+    const nama = guru ? guru.nama : 'guru ini';
+    if (!window.confirm('Hapus supervisi '+nama+'? Data RTL terkait juga akan dihapus!')) return;
+    // Hapus RTL dulu
+    await sb.from('supermad_rtl').delete().eq('supervisi_id', sup.id);
+    // Reset jadwal jika terhubung
+    await sb.from('supermad_jadwal').update({status:'terjadwal',supervisi_id:null}).eq('supervisi_id', sup.id);
+    // Hapus supervisi
+    const {error} = await sb.from('supermad_supervisi').delete().eq('id', sup.id);
+    if (error) { showToast('Gagal hapus: '+error.message,'error'); return; }
+    showToast('🗑️ Supervisi '+nama+' berhasil dihapus.');
+    loadData();
+  }
+
   function mulaiDariJadwal(guru, jadwal) {
     setGuruAktif(guru);
     setJadwalAktif(jadwal);
@@ -2557,6 +2699,19 @@ function DashboardSupervisor({sesi, showToast}) {
           </button>
         ))}
       </div>
+
+      {tab === 'jadwal' && (
+        <HalamanJadwal
+          sesi={sesi} showToast={showToast}
+          guruList={guruList}
+          filterSmt={filterSmt} filterTA={filterTA}
+          onMulaiSupervisi={(guru,jadwal)=>{
+            setGuruAktif(guru);
+            setJadwalAktif(jadwal);
+            setTab('daftar');
+          }}
+        />
+      )}
 
       {tab === 'daftar' && (
         <div className="card">
@@ -2824,6 +2979,12 @@ function DashboardSupervisor({sesi, showToast}) {
                               border:'1.5px solid var(--p)',borderRadius:7,cursor:'pointer',
                               fontSize:'.75rem',fontWeight:700}}>
                             🔄 Supervisi Lagi
+                          </button>
+                          <button onClick={()=>hapusSupervisi(s)}
+                            style={{padding:'5px 12px',background:'#fef2f2',color:'#dc2626',
+                              border:'1.5px solid #fca5a5',borderRadius:7,cursor:'pointer',
+                              fontSize:'.75rem',fontWeight:700}}>
+                            🗑️ Hapus
                           </button>
                         </div>
                       </div>
@@ -3289,7 +3450,6 @@ function HalamanRTL({sup, guru, sesi, showToast, onBack}) {
   const [catUmum, setCatUmum]       = useState('');
   const [konfirmasi, setKonfirmasi] = useState('belum');
   const [catatanGuru, setCatatanGuru] = useState('');
-  const [tglKonfirmasi, setTglKonfirmasi] = useState(null);
 
   // RTL per komponen
   const [rtlP, setRtlP] = useState([]);
@@ -3318,7 +3478,6 @@ function HalamanRTL({sup, guru, sesi, showToast, onBack}) {
       setCatUmum(data.catatan_umum||'');
       setKonfirmasi(data.konfirmasi_guru||'belum');
       setCatatanGuru(data.catatan_guru||'');
-      setTglKonfirmasi(data.tgl_konfirmasi||null);
     } else {
       // Auto-generate dari skor rendah
       const generated = generateRTL(
@@ -3697,9 +3856,9 @@ ${catUmum ? `<div class="section-title">C. CATATAN UMUM SUPERVISOR</div>
                     "{catatanGuru}"
                   </div>
                 )}
-                {tglKonfirmasi && (
+                {rtlData?.tgl_konfirmasi && (
                   <div style={{fontSize:'.72rem',color:'var(--text3)',marginTop:4}}>
-                    Diisi: {new Date(tglKonfirmasi).toLocaleDateString('id-ID')}
+                    Diisi: {new Date(rtlData.tgl_konfirmasi).toLocaleDateString('id-ID')}
                   </div>
                 )}
               </div>
@@ -4165,9 +4324,10 @@ function TabelPenilaian({items, prefix, skor, onChange, catatan, setCatatan, lab
   );
 }
 
-function FormSupervisi({guru, sesi, showToast, onSelesai, filterSmt='Ganjil', filterTA='2025/2026'}) {
+function FormSupervisi({guru, sesi, showToast, onSelesai, filterSmt='Ganjil', filterTA='2026/2027', jadwal=null}) {
   const [tab, setTab]   = useState('identitas');
   const [saving, setSaving] = useState(false);
+  if (!guru) return <div style={{textAlign:'center',padding:40,color:'var(--text3)'}}>⏳ Memuat data guru...</div>;
 
   // Identitas
   const [tanggal, setTanggal]   = useState(jadwal&&jadwal.tanggal ? jadwal.tanggal : new Date().toISOString().split('T')[0]);
@@ -4212,11 +4372,11 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, filterSmt='Ganjil', fi
     if (!kelas.trim()) { showToast('Kelas wajib diisi','warning'); setTab('identitas'); return; }
     setSaving(true);
     try {
-      const {error} = await sb.from('supermad_supervisi').insert({
+      const {data:newSup, error} = await sb.from('supermad_supervisi').insert({
         madrasah_id:         sesi.mad.id,
         guru_id:             guru.id,
         supervisor_id:       sesi.pengguna.id,
-        tahun_ajaran:        sesi.mad.tahun_ajaran,
+        tahun_ajaran:        filterTA||sesi.mad.tahun_ajaran||'2026/2027',
         semester,
         tanggal_supervisi:   tanggal,
         kelas_sem:           kelas,
@@ -4238,15 +4398,16 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, filterSmt='Ganjil', fi
         catatan_p:           catP.c, rekomendasi_p: catP.r,
         catatan_l:           catL.c, rekomendasi_l: catL.r,
         catatan_a:           catA.c, rekomendasi_a: catA.r,
-        capaian_perencanaan: parseFloat(capP.toFixed(2)),
-        capaian_pelaksanaan: parseFloat(capL.toFixed(2)),
-        capaian_asesmen:     parseFloat(capA.toFixed(2)),
+        capaian_perencanaan: isNaN(capP)?0:parseFloat(capP.toFixed(2)),
+        capaian_pelaksanaan: isNaN(capL)?0:parseFloat(capL.toFixed(2)),
+        capaian_asesmen:     isNaN(capA)?0:parseFloat(capA.toFixed(2)),
         capaian_rata:        parseFloat(capRata.toFixed(2)),
         predikat:            PREDIKAT(capRata),
         status,
-      });
+      }).select().single();
       if (error) { 
-        showToast('❌ Gagal simpan: '+error.message, 'error'); 
+        showToast('❌ Gagal simpan: '+error.message+' ('+error.code+')', 'error');
+        console.error('Simpan error:', error);
         return; 
       }
       showToast('✅ Supervisi berhasil disimpan!');
