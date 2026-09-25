@@ -2558,15 +2558,6 @@ function DashboardSupervisor({sesi, showToast}) {
         ))}
       </div>
 
-      {tab === 'jadwal' && (
-        <HalamanJadwal
-          sesi={sesi} showToast={showToast}
-          guruList={guruList}
-          filterSmt={filterSmt} filterTA={filterTA}
-          onMulaiSupervisi={mulaiDariJadwal}
-        />
-      )}
-
       {tab === 'daftar' && (
         <div className="card">
           <div style={{display:'flex',flexDirection:'column',gap:8}}>
