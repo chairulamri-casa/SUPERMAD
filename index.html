@@ -2629,8 +2629,14 @@ function DashboardSupervisor({sesi, showToast}) {
 
       {tab === 'sudah' && (
         <div className="card">
-          <div style={{fontWeight:700,color:'var(--text2)',fontSize:'.83rem',marginBottom:12}}>
-            {supListFilter.length} supervisi · {filterSmt} {filterTA}
+          <div style={{fontWeight:700,color:'var(--text2)',fontSize:'.83rem',marginBottom:12,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+            <span>{supListFilter.length} supervisi · {filterSmt} {filterTA}</span>
+            {supListFilter.filter(s=>s.status==='draft').length > 0 && (
+              <span style={{fontSize:'.72rem',color:'#92400e',background:'#fef3c7',
+                padding:'2px 10px',borderRadius:20,border:'1px solid #fbbf24'}}>
+                {supListFilter.filter(s=>s.status==='draft').length} draft belum diselesaikan
+              </span>
+            )}
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:8}}>
             {supListFilter.map(s => {
@@ -2639,39 +2645,71 @@ function DashboardSupervisor({sesi, showToast}) {
               const pred    = capaian>=87.5?'Sangat Baik':capaian>=75?'Baik':capaian>=62.5?'Cukup':'Kurang';
               const guru    = guruList.find(g=>g.id===s.guru_id);
               const isDraft = s.status==='draft';
+
+              async function tandaiSelesai() {
+                const {error} = await sb.from('supermad_supervisi')
+                  .update({status:'selesai'})
+                  .eq('id', s.id);
+                if (error) { showToast('Gagal: '+error.message,'error'); return; }
+                showToast('✅ Supervisi '+guru?.nama+' ditandai Selesai','success');
+                loadData(filterSmt, filterTA);
+              }
+
               return (
-                <div key={s.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',
-                  padding:'12px 14px',background:'var(--surface2)',borderRadius:10,
-                  border:`1px solid ${isDraft?'#fbbf24':'var(--border)'}`,gap:10,flexWrap:'wrap'}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontWeight:700,display:'flex',alignItems:'center',gap:8}}>
-                      {guru?.nama||'—'}
-                      {isDraft && (
-                        <span style={{padding:'1px 8px',borderRadius:20,fontSize:'.65rem',fontWeight:700,
-                          background:'#fef3c7',color:'#92400e',border:'1px solid #fbbf24'}}>
-                          Draft
-                        </span>
-                      )}
+                <div key={s.id} style={{padding:'12px 14px',background:'var(--surface2)',borderRadius:10,
+                  border:`1.5px solid ${isDraft?'#fbbf24':'#86efac'}`}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,flexWrap:'wrap'}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                        {guru?.nama||'—'}
+                        {isDraft
+                          ? <span style={{padding:'1px 8px',borderRadius:20,fontSize:'.65rem',fontWeight:700,
+                              background:'#fef3c7',color:'#92400e',border:'1px solid #fbbf24'}}>Draft</span>
+                          : <span style={{padding:'1px 8px',borderRadius:20,fontSize:'.65rem',fontWeight:700,
+                              background:'#d1fae5',color:'#065f46',border:'1px solid #86efac'}}>✓ Selesai</span>
+                        }
+                      </div>
+                      <div style={{fontSize:'.73rem',color:'var(--text2)',marginTop:3}}>
+                        {guru?.mapel||'—'} · Kelas: {s.kelas_sem||'—'}
+                      </div>
+                      <div style={{fontSize:'.7rem',color:'var(--text3)',marginTop:2}}>
+                        {s.tanggal_supervisi
+                          ? new Date(s.tanggal_supervisi).toLocaleDateString('id-ID',
+                              {day:'numeric',month:'long',year:'numeric'})
+                          : '—'}
+                      </div>
                     </div>
-                    <div style={{fontSize:'.73rem',color:'var(--text2)',marginTop:3}}>
-                      {guru?.mapel||'—'} · Kelas: {s.kelas_sem||'—'}
-                    </div>
-                    <div style={{fontSize:'.7rem',color:'var(--text3)',marginTop:2}}>
-                      {s.tanggal_supervisi
-                        ? new Date(s.tanggal_supervisi).toLocaleDateString('id-ID',
-                            {day:'numeric',month:'long',year:'numeric'})
-                        : '—'}
+                    <div style={{textAlign:'right'}}>
+                      <div style={{fontWeight:900,fontSize:'1.1rem',color:warna}}>
+                        {capaian.toFixed(1)}%
+                      </div>
+                      <span style={{padding:'2px 10px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
+                        background:capaian>=87.5?'#d1fae5':capaian>=75?'#dbeafe':capaian>=62.5?'#fef3c7':'#fee2e2',
+                        color:capaian>=87.5?'#065f46':capaian>=75?'#1d4ed8':capaian>=62.5?'#92400e':'#991b1b'}}>
+                        {s.predikat||pred}
+                      </span>
                     </div>
                   </div>
-                  <div style={{textAlign:'right'}}>
-                    <div style={{fontWeight:900,fontSize:'1.1rem',color:warna}}>
-                      {capaian.toFixed(1)}%
-                    </div>
-                    <span style={{padding:'2px 10px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
-                      background:capaian>=87.5?'#d1fae5':capaian>=75?'#dbeafe':capaian>=62.5?'#fef3c7':'#fee2e2',
-                      color:capaian>=87.5?'#065f46':capaian>=75?'#1d4ed8':capaian>=62.5?'#92400e':'#991b1b'}}>
-                      {s.predikat||pred}
-                    </span>
+                  {/* Tombol aksi */}
+                  <div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}}>
+                    {isDraft && (
+                      <button onClick={tandaiSelesai}
+                        style={{padding:'5px 14px',background:'#16a34a',color:'#fff',
+                          border:'none',borderRadius:7,cursor:'pointer',fontSize:'.75rem',fontWeight:700}}>
+                        ✅ Tandai Selesai
+                      </button>
+                    )}
+                    <button onClick={()=>setGuruAktif(guru)}
+                      style={{padding:'5px 12px',background:'#fff',color:'var(--p)',
+                        border:'1.5px solid var(--p)',borderRadius:7,cursor:'pointer',
+                        fontSize:'.75rem',fontWeight:700}}>
+                      ✏️ {isDraft ? 'Lanjut Edit' : 'Edit Ulang'}
+                    </button>
+                    <button onClick={()=>setSupAktifRTL({sup:s,guru})}
+                      style={{padding:'5px 12px',background:'var(--g)',color:'#fff',
+                        border:'none',borderRadius:7,cursor:'pointer',fontSize:'.75rem',fontWeight:700}}>
+                      📋 RTL
+                    </button>
                   </div>
                 </div>
               );
