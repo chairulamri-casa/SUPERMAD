@@ -2473,10 +2473,12 @@ function DashboardSupervisor({sesi, showToast}) {
   const [filterSmt, setFilterSmt] = useState(sesi.mad.semester_aktif || smtDefault);
   const [filterTA, setFilterTA]   = useState(sesi.mad.tahun_ajaran   || taDefault);
 
-  useEffect(() => { loadData(); }, [filterSmt, filterTA]);
+  useEffect(() => { loadData(filterSmt, filterTA); }, [filterSmt, filterTA]);
 
-  async function loadData() {
+  async function loadData(smt, ta) {
     setLoading(true);
+    const useSmt = smt || filterSmt;
+    const useTA  = ta  || filterTA;
     const [g, sAll, sFilter] = await Promise.all([
       sb.from('supermad_guru').select('*').eq('madrasah_id', sesi.mad.id).eq('aktif',true).order('nama'),
       // Semua supervisi madrasah ini (untuk stats Total/Sudah/Belum & Riwayat)
@@ -2486,13 +2488,13 @@ function DashboardSupervisor({sesi, showToast}) {
       // Supervisi difilter per semester+TA (untuk Grafik & daftar periode ini)
       sb.from('supermad_supervisi').select('*')
         .eq('madrasah_id', sesi.mad.id)
-        .eq('semester', filterSmt)
-        .eq('tahun_ajaran', filterTA)
+        .eq('semester', useSmt)
+        .eq('tahun_ajaran', useTA)
         .order('created_at', {ascending:false}),
     ]);
     if (g.error) console.error('Guru error:', g.error);
     setGuruList(g.data||[]);
-    setSupList(sAll.data||[]);       // semua — untuk stats & riwayat
+    setSupList(sAll.data||[]);          // semua — untuk stats & riwayat
     setSupListFilter(sFilter.data||[]); // difilter — untuk grafik & daftar
     setLoading(false);
   }
@@ -2575,7 +2577,9 @@ function DashboardSupervisor({sesi, showToast}) {
           })()}
         </select>
         <span style={{fontSize:'.75rem',color:'var(--text3)',marginLeft:'auto'}}>
-          {supListFilter.filter(s=>s.status==='selesai').length} supervisi selesai periode ini
+          {supListFilter.length} supervisi periode ini
+          {supListFilter.filter(s=>s.status==='selesai').length > 0 &&
+            ` (${supListFilter.filter(s=>s.status==='selesai').length} selesai)`}
         </span>
       </div>
 
@@ -2626,20 +2630,29 @@ function DashboardSupervisor({sesi, showToast}) {
       {tab === 'sudah' && (
         <div className="card">
           <div style={{fontWeight:700,color:'var(--text2)',fontSize:'.83rem',marginBottom:12}}>
-            {supListFilter.filter(s=>s.status==='selesai').length} supervisi selesai · {filterSmt} {filterTA}
+            {supListFilter.length} supervisi · {filterSmt} {filterTA}
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:8}}>
-            {supListFilter.filter(s=>s.status==='selesai').map(s => {
+            {supListFilter.map(s => {
               const capaian = parseFloat(s.capaian_rata)||0;
               const warna   = capaian>=87.5?'#16a34a':capaian>=75?'#2563eb':capaian>=62.5?'#d97706':'#dc2626';
               const pred    = capaian>=87.5?'Sangat Baik':capaian>=75?'Baik':capaian>=62.5?'Cukup':'Kurang';
               const guru    = guruList.find(g=>g.id===s.guru_id);
+              const isDraft = s.status==='draft';
               return (
                 <div key={s.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',
                   padding:'12px 14px',background:'var(--surface2)',borderRadius:10,
-                  border:'1px solid var(--border)',gap:10,flexWrap:'wrap'}}>
+                  border:`1px solid ${isDraft?'#fbbf24':'var(--border)'}`,gap:10,flexWrap:'wrap'}}>
                   <div style={{flex:1}}>
-                    <div style={{fontWeight:700}}>{guru?.nama||'—'}</div>
+                    <div style={{fontWeight:700,display:'flex',alignItems:'center',gap:8}}>
+                      {guru?.nama||'—'}
+                      {isDraft && (
+                        <span style={{padding:'1px 8px',borderRadius:20,fontSize:'.65rem',fontWeight:700,
+                          background:'#fef3c7',color:'#92400e',border:'1px solid #fbbf24'}}>
+                          Draft
+                        </span>
+                      )}
+                    </div>
                     <div style={{fontSize:'.73rem',color:'var(--text2)',marginTop:3}}>
                       {guru?.mapel||'—'} · Kelas: {s.kelas_sem||'—'}
                     </div>
@@ -2663,9 +2676,9 @@ function DashboardSupervisor({sesi, showToast}) {
                 </div>
               );
             })}
-            {!supListFilter.filter(s=>s.status==='selesai').length && (
+            {!supListFilter.length && (
               <div style={{textAlign:'center',color:'var(--text3)',padding:24,fontSize:'.85rem'}}>
-                Belum ada supervisi selesai untuk periode {filterSmt} {filterTA}.
+                Belum ada supervisi untuk periode {filterSmt} {filterTA}.
               </div>
             )}
           </div>
@@ -2676,7 +2689,7 @@ function DashboardSupervisor({sesi, showToast}) {
       {tab === 'grafik' && (
         <div style={{display:'flex',flexDirection:'column',gap:14}}>
           {/* Summary cards */}
-          {(()=>{const sf=supListFilter.filter(s=>s.status==='selesai'); return (
+          {(()=>{const sf=supListFilter; return (
           <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
             {[
               {label:'Perencanaan',
@@ -2702,12 +2715,12 @@ function DashboardSupervisor({sesi, showToast}) {
             <div style={{fontWeight:800,color:'var(--p3)',marginBottom:16}}>
               📊 Capaian Per Guru — {filterSmt} {filterTA}
             </div>
-            {supListFilter.filter(s=>s.status==='selesai').length === 0
+            {supListFilter.length === 0
               ? <div style={{textAlign:'center',color:'var(--text3)',padding:24}}>
                   Belum ada data supervisi periode {filterSmt} {filterTA}.
                 </div>
               : <div style={{display:'flex',flexDirection:'column',gap:10}}>
-                  {supListFilter.filter(s=>s.status==='selesai').map(s=>{
+                  {supListFilter.map(s=>{
                     const guru = guruList.find(g=>g.id===s.guru_id);
                     const cap  = parseFloat(s.capaian_rata)||0;
                     const capP = parseFloat(s.capaian_perencanaan)||0;
@@ -2759,11 +2772,11 @@ function DashboardSupervisor({sesi, showToast}) {
           </div>
 
           {/* Distribusi predikat */}
-          {supListFilter.filter(s=>s.status==='selesai').length > 0 && (
+          {supListFilter.length > 0 && (
             <div className="card">
               <div style={{fontWeight:800,color:'var(--p3)',marginBottom:12}}>🏆 Distribusi Predikat</div>
               {(()=>{
-                const selesai = supListFilter.filter(s=>s.status==='selesai');
+                const selesai = supListFilter;
                 const dist = [
                   {label:'Sangat Baik',count:selesai.filter(s=>(+s.capaian_rata||0)>=87.5).length,color:'#16a34a',bg:'#d1fae5'},
                   {label:'Baik',       count:selesai.filter(s=>(+s.capaian_rata||0)>=75&&(+s.capaian_rata||0)<87.5).length,color:'#2563eb',bg:'#dbeafe'},
