@@ -1758,7 +1758,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
 
       {/* Tab */}
       <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
-        {[['dashboard','📊 Dashboard'],['grafik','📈 Grafik'],['analitik','🔬 Analitik'],['rtl','📋 RTL Kanwil'],['tindaklanjut','✍️ Tindak Lanjut'],['madrasah','🏫 Madrasah']].map(([key,label])=>(
+        {[['dashboard','📊 Dashboard'],['grafik','📈 Grafik'],['analitik','🔬 Analitik'],['rtl','📋 RTL Kanwil'],['tindaklanjut','✍️ Tindak Lanjut'],['madrasah','🏫 Madrasah'],['fitur','⚙️ Kelola Fitur']].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',
               fontWeight:700,fontSize:'.8rem',fontFamily:'inherit',
@@ -2238,11 +2238,253 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
           </div>
         </div>
       )}
+
+      {/* TAB KELOLA FITUR */}
+      {tab==='fitur' && (
+        <TabKelolaFitur
+          madrasahList={madrasahList}
+          showToast={showToast}
+          onReload={loadData}
+        />
+      )}
     </div>
   );
 }
 
 
+
+// ── TAB KELOLA FITUR PER MADRASAH ─────────────────────────────
+const FITUR_DEFS = [
+  { key:'supervisi',          label:'📋 Modul Supervisi',          desc:'Form isian supervisi pembelajaran + rekap hasil'},
+  { key:'jadwal',             label:'📅 Jadwal Supervisi',          desc:'Penjadwalan supervisi per guru'},
+  { key:'rtl',                label:'📌 RTL (Rencana Tindak Lanjut)',desc:'Pembuatan & pemantauan tindak lanjut hasil supervisi'},
+  { key:'portofolio',         label:'🗂️ e-Portofolio PKB',         desc:'Upload bukti PKB & portofolio pengembangan guru'},
+  { key:'analisis_instrumen', label:'🔬 Analisis Instrumen',        desc:'Analisis kualitas soal sebelum digunakan'},
+  { key:'analisis_asesmen',   label:'📈 Analisis Hasil Asesmen',    desc:'Analisis nilai siswa: mean, STDV, tuntas/remedial'},
+  { key:'grafik',             label:'📊 Grafik & Statistik',        desc:'Tampilan grafik progress supervisi per periode'},
+  { key:'dashboard_guru',     label:'🎓 Dashboard Guru',            desc:'Halaman khusus guru: lihat hasil supervisi & RTL'},
+];
+
+const FITUR_DEFAULT = Object.fromEntries(FITUR_DEFS.map(f=>[f.key, true]));
+
+function TabKelolaFitur({madrasahList, showToast, onReload}) {
+  const sb = window.supabase;
+  const [saving, setSaving]         = React.useState({});
+  const [localFitur, setLocalFitur] = React.useState({});
+  const [filterKab, setFilterKab]   = React.useState('');
+  const [filterTkt, setFilterTkt]   = React.useState('');
+  const [modeView, setModeView]     = React.useState('per-madrasah'); // 'per-madrasah' | 'per-fitur'
+  const [bulk, setBulk]             = React.useState(null); // {fiturKey, value} untuk set semua sekaligus
+
+  // Inisialisasi state lokal dari data madrasah
+  React.useEffect(()=>{
+    const init = {};
+    madrasahList.forEach(m=>{
+      init[m.id] = { ...(FITUR_DEFAULT), ...(m.fitur_aktif||{}) };
+    });
+    setLocalFitur(init);
+  }, [madrasahList]);
+
+  function toggle(madId, fiturKey) {
+    setLocalFitur(prev=>({
+      ...prev,
+      [madId]: { ...prev[madId], [fiturKey]: !prev[madId]?.[fiturKey] }
+    }));
+  }
+
+  async function simpanMadrasah(m) {
+    setSaving(s=>({...s,[m.id]:true}));
+    const fitur = localFitur[m.id] || FITUR_DEFAULT;
+    const {error} = await sb.from('supermad_madrasah')
+      .update({fitur_aktif: fitur}).eq('id', m.id);
+    setSaving(s=>({...s,[m.id]:false}));
+    if (error) { showToast('Gagal simpan '+m.nama+': '+error.message,'error'); return; }
+    showToast('✅ Pengaturan fitur '+m.nama+' disimpan','success');
+    onReload();
+  }
+
+  async function simpanSemua() {
+    const filtered = filteredList;
+    let ok=0, fail=0;
+    for (const m of filtered) {
+      const fitur = localFitur[m.id] || FITUR_DEFAULT;
+      const {error} = await sb.from('supermad_madrasah').update({fitur_aktif:fitur}).eq('id',m.id);
+      if (error) fail++; else ok++;
+    }
+    showToast(ok+' madrasah disimpan'+(fail?' · '+fail+' gagal':''),'success');
+    onReload();
+  }
+
+  async function aturSemua(fiturKey, nilai) {
+    setLocalFitur(prev=>{
+      const upd = {...prev};
+      filteredList.forEach(m=>{
+        upd[m.id] = {...(upd[m.id]||FITUR_DEFAULT), [fiturKey]: nilai};
+      });
+      return upd;
+    });
+    setBulk(null);
+  }
+
+  const kabList     = [...new Set(madrasahList.map(m=>m.kota_kab).filter(Boolean))].sort();
+  const filteredList = madrasahList.filter(m=>{
+    if (filterKab && m.kota_kab!==filterKab) return false;
+    if (filterTkt && m.tingkat!==filterTkt) return false;
+    return true;
+  });
+
+  // Hitung ringkasan per fitur
+  function ringkasanFitur(fiturKey) {
+    const aktif = madrasahList.filter(m=>(localFitur[m.id]?.[fiturKey]??true)).length;
+    return { aktif, mati: madrasahList.length - aktif };
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:14,flexWrap:'wrap',gap:10}}>
+        <div>
+          <div style={{fontWeight:800,color:'var(--p3)',fontSize:'1rem'}}>⚙️ Kelola Fitur per Madrasah</div>
+          <div style={{fontSize:'.78rem',color:'var(--text2)',marginTop:3}}>
+            Aktifkan atau nonaktifkan fitur untuk setiap madrasah. Fitur yang dinonaktifkan tidak akan muncul di tampilan supervisor dan guru madrasah tersebut.
+          </div>
+        </div>
+        <button className="btn btn-primary btn-sm" onClick={simpanSemua}>
+          💾 Simpan Semua Perubahan
+        </button>
+      </div>
+
+      {/* Ringkasan per fitur */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:8,marginBottom:16}}>
+        {FITUR_DEFS.map(f=>{
+          const r = ringkasanFitur(f.key);
+          const pct = madrasahList.length ? Math.round(r.aktif/madrasahList.length*100) : 0;
+          return (
+            <div key={f.key} className="card" style={{padding:'10px 12px',border:r.mati>0?'1.5px solid #fbbf24':'1.5px solid #86efac'}}>
+              <div style={{fontSize:'.8rem',fontWeight:700,marginBottom:4}}>{f.label}</div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span style={{fontSize:'.85rem',fontWeight:800,color:pct===100?'#16a34a':pct>=50?'#d97706':'#dc2626'}}>
+                  {r.aktif}/{madrasahList.length}
+                </span>
+                <span style={{fontSize:'.72rem',color:'var(--text2)'}}>madrasah aktif</span>
+              </div>
+              <div style={{marginTop:5,height:4,background:'var(--surface2)',borderRadius:3,overflow:'hidden'}}>
+                <div style={{width:pct+'%',height:'100%',background:pct===100?'#22c55e':pct>=50?'#f59e0b':'#ef4444',borderRadius:3}}/>
+              </div>
+              {/* Tombol atur massal */}
+              <div style={{display:'flex',gap:5,marginTop:7}}>
+                <button onClick={()=>aturSemua(f.key, true)}
+                  style={{flex:1,padding:'3px 0',borderRadius:6,border:'1px solid #86efac',
+                    background:'#f0fdf4',color:'#15803d',cursor:'pointer',fontSize:'.68rem',fontWeight:700}}>
+                  ✓ Semua On
+                </button>
+                <button onClick={()=>aturSemua(f.key, false)}
+                  style={{flex:1,padding:'3px 0',borderRadius:6,border:'1px solid #fca5a5',
+                    background:'#fef2f2',color:'#dc2626',cursor:'pointer',fontSize:'.68rem',fontWeight:700}}>
+                  ✕ Semua Off
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Filter */}
+      <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap',alignItems:'center'}}>
+        <span style={{fontSize:'.78rem',fontWeight:700,color:'var(--text2)'}}>Filter:</span>
+        <select value={filterKab} onChange={e=>setFilterKab(e.target.value)}
+          style={{padding:'5px 10px',borderRadius:7,border:'1.5px solid var(--border)',fontSize:'.8rem',fontFamily:'inherit'}}>
+          <option value="">Semua Kab/Kota</option>
+          {kabList.map(k=><option key={k}>{k}</option>)}
+        </select>
+        <select value={filterTkt} onChange={e=>setFilterTkt(e.target.value)}
+          style={{padding:'5px 10px',borderRadius:7,border:'1.5px solid var(--border)',fontSize:'.8rem',fontFamily:'inherit'}}>
+          <option value="">Semua Tingkat</option>
+          {['MI','MTs','MA'].map(t=><option key={t}>{t}</option>)}
+        </select>
+        <span style={{fontSize:'.75rem',color:'var(--text2)',marginLeft:'auto'}}>
+          {filteredList.length} madrasah
+        </span>
+      </div>
+
+      {/* Tabel per madrasah */}
+      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+        {filteredList.map(m=>{
+          const fitur = localFitur[m.id] || FITUR_DEFAULT;
+          const aktifCount = FITUR_DEFS.filter(f=>fitur[f.key]!==false).length;
+          const adaPerubahan = JSON.stringify(fitur) !== JSON.stringify({...(FITUR_DEFAULT),...(m.fitur_aktif||{})});
+          return (
+            <div key={m.id} className="card" style={{padding:'14px 16px',
+              border: adaPerubahan ? '2px solid var(--p)' : '1px solid var(--border)'}}>
+              {/* Header madrasah */}
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10,gap:10}}>
+                <div>
+                  <div style={{display:'flex',gap:7,alignItems:'center',flexWrap:'wrap'}}>
+                    <span style={{fontWeight:700,fontSize:'.92rem'}}>{m.nama}</span>
+                    <span style={{padding:'2px 7px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
+                      background:m.tingkat==='MA'?'#dbeafe':m.tingkat==='MTs'?'#fef3c7':'#d1fae5',
+                      color:m.tingkat==='MA'?'#1d4ed8':m.tingkat==='MTs'?'#92400e':'#065f46'}}>
+                      {m.tingkat}
+                    </span>
+                    {adaPerubahan && (
+                      <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.68rem',fontWeight:700,
+                        background:'#ede9fe',color:'#7c3aed'}}>✎ Ada perubahan</span>
+                    )}
+                  </div>
+                  <div style={{fontSize:'.73rem',color:'var(--text2)',marginTop:2}}>
+                    {m.kota_kab||'—'} · {aktifCount}/{FITUR_DEFS.length} fitur aktif
+                  </div>
+                </div>
+                <button className="btn btn-primary btn-sm" disabled={saving[m.id]}
+                  onClick={()=>simpanMadrasah(m)}>
+                  {saving[m.id]?'⏳':'💾'} Simpan
+                </button>
+              </div>
+
+              {/* Toggle grid */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))',gap:6}}>
+                {FITUR_DEFS.map(f=>{
+                  const on = fitur[f.key] !== false;
+                  return (
+                    <div key={f.key} onClick={()=>toggle(m.id, f.key)}
+                      style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',
+                        borderRadius:9,cursor:'pointer',userSelect:'none',
+                        background: on ? '#f0fdf4' : '#fef2f2',
+                        border:'1.5px solid '+(on?'#86efac':'#fca5a5'),
+                        transition:'all .15s'}}>
+                      {/* Toggle switch visual */}
+                      <div style={{width:36,height:20,borderRadius:10,position:'relative',flexShrink:0,
+                        background: on ? '#22c55e' : '#d1d5db',transition:'background .2s'}}>
+                        <div style={{position:'absolute',top:3,left:on?17:3,width:14,height:14,
+                          borderRadius:7,background:'#fff',transition:'left .2s',
+                          boxShadow:'0 1px 3px rgba(0,0,0,.2)'}}/>
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:'.78rem',color:on?'#15803d':'#dc2626'}}>
+                          {f.label}
+                        </div>
+                        <div style={{fontSize:'.68rem',color:'var(--text2)',
+                          whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                          {f.desc}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {filteredList.length===0 && (
+        <div style={{textAlign:'center',padding:40,color:'var(--text2)'}}>
+          Tidak ada madrasah yang cocok dengan filter.
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── JADWAL SUPERVISI ─────────────────────────────────────────
 function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiSupervisi}) {
@@ -2454,6 +2696,11 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
 }
 
 function DashboardSupervisor({sesi, showToast}) {
+  // Fitur aktif dari setting kanwil (default semua aktif jika belum diset)
+  const FITUR_DEFAULT_SUP = {supervisi:true,jadwal:true,rtl:true,portofolio:true,
+    analisis_instrumen:true,analisis_asesmen:true,grafik:true,dashboard_guru:true};
+  const fiturAktif = {...FITUR_DEFAULT_SUP, ...(sesi.mad.fitur_aktif||{})};
+
   const [tab, setTab]             = useState('sudah'); // default ke sudah agar langsung terlihat
   const [guruList, setGuruList]   = useState([]);
   const [supList, setSupList]     = useState([]);       // SEMUA supervisi (stats & riwayat)
@@ -2550,6 +2797,22 @@ function DashboardSupervisor({sesi, showToast}) {
 
 
 
+      {/* Banner fitur yang dinonaktifkan kanwil */}
+      {(()=>{
+        const mati = Object.entries(fiturAktif).filter(([,v])=>v===false).map(([k])=>k);
+        if (mati.length===0) return null;
+        const labelMap = {supervisi:'Modul Supervisi',jadwal:'Jadwal',rtl:'RTL',
+          portofolio:'e-Portofolio',analisis_instrumen:'Analisis Instrumen',
+          analisis_asesmen:'Analisis Asesmen',grafik:'Grafik',dashboard_guru:'Dashboard Guru'};
+        return (
+          <div style={{marginBottom:12,padding:'9px 14px',borderRadius:9,
+            background:'#fffbeb',border:'1.5px solid #fcd34d',fontSize:'.78rem',color:'#92400e'}}>
+            <b>⚙️ Fitur dinonaktifkan Kanwil:</b>{' '}
+            {mati.map(k=>labelMap[k]||k).join(', ')}
+          </div>
+        );
+      })()}
+
       {/* Banner Jadwal Hari Ini */}
       {(()=>{
         const today = new Date().toISOString().split('T')[0];
@@ -2584,8 +2847,15 @@ function DashboardSupervisor({sesi, showToast}) {
       </div>
 
       {/* Tab */}
-      <div style={{display:'flex',gap:8,marginBottom:14}}>
-        {[['jadwal','🗓️ Jadwal'],['daftar','📋 Belum Supervisi'],['sudah','✅ Sudah Supervisi'],['grafik','📊 Grafik'],['riwayat','📜 Riwayat'],['portofolio','🗂️ Portofolio Guru']].map(([key,label])=>(
+      <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
+        {[
+          ['jadwal',     '🗓️ Jadwal',            fiturAktif.jadwal !== false],
+          ['daftar',     '📋 Belum Supervisi',    fiturAktif.supervisi !== false],
+          ['sudah',      '✅ Sudah Supervisi',     fiturAktif.supervisi !== false],
+          ['grafik',     '📊 Grafik',              fiturAktif.grafik !== false],
+          ['riwayat',    '📜 Riwayat',             fiturAktif.supervisi !== false],
+          ['portofolio', '🗂️ Portofolio Guru',    fiturAktif.portofolio !== false],
+        ].filter(([,,tampil])=>tampil).map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'6px 14px',borderRadius:8,border:'none',cursor:'pointer',fontWeight:700,fontSize:'.8rem',
               background:tab===key?'var(--p)':'var(--surface2)',color:tab===key?'#fff':'var(--text2)'}}>
@@ -2844,7 +3114,7 @@ function DashboardSupervisor({sesi, showToast}) {
 
       {/* TAB PORTOFOLIO GURU */}
       {tab === 'portofolio' && (
-        <TabPortofolioSupervisor sesi={sesi} guruList={guruList} showToast={showToast} />
+        <TabPortofolioSupervisor sesi={sesi} guruList={guruList} showToast={showToast} fiturAktif={fiturAktif} />
       )}
 
       {/* TAB RIWAYAT */}
@@ -2932,7 +3202,8 @@ function DashboardSupervisor({sesi, showToast}) {
 }
 
 // ── PORTOFOLIO SUPERVISOR (lihat portofolio semua guru di madrasah) ───────────────
-function TabPortofolioSupervisor({sesi, guruList, showToast}) {
+function TabPortofolioSupervisor({sesi, guruList, showToast, fiturAktif}) {
+  const fa = fiturAktif || {};
   const KATEGORI = ['Sertifikat Pelatihan','Workshop/Seminar','PTK / Karya Ilmiah','Media/Perangkat Ajar','Penghargaan','Lainnya'];
   const [subTab, setSubTab]       = React.useState('pkb'); // 'pkb' | 'analisis'
   const [items, setItems]         = React.useState([]);
@@ -3013,7 +3284,11 @@ function TabPortofolioSupervisor({sesi, guruList, showToast}) {
     <div>
       {/* Sub-tab navigator */}
       <div style={{display:'flex',gap:8,marginBottom:16}}>
-        {[['pkb','🗂️ e-Portofolio PKB'],['asesmen','📈 Analisis Asesmen'],['analisis','🔬 Analisis Instrumen']].map(([k,l])=>(
+        {[
+          ['pkb',     '🗂️ e-Portofolio PKB',      fa.portofolio !== false],
+          ['asesmen', '📈 Analisis Asesmen',         fa.analisis_asesmen !== false],
+          ['analisis','🔬 Analisis Instrumen',       fa.analisis_instrumen !== false],
+        ].filter(([,,t])=>t).map(([k,l])=>(
           <button key={k} onClick={()=>setSubTab(k)}
             style={{padding:'7px 16px',borderRadius:8,border:'none',cursor:'pointer',fontWeight:700,fontSize:'.82rem',
               background:subTab===k?'var(--p)':'var(--surface2)',color:subTab===k?'#fff':'var(--text2)'}}>
@@ -4402,6 +4677,11 @@ ${catUmum ? `<div class="section-title">C. CATATAN UMUM SUPERVISOR</div>
 
 // ── DASHBOARD GURU ────────────────────────────────────────────
 function DashboardGuru({sesi, showToast}) {
+  // Fitur aktif dari setting kanwil
+  const FITUR_DEFAULT_GURU = {supervisi:true,jadwal:true,rtl:true,portofolio:true,
+    analisis_instrumen:true,analisis_asesmen:true,grafik:true,dashboard_guru:true};
+  const fiturAktif = {...FITUR_DEFAULT_GURU, ...(sesi.mad.fitur_aktif||{})};
+
   const [supList, setSupList]   = useState([]);
   const [rtlList, setRtlList]   = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -4519,14 +4799,34 @@ function DashboardGuru({sesi, showToast}) {
       <h2 style={{fontWeight:900,color:'var(--p3)',marginBottom:16,fontSize:'1.1rem'}}>
         👨‍🏫 Dashboard Guru — {sesi.pengguna.nama}
       </h2>
-      <div style={{marginBottom:16,padding:'10px 14px',background:'var(--surface2)',borderRadius:10,
+      <div style={{marginBottom:12,padding:'10px 14px',background:'var(--surface2)',borderRadius:10,
         fontSize:'.82rem',color:'var(--text2)'}}>
         {sesi.mad.nama} · {sesi.mad.kota_kab||''}
       </div>
 
+      {/* Banner fitur yang dinonaktifkan */}
+      {(()=>{
+        const labelMap = {rtl:'RTL',portofolio:'e-Portofolio',analisis_instrumen:'Analisis Instrumen',
+          analisis_asesmen:'Analisis Asesmen'};
+        const mati = Object.entries(labelMap).filter(([k])=>fiturAktif[k]===false).map(([,l])=>l);
+        if (mati.length===0) return null;
+        return (
+          <div style={{marginBottom:12,padding:'8px 12px',borderRadius:9,
+            background:'#fffbeb',border:'1.5px solid #fcd34d',fontSize:'.76rem',color:'#92400e'}}>
+            <b>⚙️ Fitur tidak tersedia:</b>{' '}{mati.join(', ')}
+          </div>
+        );
+      })()}
+
       {/* Tab */}
-      <div style={{display:'flex',gap:6,marginBottom:14}}>
-        {[['hasil','📊 Hasil Supervisi'],['rtl','📋 RTL Saya'],['portofolio','🗂️ e-Portofolio'],['asesmen','📈 Analisis Asesmen'],['analisis','🔬 Analisis Instrumen']].map(([key,label])=>(
+      <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
+        {[
+          ['hasil',     '📊 Hasil Supervisi',      fiturAktif.supervisi !== false],
+          ['rtl',       '📋 RTL Saya',              fiturAktif.rtl !== false],
+          ['portofolio','🗂️ e-Portofolio',         fiturAktif.portofolio !== false],
+          ['asesmen',   '📈 Analisis Asesmen',       fiturAktif.analisis_asesmen !== false],
+          ['analisis',  '🔬 Analisis Instrumen',     fiturAktif.analisis_instrumen !== false],
+        ].filter(([,,t])=>t).map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',
               fontWeight:700,fontSize:'.8rem',fontFamily:'inherit',
