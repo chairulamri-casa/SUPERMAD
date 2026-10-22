@@ -2520,7 +2520,8 @@ function DashboardSupervisor({sesi, showToast}) {
     />
   );
 
-  const guruSudah = new Set(supList.filter(s=>s.status==='selesai').map(s=>s.guru_id));
+  // Hitung sudah/belum dari semua supervisi (draft maupun selesai)
+  const guruSudah = new Set(supList.map(s=>s.guru_id));
   const guruBelum = guruList.filter(g => !guruSudah.has(g.id));
   const guruSelesai = guruList.filter(g => guruSudah.has(g.id));
 
@@ -2546,23 +2547,6 @@ function DashboardSupervisor({sesi, showToast}) {
       </div>
 
 
-
-      {/* DEBUG — hapus setelah konfirmasi */}
-      {supList.length > 0 && (
-        <div style={{marginBottom:10,padding:'8px 12px',background:'#fef9c3',border:'1px solid #ca8a04',
-          borderRadius:8,fontSize:'.72rem',color:'#78350f'}}>
-          🔍 Debug: {supList.length} total supervisi dimuat. Status unik: [{[...new Set(supList.map(s=>s.status))].join(', ')}].
-          Selesai: {supList.filter(s=>s.status==='selesai').length}.
-          TA unik: [{[...new Set(supList.map(s=>s.tahun_ajaran))].join(', ')}].
-          Smt unik: [{[...new Set(supList.map(s=>s.semester))].join(', ')}].
-        </div>
-      )}
-      {supList.length === 0 && (
-        <div style={{marginBottom:10,padding:'8px 12px',background:'#fee2e2',border:'1px solid #dc2626',
-          borderRadius:8,fontSize:'.72rem',color:'#7f1d1d'}}>
-          🔍 Debug: supList kosong — query tidak mengembalikan data!
-        </div>
-      )}
 
       {/* Banner Jadwal Hari Ini */}
       {(()=>{
