@@ -2934,10 +2934,20 @@ function DashboardSupervisor({sesi, showToast}) {
 // ── PORTOFOLIO SUPERVISOR (lihat portofolio semua guru di madrasah) ───────────────
 function TabPortofolioSupervisor({sesi, guruList, showToast}) {
   const KATEGORI = ['Sertifikat Pelatihan','Workshop/Seminar','PTK / Karya Ilmiah','Media/Perangkat Ajar','Penghargaan','Lainnya'];
+  const [subTab, setSubTab]       = React.useState('pkb'); // 'pkb' | 'analisis'
   const [items, setItems]         = React.useState([]);
   const [loading, setLoading]     = React.useState(true);
   const [filterGuru, setFilterGuru] = React.useState('');
   const [filterKat, setFilterKat]   = React.useState('');
+  // Analisis instrumen
+  const [analisisList, setAnalisisList] = React.useState([]);
+  const [loadingAnalisis, setLoadingAnalisis] = React.useState(false);
+  const [filterGuruA, setFilterGuruA] = React.useState('');
+  // Analisis asesmen
+  const [asesmenList, setAsesmenList] = React.useState([]);
+  const [loadingAsesmen, setLoadingAsesmen] = React.useState(false);
+  const [filterGuruAsm, setFilterGuruAsm] = React.useState('');
+  const [asesmenDetail, setAsesmenDetail] = React.useState(null);
 
   React.useEffect(() => { loadData(); }, []);
 
@@ -2950,6 +2960,29 @@ function TabPortofolioSupervisor({sesi, guruList, showToast}) {
     setItems(data||[]);
     setLoading(false);
   }
+
+  async function loadAnalisis() {
+    setLoadingAnalisis(true);
+    const {data, error} = await sb.from('supermad_analisis_instrumen')
+      .select('*').eq('madrasah_id', sesi.mad.id)
+      .order('created_at', {ascending: false});
+    if (error) showToast('Gagal memuat analisis: '+error.message, 'error');
+    setAnalisisList(data||[]);
+    setLoadingAnalisis(false);
+  }
+
+  async function loadAsesmen() {
+    setLoadingAsesmen(true);
+    const {data, error} = await sb.from('supermad_analisis_asesmen')
+      .select('*').eq('madrasah_id', sesi.mad.id)
+      .order('created_at', {ascending: false});
+    if (error) showToast('Gagal memuat analisis asesmen: '+error.message, 'error');
+    setAsesmenList(data||[]);
+    setLoadingAsesmen(false);
+  }
+
+  React.useEffect(()=>{ if(subTab==='analisis') loadAnalisis(); }, [subTab]);
+  React.useEffect(()=>{ if(subTab==='asesmen') loadAsesmen(); }, [subTab]);
 
   const katColor = {
     'Sertifikat Pelatihan':'#2563eb','Workshop/Seminar':'#7c3aed',
@@ -2971,8 +3004,349 @@ function TabPortofolioSupervisor({sesi, guruList, showToast}) {
 
   if (loading) return <div style={{textAlign:'center',padding:32,color:'var(--text3)'}}>⏳ Memuat portofolio...</div>;
 
+  const BLOOM_COLOR = {C1:'#6b7280',C2:'#2563eb',C3:'#16a34a',C4:'#d97706',C5:'#9333ea',C6:'#dc2626'};
+  const BLOOM_LABEL = {C1:'Mengingat',C2:'Memahami',C3:'Menerapkan',C4:'Menganalisis',C5:'Mengevaluasi',C6:'Mencipta'};
+  const JENIS_LABEL = {UH:'Ulangan Harian',PTS:'PTS',PAS:'PAS',PAT:'PAT',
+    Proyek:'Proyek',Observasi:'Observasi',Portofolio:'Portofolio',Lainnya:'Lainnya'};
+
   return (
     <div>
+      {/* Sub-tab navigator */}
+      <div style={{display:'flex',gap:8,marginBottom:16}}>
+        {[['pkb','🗂️ e-Portofolio PKB'],['asesmen','📈 Analisis Asesmen'],['analisis','🔬 Analisis Instrumen']].map(([k,l])=>(
+          <button key={k} onClick={()=>setSubTab(k)}
+            style={{padding:'7px 16px',borderRadius:8,border:'none',cursor:'pointer',fontWeight:700,fontSize:'.82rem',
+              background:subTab===k?'var(--p)':'var(--surface2)',color:subTab===k?'#fff':'var(--text2)'}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {/* ── SUB-TAB ANALISIS ASESMEN ── */}
+      {subTab==='asesmen' && (
+        <div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}}>
+            <div style={{fontWeight:800,color:'var(--p3)',fontSize:'1rem'}}>📈 Analisis Hasil Asesmen Guru</div>
+            <span style={{fontSize:'.75rem',color:'var(--text3)'}}>
+              {asesmenList.length} analisis · {asesmenList.filter(a=>a.status==='final').length} final
+            </span>
+          </div>
+
+          {/* Filter per guru */}
+          {guruList.length > 0 && (
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
+              <button onClick={()=>setFilterGuruAsm('')}
+                style={{padding:'4px 12px',borderRadius:20,border:'1.5px solid',cursor:'pointer',
+                  fontWeight:700,fontSize:'.73rem',
+                  background:filterGuruAsm===''?'var(--p)':'transparent',
+                  color:filterGuruAsm===''?'#fff':'var(--text2)',
+                  borderColor:filterGuruAsm===''?'var(--p)':'var(--border)'}}>
+                Semua Guru
+              </button>
+              {guruList.filter(g=>asesmenList.some(a=>a.guru_id===g.id)).map(g=>(
+                <button key={g.id} onClick={()=>setFilterGuruAsm(filterGuruAsm===g.id?'':g.id)}
+                  style={{padding:'4px 12px',borderRadius:20,border:'1.5px solid',cursor:'pointer',
+                    fontWeight:700,fontSize:'.73rem',
+                    background:filterGuruAsm===g.id?'var(--p)':'transparent',
+                    color:filterGuruAsm===g.id?'#fff':'var(--text2)',
+                    borderColor:filterGuruAsm===g.id?'var(--p)':'var(--border)'}}>
+                  {g.nama.split(' ')[0]}
+                  <span style={{marginLeft:4,background:filterGuruAsm===g.id?'rgba(255,255,255,.25)':'var(--surface2)',
+                    borderRadius:10,padding:'1px 6px',fontWeight:900}}>
+                    {asesmenList.filter(a=>a.guru_id===g.id).length}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Rekap statistik */}
+          {asesmenList.length > 0 && (()=>{
+            const filtered = asesmenList.filter(a=>filterGuruAsm?a.guru_id===filterGuruAsm:true);
+            const finals   = filtered.filter(a=>a.status==='final');
+            const avgTuntas= finals.length>0 ? finals.reduce((s,a)=>s+(a.pct_tuntas||0),0)/finals.length : 0;
+            const avgStdv  = finals.length>0 ? finals.reduce((s,a)=>s+(a.stdv||0),0)/finals.length : 0;
+            return (
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(110px,1fr))',gap:8,marginBottom:14}}>
+                {[
+                  ['Total Analisis', filtered.length, '#6366f1'],
+                  ['Sudah Final',    finals.length, '#22c55e'],
+                  ['Rata-rata Tuntas', avgTuntas.toFixed(0)+'%', avgTuntas>=70?'#22c55e':'#f59e0b'],
+                  ['Rata-rata STDV',  avgStdv.toFixed(1), '#8b5cf6'],
+                ].map(([l,v,c])=>(
+                  <div key={l} className="card" style={{textAlign:'center',padding:'10px 6px',border:'1.5px solid '+c+'33'}}>
+                    <div style={{fontWeight:800,color:c,fontSize:'1.15rem'}}>{v}</div>
+                    <div style={{fontSize:'.7rem',color:'var(--text2)'}}>{l}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+
+          {loadingAsesmen
+            ? <div style={{textAlign:'center',padding:32,color:'var(--text3)'}}>⏳ Memuat...</div>
+            : asesmenList.filter(a=>filterGuruAsm?a.guru_id===filterGuruAsm:true).length===0
+              ? <div className="card" style={{textAlign:'center',padding:32,color:'var(--text3)'}}>
+                  <div style={{fontSize:'2rem',marginBottom:8}}>📊</div>
+                  <div>Belum ada guru yang membuat analisis asesmen.</div>
+                </div>
+              : (
+                asesmenDetail ? (
+                  /* ── Detail view ── */
+                  <div>
+                    <button className="btn btn-outline btn-sm" style={{marginBottom:12}}
+                      onClick={()=>setAsesmenDetail(null)}>← Kembali ke Daftar</button>
+                    <div className="card" style={{marginBottom:10}}>
+                      <div style={{fontWeight:700,fontSize:'.95rem'}}>
+                        {asesmenDetail.jenis_penilaian} — {asesmenDetail.mapel||'—'} · {asesmenDetail.kelas||'—'}
+                      </div>
+                      {asesmenDetail.topik && <div style={{color:'var(--text2)',fontSize:'.82rem',marginTop:3}}>{asesmenDetail.topik}</div>}
+                      <div style={{fontSize:'.78rem',color:'var(--text2)',marginTop:4}}>
+                        {(()=>{const g=guruList.find(x=>x.id===asesmenDetail.guru_id);return g?'Guru: '+g.nama+' · ':''})()}
+                        {asesmenDetail.semester} {asesmenDetail.tahun_ajaran} · KKM: {asesmenDetail.kkm}
+                      </div>
+                    </div>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:8,marginBottom:12}}>
+                      {[
+                        ['Siswa',        asesmenDetail.jumlah_siswa||0,   '#6366f1'],
+                        ['Rata-rata',    Number(asesmenDetail.nilai_rata||0).toFixed(1), '#3b82f6'],
+                        ['STDV',         Number(asesmenDetail.stdv||0).toFixed(1), '#8b5cf6'],
+                        ['% Tuntas',     Number(asesmenDetail.pct_tuntas||0).toFixed(0)+'%',
+                          (asesmenDetail.pct_tuntas||0)>=70?'#22c55e':'#ef4444'],
+                        ['Tertinggi',    Number(asesmenDetail.nilai_tertinggi||0).toFixed(0), '#22c55e'],
+                        ['Terendah',     Number(asesmenDetail.nilai_terendah||0).toFixed(0), '#ef4444'],
+                      ].map(([l,v,c])=>(
+                        <div key={l} className="card" style={{textAlign:'center',padding:'10px 6px',border:'1.5px solid '+c+'33'}}>
+                          <div style={{fontWeight:800,color:c,fontSize:'1.1rem'}}>{v}</div>
+                          <div style={{fontSize:'.7rem',color:'var(--text2)'}}>{l}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {asesmenDetail.interpretasi_stdv && (
+                      <div style={{marginBottom:10,padding:'9px 12px',borderRadius:9,background:'#f5f3ff',border:'1.5px solid #a78bfa',fontSize:'.82rem'}}>
+                        <b>📐 Interpretasi STDV:</b> {asesmenDetail.interpretasi_stdv}
+                      </div>
+                    )}
+                    {asesmenDetail.rekomendasi && (
+                      <div style={{marginBottom:10,padding:'9px 12px',borderRadius:9,background:'#f0fdf4',border:'1.5px solid #86efac',fontSize:'.82rem'}}>
+                        <b>💡 Rekomendasi:</b> {asesmenDetail.rekomendasi}
+                      </div>
+                    )}
+                    {/* Distribusi */}
+                    {(()=>{
+                      const dist = asesmenDetail.distribusi||{};
+                      const maxD = Math.max(dist.r0_59||0,dist.r60_74||0,dist.r75_84||0,dist.r85_100||0,1);
+                      return (
+                        <div className="card" style={{marginBottom:10}}>
+                          <div style={{fontWeight:700,marginBottom:8,fontSize:'.85rem'}}>Distribusi Nilai</div>
+                          {[['0–59','r0_59','#ef4444'],['60–74','r60_74','#f59e0b'],['75–84','r75_84','#22c55e'],['85–100','r85_100','#3b82f6']].map(([lbl,key,c])=>{
+                            const jml = dist[key]||0;
+                            const p   = Math.round((jml/maxD)*100);
+                            return (
+                              <div key={key} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                                <div style={{width:52,fontSize:'.75rem',fontWeight:700,color:'var(--text2)',textAlign:'right'}}>{lbl}</div>
+                                <div style={{flex:1,height:18,background:'var(--surface2)',borderRadius:5,overflow:'hidden'}}>
+                                  <div style={{width:p+'%',height:'100%',background:c,borderRadius:5}}/>
+                                </div>
+                                <div style={{width:20,textAlign:'right',fontWeight:700,fontSize:'.8rem'}}>{jml}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                    {/* Daftar remedial supervisor view */}
+                    {(asesmenDetail.data_siswa||[]).filter(s=>Number(s.nilai)<(asesmenDetail.kkm||75)).length>0 && (
+                      <div className="card">
+                        <div style={{fontWeight:700,marginBottom:6,fontSize:'.85rem',color:'#ef4444'}}>
+                          🔴 Daftar Remedial ({(asesmenDetail.data_siswa||[]).filter(s=>Number(s.nilai)<(asesmenDetail.kkm||75)).length} siswa)
+                        </div>
+                        <div style={{display:'flex',flexDirection:'column',gap:3,maxHeight:200,overflowY:'auto'}}>
+                          {(asesmenDetail.data_siswa||[])
+                            .filter(s=>Number(s.nilai)<(asesmenDetail.kkm||75))
+                            .sort((a,b)=>a.nilai-b.nilai)
+                            .map((s,i)=>(
+                              <div key={i} style={{display:'flex',justifyContent:'space-between',
+                                padding:'4px 10px',background:'#fef2f2',borderRadius:6,fontSize:'.8rem'}}>
+                                <span>{s.nama}</span>
+                                <span style={{fontWeight:700,color:'#ef4444'}}>{s.nilai}</span>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* ── List view ── */
+                  <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                    {asesmenList.filter(a=>filterGuruAsm?a.guru_id===filterGuruAsm:true).map(item=>{
+                      const guru  = guruList.find(g=>g.id===item.guru_id);
+                      const pct   = item.pct_tuntas||0;
+                      const warna = pct>=85?'#22c55e':pct>=70?'#f59e0b':'#ef4444';
+                      return (
+                        <div key={item.id} className="card" style={{padding:'13px 16px',cursor:'pointer'}}
+                          onClick={()=>setAsesmenDetail(item)}>
+                          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10}}>
+                            <div style={{flex:1}}>
+                              <div style={{fontWeight:700,fontSize:'.9rem'}}>
+                                {item.jenis_penilaian} — {item.mapel||'—'} · {item.kelas||'—'}
+                              </div>
+                              {item.topik && <div style={{fontSize:'.77rem',color:'var(--text2)',marginTop:2}}>{item.topik}</div>}
+                              {guru && <div style={{fontSize:'.77rem',color:'#6366f1',marginTop:3,fontWeight:600}}>👤 {guru.nama}</div>}
+                              <div style={{fontSize:'.75rem',color:'var(--text2)',marginTop:3}}>
+                                {item.jumlah_siswa||0} siswa · {item.semester} {item.tahun_ajaran}
+                              </div>
+                            </div>
+                            <div style={{textAlign:'right',flexShrink:0}}>
+                              <div style={{fontWeight:800,fontSize:'1.1rem',color:warna}}>{pct.toFixed(0)}%</div>
+                              <div style={{fontSize:'.7rem',color:'var(--text2)'}}>tuntas</div>
+                              <span style={{display:'inline-block',marginTop:4,padding:'2px 8px',borderRadius:20,
+                                fontSize:'.7rem',fontWeight:700,
+                                background:item.status==='final'?'#dcfce7':'#fef9c3',
+                                color:item.status==='final'?'#166534':'#92400e'}}>
+                                {item.status==='final'?'Final':'Draft'}
+                              </span>
+                            </div>
+                          </div>
+                          {item.stdv!=null && (
+                            <div style={{marginTop:7,fontSize:'.77rem',color:'var(--text2)',
+                              padding:'4px 10px',background:'var(--surface2)',borderRadius:6}}>
+                              Rata-rata: <b>{Number(item.nilai_rata||0).toFixed(1)}</b> ·
+                              STDV: <b>{Number(item.stdv||0).toFixed(1)}</b> ·
+                              Tuntas: <b>{item.jumlah_tuntas||0}/{item.jumlah_siswa||0}</b>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+              )
+          }
+        </div>
+      )}
+
+      {/* ── SUB-TAB ANALISIS INSTRUMEN ── */}
+      {subTab==='analisis' && (
+        <div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}}>
+            <div style={{fontWeight:800,color:'var(--p3)',fontSize:'1rem'}}>🔬 Analisis Instrumen Guru</div>
+            <span style={{fontSize:'.75rem',color:'var(--text3)'}}>
+              {analisisList.length} analisis · {analisisList.filter(a=>a.status==='final').length} final
+            </span>
+          </div>
+
+          {/* Filter per guru */}
+          {guruList.length > 0 && (
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
+              <button onClick={()=>setFilterGuruA('')}
+                style={{padding:'4px 12px',borderRadius:20,border:'1.5px solid',cursor:'pointer',
+                  fontWeight:700,fontSize:'.73rem',
+                  background:filterGuruA===''?'var(--p)':'transparent',
+                  color:filterGuruA===''?'#fff':'var(--text2)',
+                  borderColor:filterGuruA===''?'var(--p)':'var(--border)'}}>
+                Semua Guru
+              </button>
+              {guruList.filter(g=>analisisList.some(a=>a.guru_id===g.id)).map(g=>(
+                <button key={g.id} onClick={()=>setFilterGuruA(filterGuruA===g.id?'':g.id)}
+                  style={{padding:'4px 12px',borderRadius:20,border:'1.5px solid',cursor:'pointer',
+                    fontWeight:700,fontSize:'.73rem',
+                    background:filterGuruA===g.id?'var(--p)':'transparent',
+                    color:filterGuruA===g.id?'#fff':'var(--text2)',
+                    borderColor:filterGuruA===g.id?'var(--p)':'var(--border)'}}>
+                  {g.nama.split(' ')[0]}
+                  <span style={{marginLeft:4,background:filterGuruA===g.id?'rgba(255,255,255,.25)':'var(--surface2)',
+                    borderRadius:10,padding:'1px 6px',fontWeight:900}}>
+                    {analisisList.filter(a=>a.guru_id===g.id).length}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {loadingAnalisis
+            ? <div style={{textAlign:'center',padding:32,color:'var(--text3)'}}>⏳ Memuat...</div>
+            : analisisList.filter(a=>filterGuruA?a.guru_id===filterGuruA:true).length===0
+              ? <div className="card" style={{textAlign:'center',padding:32,color:'var(--text3)'}}>
+                  <div style={{fontSize:'2rem',marginBottom:8}}>🔬</div>
+                  <div>Belum ada guru yang membuat analisis instrumen.</div>
+                </div>
+              : <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                  {analisisList.filter(a=>filterGuruA?a.guru_id===filterGuruA:true).map(item=>{
+                    const guru = guruList.find(g=>g.id===item.guru_id);
+                    const warna = item.skor_total>=87.5?'#16a34a':item.skor_total>=75?'#2563eb':item.skor_total>=62.5?'#d97706':'#dc2626';
+                    const dist = {};
+                    ['C1','C2','C3','C4','C5','C6'].forEach(b=>{
+                      dist[b]=(item.butir_soal||[]).filter(s=>s.level_bloom===b).length;
+                    });
+                    const total = (item.butir_soal||[]).length;
+                    const isDraft = item.status==='draft';
+                    return (
+                      <div key={item.id} className="card" style={{padding:'14px 16px',
+                        border:`1.5px solid ${isDraft?'#fbbf24':'#86efac'}`}}>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,flexWrap:'wrap'}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:800,fontSize:'.9rem',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                              {JENIS_LABEL[item.jenis_penilaian]||item.jenis_penilaian}
+                              {isDraft
+                                ? <span style={{padding:'1px 7px',borderRadius:20,fontSize:'.65rem',fontWeight:700,
+                                    background:'#fef3c7',color:'#92400e',border:'1px solid #fbbf24'}}>Draft</span>
+                                : <span style={{padding:'1px 7px',borderRadius:20,fontSize:'.65rem',fontWeight:700,
+                                    background:'#d1fae5',color:'#065f46',border:'1px solid #86efac'}}>✓ Final</span>
+                              }
+                            </div>
+                            <div style={{fontSize:'.78rem',color:'var(--text2)',marginTop:3}}>
+                              👤 {guru?.nama||'—'} · {item.mapel||'—'}
+                            </div>
+                            <div style={{fontSize:'.73rem',color:'var(--text3)',marginTop:2}}>
+                              {item.topik&&<span>📚 {item.topik} · </span>}
+                              Kelas {item.kelas||'—'} · {item.semester} {item.tahun_ajaran} · {total} butir soal
+                            </div>
+                          </div>
+                          {item.skor_total > 0 && (
+                            <div style={{textAlign:'right'}}>
+                              <div style={{fontSize:'1.3rem',fontWeight:900,color:warna}}>{item.skor_total}%</div>
+                              <span style={{padding:'2px 10px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
+                                background:item.skor_total>=87.5?'#d1fae5':item.skor_total>=75?'#dbeafe':item.skor_total>=62.5?'#fef3c7':'#fee2e2',
+                                color:item.skor_total>=87.5?'#065f46':item.skor_total>=75?'#1d4ed8':item.skor_total>=62.5?'#92400e':'#991b1b'}}>
+                                {item.predikat}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        {/* Distribusi Bloom mini */}
+                        {total > 0 && (
+                          <div style={{display:'flex',gap:4,flexWrap:'wrap',marginTop:8}}>
+                            {['C1','C2','C3','C4','C5','C6'].map(b=> dist[b]>0 ? (
+                              <span key={b} style={{padding:'2px 8px',borderRadius:12,fontSize:'.68rem',fontWeight:800,
+                                background:BLOOM_COLOR[b]+'20',color:BLOOM_COLOR[b]}}>
+                                {b}:{dist[b]}
+                              </span>
+                            ):null)}
+                          </div>
+                        )}
+                        {item.rekomendasi && (
+                          <div style={{marginTop:8,padding:'6px 10px',background:'var(--surface2)',borderRadius:7,
+                            fontSize:'.73rem',color:'var(--text2)'}}>
+                            💡 {item.rekomendasi}
+                          </div>
+                        )}
+                        {item.catatan_supervisor && (
+                          <div style={{marginTop:6,padding:'6px 10px',background:'#eff6ff',borderRadius:7,
+                            fontSize:'.73rem',color:'#1d4ed8',borderLeft:'3px solid #2563eb'}}>
+                            📝 Catatan Supervisor: {item.catatan_supervisor}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+          }
+        </div>
+      )}
+
+      {/* ── SUB-TAB PKB ── */}
+      {subTab==='pkb' && <div>
       {/* Header & statistik */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}}>
         <div style={{fontWeight:800,color:'var(--p3)',fontSize:'1rem'}}>🗂️ e-Portofolio PKB Guru</div>
@@ -3078,6 +3452,7 @@ function TabPortofolioSupervisor({sesi, guruList, showToast}) {
           })}
         </div>
       )}
+      </div>} {/* tutup sub-tab PKB */}
     </div>
   );
 }
@@ -4151,7 +4526,7 @@ function DashboardGuru({sesi, showToast}) {
 
       {/* Tab */}
       <div style={{display:'flex',gap:6,marginBottom:14}}>
-        {[['hasil','📊 Hasil Supervisi'],['rtl','📋 RTL Saya'],['portofolio','🗂️ e-Portofolio']].map(([key,label])=>(
+        {[['hasil','📊 Hasil Supervisi'],['rtl','📋 RTL Saya'],['portofolio','🗂️ e-Portofolio'],['asesmen','📈 Analisis Asesmen'],['analisis','🔬 Analisis Instrumen']].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',
               fontWeight:700,fontSize:'.8rem',fontFamily:'inherit',
@@ -4280,6 +4655,1128 @@ function DashboardGuru({sesi, showToast}) {
         <TabPortofolio sesi={sesi} showToast={showToast} />
       )}
 
+      {/* TAB ANALISIS ASESMEN */}
+      {tab==='asesmen' && (
+        <TabAnalisisAsesmen sesi={sesi} showToast={showToast} />
+      )}
+
+      {/* TAB ANALISIS INSTRUMEN */}
+      {tab==='analisis' && (
+        <TabAnalisisInstrumen sesi={sesi} showToast={showToast} />
+      )}
+
+    </div>
+  );
+}
+
+
+// ── TAB ANALISIS ASESMEN ────────────────────────────────────────
+function TabAnalisisAsesmen({sesi, showToast}) {
+  const sb = window.supabase;
+  const guruId = sesi.pengguna.id;
+  const [list, setList]       = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [mode, setMode]       = React.useState('list'); // 'list' | 'form' | 'detail'
+  const [aktif, setAktif]     = React.useState(null);
+  const [saving, setSaving]   = React.useState(false);
+
+  // ── Form state ──
+  const blankForm = {
+    jenis_penilaian:'UH', topik:'', mapel:'', kelas:'', semester:'Ganjil',
+    tahun_ajaran:'2025/2026', tanggal_pelaksanaan:'', kkm:75,
+    data_siswa:[], catatan_guru:'', status:'draft'
+  };
+  const [form, setForm]     = React.useState(blankForm);
+  const [namaBaru, setNamaBaru] = React.useState('');
+  const [nilaiInput, setNilaiInput] = React.useState('');
+
+  React.useEffect(()=>{ loadList(); },[]);
+
+  async function loadList() {
+    setLoading(true);
+    const {data} = await sb.from('supermad_analisis_asesmen')
+      .select('*').eq('guru_id', guruId).order('created_at',{ascending:false});
+    setList(data||[]);
+    setLoading(false);
+  }
+
+  function hitungAnalisis(dataSiswa, kkm) {
+    if (!dataSiswa||dataSiswa.length===0) return null;
+    const n  = dataSiswa.length;
+    const vals = dataSiswa.map(s=>Number(s.nilai)||0);
+    const rata = vals.reduce((a,b)=>a+b,0)/n;
+    const variance = vals.reduce((a,v)=>a+Math.pow(v-rata,2),0)/n;
+    const stdv = Math.sqrt(variance);
+    const maks = Math.max(...vals);
+    const min  = Math.min(...vals);
+    const tuntas    = vals.filter(v=>v>=kkm).length;
+    const tdk_tuntas = n - tuntas;
+    const pct_tuntas = (tuntas/n)*100;
+    const distribusi = {
+      r0_59:   vals.filter(v=>v<60).length,
+      r60_74:  vals.filter(v=>v>=60&&v<75).length,
+      r75_84:  vals.filter(v=>v>=75&&v<85).length,
+      r85_100: vals.filter(v=>v>=85).length,
+    };
+    let interpretasi_stdv = '';
+    if (stdv < 10)       interpretasi_stdv = 'Merata — kemampuan siswa relatif homogen (STDV < 10)';
+    else if (stdv <= 20) interpretasi_stdv = 'Variasi Sedang — terdapat perbedaan kemampuan yang wajar (STDV 10–20)';
+    else                 interpretasi_stdv = 'Variasi Tinggi — kemampuan siswa sangat beragam, perlu perhatian khusus (STDV > 20)';
+    let rekomendasi = '';
+    if (pct_tuntas >= 85) rekomendasi = 'Hasil sangat baik. Lanjutkan dengan materi pengayaan untuk siswa yang sudah tuntas.';
+    else if (pct_tuntas >= 70) rekomendasi = 'Sebagian besar tuntas. Lakukan remedial terfokus untuk '+tdk_tuntas+' siswa yang belum mencapai KKM.';
+    else if (pct_tuntas >= 50) rekomendasi = 'Lebih dari setengah belum tuntas. Pertimbangkan pembelajaran ulang sebelum remedial.';
+    else rekomendasi = 'Sebagian besar siswa belum tuntas. Evaluasi strategi pembelajaran dan lakukan reteaching menyeluruh.';
+    if (stdv > 20) rekomendasi += ' Variasi nilai sangat tinggi — pertimbangkan pengelompokan belajar berdasarkan kemampuan.';
+    return { n, rata, stdv, maks, min, tuntas, tdk_tuntas, pct_tuntas, distribusi, interpretasi_stdv, rekomendasi };
+  }
+
+  async function simpan(statusBaru) {
+    setSaving(true);
+    const h = hitungAnalisis(form.data_siswa, Number(form.kkm));
+    const payload = {
+      guru_id: guruId,
+      madrasah_id: sesi.mad.id,
+      jenis_penilaian: form.jenis_penilaian,
+      topik: form.topik, mapel: form.mapel, kelas: form.kelas,
+      semester: form.semester, tahun_ajaran: form.tahun_ajaran,
+      tanggal_pelaksanaan: form.tanggal_pelaksanaan||null,
+      kkm: Number(form.kkm),
+      data_siswa: form.data_siswa,
+      jumlah_siswa: h?.n||0,
+      nilai_rata: h?.rata||null,
+      nilai_tertinggi: h?.maks||null,
+      nilai_terendah: h?.min||null,
+      stdv: h?.stdv||null,
+      jumlah_tuntas: h?.tuntas||0,
+      jumlah_tidak_tuntas: h?.tdk_tuntas||0,
+      pct_tuntas: h?.pct_tuntas||0,
+      distribusi: h?.distribusi||{},
+      interpretasi_stdv: h?.interpretasi_stdv||'',
+      rekomendasi: h?.rekomendasi||'',
+      catatan_guru: form.catatan_guru,
+      status: statusBaru||form.status,
+      updated_at: new Date().toISOString(),
+    };
+    let error;
+    if (aktif?.id) {
+      ({error} = await sb.from('supermad_analisis_asesmen').update(payload).eq('id', aktif.id));
+    } else {
+      ({error} = await sb.from('supermad_analisis_asesmen').insert(payload));
+    }
+    setSaving(false);
+    if (error) { showToast('Gagal menyimpan: '+error.message,'error'); return; }
+    showToast(statusBaru==='final'?'✅ Analisis difinalisasi':'💾 Disimpan sebagai draft','success');
+    loadList(); setMode('list'); setAktif(null); setForm(blankForm);
+  }
+
+  function tambahSiswa() {
+    const nm = namaBaru.trim();
+    const nl = parseFloat(nilaiInput);
+    if (!nm) { showToast('Masukkan nama siswa','error'); return; }
+    if (isNaN(nl)||nl<0||nl>100) { showToast('Nilai harus 0–100','error'); return; }
+    setForm(f=>({...f, data_siswa:[...f.data_siswa,{nama:nm,nilai:nl}]}));
+    setNamaBaru(''); setNilaiInput('');
+  }
+
+  function hapusSiswa(idx) {
+    setForm(f=>({...f, data_siswa:f.data_siswa.filter((_,i)=>i!==idx)}));
+  }
+
+  function bukaBaru() {
+    setForm(blankForm); setAktif(null); setMode('form'); setNamaBaru(''); setNilaiInput('');
+  }
+
+  function bukaEdit(item) {
+    setForm({
+      jenis_penilaian: item.jenis_penilaian||'UH',
+      topik: item.topik||'', mapel: item.mapel||'', kelas: item.kelas||'',
+      semester: item.semester||'Ganjil', tahun_ajaran: item.tahun_ajaran||'2025/2026',
+      tanggal_pelaksanaan: item.tanggal_pelaksanaan||'',
+      kkm: item.kkm||75,
+      data_siswa: item.data_siswa||[],
+      catatan_guru: item.catatan_guru||'', status: item.status||'draft'
+    });
+    setAktif(item); setMode('form'); setNamaBaru(''); setNilaiInput('');
+  }
+
+  function bukaDetail(item) { setAktif(item); setMode('detail'); }
+
+  const jenisOpts = ['UH','PTS','PAS','PAT','Proyek','Lainnya'];
+  const h = hitungAnalisis(form.data_siswa, Number(form.kkm));
+
+  // ── LIST VIEW ──
+  if (mode==='list') return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+        <div style={{fontWeight:700,fontSize:'1rem'}}>📈 Analisis Hasil Asesmen</div>
+        <button className="btn btn-primary btn-sm" onClick={bukaBaru}>+ Analisis Baru</button>
+      </div>
+      {loading ? <div style={{textAlign:'center',padding:30,color:'var(--text2)'}}>Memuat...</div> :
+       list.length===0 ? (
+        <div style={{textAlign:'center',padding:40,background:'var(--surface2)',borderRadius:12}}>
+          <div style={{fontSize:'2.5rem',marginBottom:8}}>📊</div>
+          <div style={{fontWeight:700,marginBottom:6}}>Belum ada analisis asesmen</div>
+          <div style={{color:'var(--text2)',marginBottom:16,fontSize:'.85rem'}}>Mulai dengan memasukkan data nilai siswa dari penilaian yang sudah dilaksanakan.</div>
+          <button className="btn btn-primary" onClick={bukaBaru}>+ Mulai Analisis Pertama</button>
+        </div>
+       ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {list.map(item=>{
+            const pct = item.pct_tuntas||0;
+            const warna = pct>=85?'#22c55e':pct>=70?'#f59e0b':'#ef4444';
+            return (
+              <div key={item.id} className="card" style={{padding:'14px 16px',cursor:'pointer'}}
+                onClick={()=>bukaDetail(item)}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700,fontSize:'.92rem'}}>
+                      {item.jenis_penilaian} — {item.mapel||'—'} · {item.kelas||'—'}
+                    </div>
+                    {item.topik && <div style={{fontSize:'.8rem',color:'var(--text2)',marginTop:2}}>{item.topik}</div>}
+                    <div style={{fontSize:'.78rem',color:'var(--text2)',marginTop:4}}>
+                      {item.jumlah_siswa||0} siswa · {item.semester} {item.tahun_ajaran}
+                      {item.tanggal_pelaksanaan&&' · '+new Date(item.tanggal_pelaksanaan).toLocaleDateString('id-ID')}
+                    </div>
+                  </div>
+                  <div style={{textAlign:'right',flexShrink:0}}>
+                    <div style={{fontWeight:800,fontSize:'1.1rem',color:warna}}>{pct.toFixed(0)}%</div>
+                    <div style={{fontSize:'.7rem',color:'var(--text2)'}}>tuntas</div>
+                    <span style={{display:'inline-block',marginTop:4,padding:'2px 9px',borderRadius:20,
+                      fontSize:'.72rem',fontWeight:700,
+                      background:item.status==='final'?'#dcfce7':'#fef9c3',
+                      color:item.status==='final'?'#166534':'#92400e'}}>
+                      {item.status==='final'?'Final':'Draft'}
+                    </span>
+                  </div>
+                </div>
+                {item.stdv!=null && (
+                  <div style={{marginTop:8,fontSize:'.78rem',color:'var(--text2)',
+                    padding:'5px 10px',background:'var(--surface2)',borderRadius:7}}>
+                    Rata-rata: <b>{Number(item.nilai_rata||0).toFixed(1)}</b> ·
+                    STDV: <b>{Number(item.stdv||0).toFixed(1)}</b> ·
+                    KKM: <b>{item.kkm}</b>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+       )}
+    </div>
+  );
+
+  // ── DETAIL VIEW ──
+  if (mode==='detail' && aktif) {
+    const dSiswa = aktif.data_siswa||[];
+    const kkm    = Number(aktif.kkm||75);
+    const pct = aktif.pct_tuntas||0;
+    const warnaP = pct>=85?'#22c55e':pct>=70?'#f59e0b':'#ef4444';
+    const dist   = aktif.distribusi||{};
+    const maxDist = Math.max(dist.r0_59||0, dist.r60_74||0, dist.r75_84||0, dist.r85_100||0, 1);
+    const remedial  = dSiswa.filter(s=>Number(s.nilai)<kkm).sort((a,b)=>a.nilai-b.nilai);
+    const pengayaan = dSiswa.filter(s=>Number(s.nilai)>=85).sort((a,b)=>b.nilai-a.nilai);
+    return (
+      <div>
+        <div style={{display:'flex',gap:8,marginBottom:14,alignItems:'center'}}>
+          <button className="btn btn-outline btn-sm" onClick={()=>{setMode('list');setAktif(null);}}>← Kembali</button>
+          <button className="btn btn-outline btn-sm" onClick={()=>bukaEdit(aktif)}>✏️ Edit</button>
+          <span style={{flex:1}}/>
+          <span style={{padding:'3px 12px',borderRadius:20,fontWeight:700,fontSize:'.78rem',
+            background:aktif.status==='final'?'#dcfce7':'#fef9c3',
+            color:aktif.status==='final'?'#166534':'#92400e'}}>
+            {aktif.status==='final'?'Final':'Draft'}
+          </span>
+        </div>
+        <div className="card" style={{marginBottom:12}}>
+          <div style={{fontWeight:700,fontSize:'1rem',marginBottom:4}}>
+            {aktif.jenis_penilaian} — {aktif.mapel||'—'} · {aktif.kelas||'—'}
+          </div>
+          {aktif.topik && <div style={{color:'var(--text2)',fontSize:'.85rem',marginBottom:4}}>{aktif.topik}</div>}
+          <div style={{fontSize:'.8rem',color:'var(--text2)'}}>
+            {aktif.semester} {aktif.tahun_ajaran}
+            {aktif.tanggal_pelaksanaan&&' · '+new Date(aktif.tanggal_pelaksanaan).toLocaleDateString('id-ID')}
+            {' · KKM: '+(aktif.kkm||75)}
+          </div>
+        </div>
+
+        {/* Ringkasan Statistik */}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:10,marginBottom:12}}>
+          {[
+            ['Jumlah Siswa', aktif.jumlah_siswa||0, '', '#6366f1'],
+            ['Nilai Rata-rata', Number(aktif.nilai_rata||0).toFixed(1), '', '#3b82f6'],
+            ['STDV', Number(aktif.stdv||0).toFixed(1), '', '#8b5cf6'],
+            ['Tertinggi', Number(aktif.nilai_tertinggi||0).toFixed(0), '', '#22c55e'],
+            ['Terendah', Number(aktif.nilai_terendah||0).toFixed(0), '', '#ef4444'],
+            ['% Tuntas', pct.toFixed(1)+'%', aktif.jumlah_tuntas+' dari '+(aktif.jumlah_siswa||0), warnaP],
+          ].map(([label,val,sub,c])=>(
+            <div key={label} className="card" style={{textAlign:'center',padding:'12px 8px',border:'1.5px solid '+c+'33'}}>
+              <div style={{fontSize:'1.4rem',fontWeight:800,color:c}}>{val}</div>
+              <div style={{fontSize:'.72rem',fontWeight:700,color:'var(--text2)'}}>{label}</div>
+              {sub&&<div style={{fontSize:'.68rem',color:'var(--text2)',marginTop:2}}>{sub}</div>}
+            </div>
+          ))}
+        </div>
+
+        {/* Interpretasi STDV */}
+        {aktif.interpretasi_stdv && (
+          <div style={{marginBottom:12,padding:'10px 14px',borderRadius:10,
+            background:'#f5f3ff',border:'1.5px solid #a78bfa',fontSize:'.83rem'}}>
+            <b>📐 Interpretasi STDV:</b> {aktif.interpretasi_stdv}
+          </div>
+        )}
+
+        {/* Distribusi Nilai Bar Chart */}
+        <div className="card" style={{marginBottom:12}}>
+          <div style={{fontWeight:700,marginBottom:10,fontSize:'.88rem'}}>Distribusi Nilai</div>
+          {[['0–59','r0_59','#ef4444'],['60–74','r60_74','#f59e0b'],['75–84','r75_84','#22c55e'],['85–100','r85_100','#3b82f6']].map(([label,key,c])=>{
+            const jml = dist[key]||0;
+            const pct2 = Math.round((jml/maxDist)*100);
+            return (
+              <div key={key} style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+                <div style={{width:56,fontSize:'.78rem',fontWeight:700,color:'var(--text2)',textAlign:'right'}}>{label}</div>
+                <div style={{flex:1,height:22,background:'var(--surface2)',borderRadius:6,overflow:'hidden'}}>
+                  <div style={{width:pct2+'%',height:'100%',background:c,borderRadius:6,transition:'width .4s'}}/>
+                </div>
+                <div style={{width:24,textAlign:'right',fontWeight:700,fontSize:'.82rem'}}>{jml}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Rekomendasi */}
+        {aktif.rekomendasi && (
+          <div style={{marginBottom:12,padding:'10px 14px',borderRadius:10,
+            background:'#f0fdf4',border:'1.5px solid #86efac',fontSize:'.83rem'}}>
+            <b>💡 Rekomendasi:</b> {aktif.rekomendasi}
+          </div>
+        )}
+
+        {/* Daftar Remedial */}
+        {remedial.length>0 && (
+          <div className="card" style={{marginBottom:12}}>
+            <div style={{fontWeight:700,marginBottom:8,fontSize:'.88rem',color:'#ef4444'}}>
+              🔴 Remedial ({remedial.length} siswa — nilai &lt; KKM {kkm})
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:4}}>
+              {remedial.map((s,i)=>(
+                <div key={i} style={{display:'flex',justifyContent:'space-between',
+                  padding:'5px 10px',background:'#fef2f2',borderRadius:7,fontSize:'.82rem'}}>
+                  <span>{s.nama}</span>
+                  <span style={{fontWeight:700,color:'#ef4444'}}>{s.nilai}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Daftar Pengayaan */}
+        {pengayaan.length>0 && (
+          <div className="card" style={{marginBottom:12}}>
+            <div style={{fontWeight:700,marginBottom:8,fontSize:'.88rem',color:'#22c55e'}}>
+              🟢 Pengayaan ({pengayaan.length} siswa — nilai ≥ 85)
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:4}}>
+              {pengayaan.map((s,i)=>(
+                <div key={i} style={{display:'flex',justifyContent:'space-between',
+                  padding:'5px 10px',background:'#f0fdf4',borderRadius:7,fontSize:'.82rem'}}>
+                  <span>{s.nama}</span>
+                  <span style={{fontWeight:700,color:'#16a34a'}}>{s.nilai}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Semua siswa */}
+        <div className="card">
+          <div style={{fontWeight:700,marginBottom:8,fontSize:'.88rem'}}>Semua Siswa ({dSiswa.length})</div>
+          <div style={{display:'flex',flexDirection:'column',gap:3,maxHeight:250,overflowY:'auto'}}>
+            {[...dSiswa].sort((a,b)=>b.nilai-a.nilai).map((s,i)=>{
+              const tuntas = Number(s.nilai)>=kkm;
+              return (
+                <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+                  padding:'4px 10px',background:tuntas?'#f0fdf4':'#fef2f2',borderRadius:6,fontSize:'.82rem'}}>
+                  <span>{s.nama}</span>
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{fontWeight:700,color:tuntas?'#16a34a':'#ef4444'}}>{s.nilai}</span>
+                    <span style={{fontSize:'.7rem',color:tuntas?'#16a34a':'#ef4444'}}>{tuntas?'✓ Tuntas':'✗ Remedial'}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── FORM VIEW ──
+  return (
+    <div>
+      <div style={{display:'flex',gap:8,marginBottom:14,alignItems:'center'}}>
+        <button className="btn btn-outline btn-sm" onClick={()=>{setMode('list');setAktif(null);setForm(blankForm);}}>
+          ← Kembali
+        </button>
+        <div style={{fontWeight:700,fontSize:'.95rem'}}>
+          {aktif?'Edit':'Buat'} Analisis Asesmen
+        </div>
+      </div>
+
+      {/* Identitas */}
+      <div className="card" style={{marginBottom:12}}>
+        <div style={{fontWeight:700,marginBottom:10,fontSize:'.88rem'}}>📋 Identitas Penilaian</div>
+        {/* Jenis Penilaian chips */}
+        <div style={{marginBottom:10}}>
+          <div style={{fontSize:'.78rem',fontWeight:700,color:'var(--text2)',marginBottom:6}}>Jenis Penilaian</div>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+            {jenisOpts.map(j=>(
+              <button key={j} onClick={()=>setForm(f=>({...f,jenis_penilaian:j}))}
+                style={{padding:'5px 14px',borderRadius:20,border:'2px solid',cursor:'pointer',fontFamily:'inherit',
+                  fontWeight:700,fontSize:'.8rem',
+                  borderColor:form.jenis_penilaian===j?'var(--p)':'#d1d5db',
+                  background:form.jenis_penilaian===j?'var(--p)':'transparent',
+                  color:form.jenis_penilaian===j?'#fff':'var(--text2)'}}>
+                {j}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+          {[['topik','Topik / Kompetensi'],['mapel','Mata Pelajaran'],['kelas','Kelas'],
+            ['tanggal_pelaksanaan','Tanggal Pelaksanaan']].map(([k,lbl])=>(
+            <div key={k}>
+              <div style={{fontSize:'.78rem',fontWeight:700,color:'var(--text2)',marginBottom:4}}>{lbl}</div>
+              <input type={k==='tanggal_pelaksanaan'?'date':'text'} value={form[k]||''}
+                onChange={e=>setForm(f=>({...f,[k]:e.target.value}))}
+                style={{width:'100%',padding:'7px 10px',borderRadius:8,border:'1.5px solid #d1d5db',
+                  fontFamily:'inherit',fontSize:'.85rem',boxSizing:'border-box'}}
+              />
+            </div>
+          ))}
+          <div>
+            <div style={{fontSize:'.78rem',fontWeight:700,color:'var(--text2)',marginBottom:4}}>Semester</div>
+            <select value={form.semester} onChange={e=>setForm(f=>({...f,semester:e.target.value}))}
+              style={{width:'100%',padding:'7px 10px',borderRadius:8,border:'1.5px solid #d1d5db',fontFamily:'inherit',fontSize:'.85rem'}}>
+              {['Ganjil','Genap'].map(s=><option key={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{fontSize:'.78rem',fontWeight:700,color:'var(--text2)',marginBottom:4}}>Tahun Ajaran</div>
+            <input value={form.tahun_ajaran} onChange={e=>setForm(f=>({...f,tahun_ajaran:e.target.value}))}
+              style={{width:'100%',padding:'7px 10px',borderRadius:8,border:'1.5px solid #d1d5db',fontFamily:'inherit',fontSize:'.85rem'}}/>
+          </div>
+          <div>
+            <div style={{fontSize:'.78rem',fontWeight:700,color:'var(--text2)',marginBottom:4}}>KKM / KKtp</div>
+            <input type="number" min="0" max="100" value={form.kkm}
+              onChange={e=>setForm(f=>({...f,kkm:e.target.value}))}
+              style={{width:'100%',padding:'7px 10px',borderRadius:8,border:'1.5px solid #d1d5db',fontFamily:'inherit',fontSize:'.85rem'}}/>
+          </div>
+        </div>
+      </div>
+
+      {/* Input Data Siswa */}
+      <div className="card" style={{marginBottom:12}}>
+        <div style={{fontWeight:700,marginBottom:10,fontSize:'.88rem'}}>
+          🎓 Data Nilai Siswa
+          {form.data_siswa.length>0 && <span style={{fontWeight:400,color:'var(--text2)',marginLeft:8}}>{form.data_siswa.length} siswa</span>}
+        </div>
+        <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap'}}>
+          <input placeholder="Nama siswa" value={namaBaru}
+            onChange={e=>setNamaBaru(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&tambahSiswa()}
+            style={{flex:2,minWidth:120,padding:'7px 10px',borderRadius:8,
+              border:'1.5px solid #d1d5db',fontFamily:'inherit',fontSize:'.85rem'}}/>
+          <input type="number" placeholder="Nilai (0-100)" value={nilaiInput}
+            onChange={e=>setNilaiInput(e.target.value)}
+            onKeyDown={e=>e.key==='Enter'&&tambahSiswa()}
+            min="0" max="100"
+            style={{flex:1,minWidth:90,padding:'7px 10px',borderRadius:8,
+              border:'1.5px solid #d1d5db',fontFamily:'inherit',fontSize:'.85rem'}}/>
+          <button className="btn btn-primary btn-sm" onClick={tambahSiswa}>+ Tambah</button>
+        </div>
+        {form.data_siswa.length===0 ? (
+          <div style={{textAlign:'center',padding:'20px',color:'var(--text2)',fontSize:'.82rem'}}>
+            Belum ada data siswa. Tambahkan nama dan nilai di atas.
+          </div>
+        ) : (
+          <div style={{display:'flex',flexDirection:'column',gap:4,maxHeight:220,overflowY:'auto'}}>
+            {form.data_siswa.map((s,i)=>{
+              const tuntas = Number(s.nilai)>=Number(form.kkm);
+              return (
+                <div key={i} style={{display:'flex',alignItems:'center',gap:8,
+                  padding:'5px 10px',background:tuntas?'#f0fdf4':'#fef2f2',borderRadius:7}}>
+                  <span style={{flex:1,fontSize:'.83rem'}}>{s.nama}</span>
+                  <span style={{fontWeight:700,fontSize:'.85rem',color:tuntas?'#16a34a':'#ef4444'}}>{s.nilai}</span>
+                  <span style={{fontSize:'.7rem',color:tuntas?'#16a34a':'#ef4444'}}>{tuntas?'✓':'✗'}</span>
+                  <button onClick={()=>hapusSiswa(i)}
+                    style={{background:'none',border:'none',cursor:'pointer',color:'#ef4444',fontSize:'.9rem',padding:'2px 5px'}}>×</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Preview Analisis Live */}
+      {h && form.data_siswa.length>0 && (
+        <div className="card" style={{marginBottom:12,border:'2px solid var(--p)33',background:'#f8faff'}}>
+          <div style={{fontWeight:700,marginBottom:10,fontSize:'.88rem',color:'var(--p)'}}>
+            📊 Preview Hasil Analisis ({form.data_siswa.length} siswa)
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:10}}>
+            {[
+              ['Rata-rata', h.rata.toFixed(1), '#3b82f6'],
+              ['STDV', h.stdv.toFixed(1), '#8b5cf6'],
+              ['Tuntas', h.pct_tuntas.toFixed(0)+'%', h.pct_tuntas>=70?'#22c55e':'#ef4444'],
+            ].map(([l,v,c])=>(
+              <div key={l} style={{textAlign:'center',padding:'8px',background:'#fff',borderRadius:8,border:'1.5px solid '+c+'44'}}>
+                <div style={{fontWeight:800,color:c,fontSize:'1.1rem'}}>{v}</div>
+                <div style={{fontSize:'.72rem',color:'var(--text2)'}}>{l}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{fontSize:'.8rem',padding:'7px 10px',background:'#ede9fe',borderRadius:8,marginBottom:6}}>
+            📐 {h.interpretasi_stdv}
+          </div>
+          <div style={{fontSize:'.8rem',padding:'7px 10px',background:'#f0fdf4',borderRadius:8}}>
+            💡 {h.rekomendasi}
+          </div>
+        </div>
+      )}
+
+      {/* Catatan */}
+      <div className="card" style={{marginBottom:14}}>
+        <div style={{fontSize:'.78rem',fontWeight:700,color:'var(--text2)',marginBottom:6}}>Catatan Guru (opsional)</div>
+        <textarea rows={3} value={form.catatan_guru}
+          onChange={e=>setForm(f=>({...f,catatan_guru:e.target.value}))}
+          placeholder="Refleksi, catatan pelaksanaan, konteks khusus..."
+          style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1.5px solid #d1d5db',
+            fontFamily:'inherit',fontSize:'.85rem',resize:'vertical',boxSizing:'border-box'}}/>
+      </div>
+
+      <div style={{display:'flex',gap:10,justifyContent:'flex-end',flexWrap:'wrap'}}>
+        <button className="btn btn-outline" onClick={()=>{setMode('list');setAktif(null);setForm(blankForm);}}>Batal</button>
+        <button className="btn btn-outline" onClick={()=>simpan('draft')} disabled={saving||form.data_siswa.length===0}>
+          {saving?'Menyimpan...':'💾 Simpan Draft'}
+        </button>
+        <button className="btn btn-primary" onClick={()=>simpan('final')} disabled={saving||form.data_siswa.length===0}>
+          {saving?'Memproses...':'✅ Finalisasi'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── TAB ANALISIS INSTRUMEN ────────────────────────────────────
+function TabAnalisisInstrumen({sesi, showToast}) {
+  const guruId = sesi.pengguna.id;
+  const [list, setList]           = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [mode, setMode]           = useState('list'); // 'list' | 'form' | 'detail'
+  const [aktif, setAktif]         = useState(null);
+  const [formStep, setFormStep]   = useState(1); // 1=Identitas, 2=Butir Soal, 3=Checklist, 4=Hasil
+  const [saving, setSaving]       = useState(false);
+
+  // ── Form state ──
+  const [form, setForm] = useState({
+    jenis_penilaian:'UH', topik:'', kelas:'', semester: sesi.mad.semester_aktif||'Ganjil',
+    tahun_ajaran: sesi.mad.tahun_ajaran||'', tanggal_pelaksanaan:'',
+    mapel: sesi.pengguna.mapel||'', keterangan:'',
+  });
+  const [butirSoal, setButirSoal] = useState([]);
+  const [butirForm, setButirForm] = useState({deskripsi:'',level_bloom:'C1',domain:'Pengetahuan',bobot:1});
+  const [checkVal,  setCheckVal]  = useState({});  // id → nilai (1/2/3)
+
+  // Checklist items
+  const CHECKLIST = {
+    validitas: [
+      {id:'v1', teks:'Soal mengukur capaian pembelajaran (CP) yang telah ditetapkan'},
+      {id:'v2', teks:'Setiap butir soal sesuai dengan tujuan pembelajaran (TP)'},
+      {id:'v3', teks:'Instrumen mengukur kemampuan yang sesungguhnya (bukan hafalan semata)'},
+      {id:'v4', teks:'Ada kunci jawaban / rubrik penilaian yang jelas'},
+      {id:'v5', teks:'Proporsi bobot soal sesuai dengan tingkat kepentingan materi'},
+    ],
+    keterbacaan: [
+      {id:'k1', teks:'Bahasa yang digunakan jelas dan tidak ambigu'},
+      {id:'k2', teks:'Kalimat pertanyaan tidak mengandung petunjuk jawaban'},
+      {id:'k3', teks:'Panjang kalimat soal proporsional dan mudah dipahami siswa'},
+    ],
+    kesesuaian: [
+      {id:'s1', teks:'Instrumen sesuai dengan alur tujuan pembelajaran (ATP)'},
+      {id:'s2', teks:'Distribusi level kognitif (C1-C6) variatif dan sesuai jenjang'},
+      {id:'s3', teks:'Instrumen memuat penilaian ranah pengetahuan DAN keterampilan'},
+      {id:'s4', teks:'Instrumen sudah diujicobakan / ditelaah sebelum digunakan'},
+    ],
+  };
+
+  const BLOOM = ['C1','C2','C3','C4','C5','C6'];
+  const BLOOM_LABEL = {C1:'Mengingat',C2:'Memahami',C3:'Menerapkan',C4:'Menganalisis',C5:'Mengevaluasi',C6:'Mencipta'};
+  const BLOOM_COLOR = {C1:'#6b7280',C2:'#2563eb',C3:'#16a34a',C4:'#d97706',C5:'#9333ea',C6:'#dc2626'};
+  const DOMAIN = ['Pengetahuan','Keterampilan','Sikap'];
+  const JENIS  = ['UH','PTS','PAS','PAT','Proyek','Observasi','Portofolio','Lainnya'];
+  const JENIS_LABEL = {UH:'Ulangan Harian',PTS:'Penilaian Tengah Semester',PAS:'Penilaian Akhir Semester',
+    PAT:'Penilaian Akhir Tahun',Proyek:'Penugasan / Proyek',Observasi:'Observasi / Penilaian Sikap',
+    Portofolio:'Portofolio',Lainnya:'Lainnya'};
+
+  React.useEffect(()=>{ loadList(); },[]);
+
+  async function loadList() {
+    setLoading(true);
+    const {data} = await sb.from('supermad_analisis_instrumen')
+      .select('*').eq('guru_id', guruId).eq('madrasah_id', sesi.mad.id)
+      .order('created_at',{ascending:false});
+    setList(data||[]);
+    setLoading(false);
+  }
+
+  function hitungHasil(bSoal, cVal) {
+    // Hitung skor checklist (maks 12 item × 4 = 48)
+    const allItems = [...CHECKLIST.validitas,...CHECKLIST.keterbacaan,...CHECKLIST.kesesuaian];
+    let skorC = 0, totalC = allItems.length * 4;
+    allItems.forEach(item => {
+      const v = parseInt(cVal[item.id]||0);
+      skorC += v===1?4:v===2?3:v===3?2:0;
+    });
+    const pctC = totalC > 0 ? (skorC/totalC)*100 : 0;
+
+    // Analisis distribusi Bloom
+    const total = bSoal.length;
+    const dist = {};
+    BLOOM.forEach(b=>{ dist[b] = bSoal.filter(s=>s.level_bloom===b).length; });
+    const higherOrder = (dist['C4']||0)+(dist['C5']||0)+(dist['C6']||0);
+    const pctHOTS = total>0 ? (higherOrder/total)*100 : 0;
+
+    // Skor total gabungan (checklist 70% + HOTS 30%)
+    const skorTotal = (pctC * 0.7) + (pctHOTS * 0.3);
+    const predikat = skorTotal>=87.5?'Sangat Baik':skorTotal>=75?'Baik':skorTotal>=62.5?'Cukup':'Perlu Perbaikan';
+
+    // Rekomendasi otomatis
+    const rek = [];
+    if (pctC < 75) rek.push('Tinjau kembali kualitas instrumen — skor checklist di bawah standar.');
+    if (pctHOTS < 20) rek.push('Tambahkan soal level tinggi (C4-C6/HOTS) agar mengukur kemampuan berpikir kritis.');
+    if ((dist['C1']||0)/Math.max(total,1) > 0.5) rek.push('Terlalu banyak soal hafalan (C1). Kurangi dan ganti dengan C2-C4.');
+    if (total < 5) rek.push('Jumlah butir soal masih sedikit. Tambah butir soal untuk analisis lebih akurat.');
+    if (rek.length===0) rek.push('Instrumen sudah berkualitas baik. Pertahankan!');
+
+    return { skorTotal: Math.round(skorTotal*10)/10, predikat, rekomendasi: rek.join(' '), pctC, pctHOTS, dist };
+  }
+
+  async function simpan(statusSimpan) {
+    setSaving(true);
+    const hasil = hitungHasil(butirSoal, checkVal);
+    const checklistVal = (items) => items.map(it=>({...it, nilai: parseInt(checkVal[it.id]||0)}));
+    const payload = {
+      guru_id: guruId,
+      madrasah_id: sesi.mad.id,
+      ...form,
+      butir_soal: butirSoal,
+      checklist_validitas:   checklistVal(CHECKLIST.validitas),
+      checklist_keterbacaan: checklistVal(CHECKLIST.keterbacaan),
+      checklist_kesesuaian:  checklistVal(CHECKLIST.kesesuaian),
+      skor_total:  hasil.skorTotal,
+      predikat:    hasil.predikat,
+      rekomendasi: hasil.rekomendasi,
+      status: statusSimpan,
+      updated_at: new Date().toISOString(),
+    };
+    let error;
+    if (aktif?.id) {
+      ({error} = await sb.from('supermad_analisis_instrumen').update(payload).eq('id', aktif.id));
+    } else {
+      ({error} = await sb.from('supermad_analisis_instrumen').insert(payload));
+    }
+    setSaving(false);
+    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    showToast(statusSimpan==='final'?'✅ Analisis instrumen diselesaikan!':'💾 Draft tersimpan');
+    setMode('list'); loadList();
+  }
+
+  function bukaEdit(item) {
+    setAktif(item);
+    setForm({
+      jenis_penilaian: item.jenis_penilaian, topik: item.topik||'', kelas: item.kelas||'',
+      semester: item.semester||'', tahun_ajaran: item.tahun_ajaran||'',
+      tanggal_pelaksanaan: item.tanggal_pelaksanaan||'', mapel: item.mapel||'', keterangan: item.keterangan||'',
+    });
+    setButirSoal(item.butir_soal||[]);
+    const cv = {};
+    [...(item.checklist_validitas||[]),...(item.checklist_keterbacaan||[]),...(item.checklist_kesesuaian||[])]
+      .forEach(c=>{ if (c.nilai) cv[c.id]=c.nilai; });
+    setCheckVal(cv);
+    setFormStep(1);
+    setMode('form');
+  }
+
+  function bukaBaru() {
+    setAktif(null);
+    setForm({jenis_penilaian:'UH',topik:'',kelas:'',semester:sesi.mad.semester_aktif||'Ganjil',
+      tahun_ajaran:sesi.mad.tahun_ajaran||'',tanggal_pelaksanaan:'',
+      mapel:sesi.pengguna.mapel||'',keterangan:''});
+    setButirSoal([]);
+    setCheckVal({});
+    setFormStep(1);
+    setMode('form');
+  }
+
+  function tambahButir() {
+    if (!butirForm.deskripsi.trim()) { showToast('Isi deskripsi butir soal','error'); return; }
+    const nomor = butirSoal.length + 1;
+    setButirSoal(prev=>[...prev, {nomor, ...butirForm, id: Date.now()}]);
+    setButirForm({deskripsi:'',level_bloom:'C1',domain:'Pengetahuan',bobot:1});
+  }
+
+  // ── RENDER LIST ──
+  if (loading) return <Loading text="Memuat analisis instrumen..." />;
+
+  if (mode === 'list') return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,flexWrap:'wrap',gap:10}}>
+        <div style={{fontWeight:800,color:'var(--p3)',fontSize:'1rem'}}>🔬 Analisis Instrumen Asesmen</div>
+        <button onClick={bukaBaru}
+          style={{padding:'7px 16px',background:'var(--p)',color:'#fff',border:'none',
+            borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.8rem'}}>
+          + Buat Analisis Baru
+        </button>
+      </div>
+
+      {list.length === 0 && (
+        <div className="card" style={{textAlign:'center',padding:32,color:'var(--text3)'}}>
+          <div style={{fontSize:'2rem',marginBottom:8}}>🔬</div>
+          <div style={{fontWeight:700,marginBottom:4}}>Belum ada analisis instrumen</div>
+          <div style={{fontSize:'.8rem'}}>Klik "+ Buat Analisis Baru" untuk mulai menganalisis instrumen penilaian Anda</div>
+        </div>
+      )}
+
+      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+        {list.map(item=>{
+          const isDraft = item.status==='draft';
+          const warna = item.skor_total>=87.5?'#16a34a':item.skor_total>=75?'#2563eb':item.skor_total>=62.5?'#d97706':'#dc2626';
+          return (
+            <div key={item.id} className="card" style={{padding:'14px 16px',
+              border:`1.5px solid ${isDraft?'#fbbf24':'#86efac'}`}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,flexWrap:'wrap'}}>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:800,fontSize:'.95rem',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                    {JENIS_LABEL[item.jenis_penilaian]||item.jenis_penilaian}
+                    {isDraft
+                      ? <span style={{padding:'1px 8px',borderRadius:20,fontSize:'.65rem',fontWeight:700,
+                          background:'#fef3c7',color:'#92400e',border:'1px solid #fbbf24'}}>Draft</span>
+                      : <span style={{padding:'1px 8px',borderRadius:20,fontSize:'.65rem',fontWeight:700,
+                          background:'#d1fae5',color:'#065f46',border:'1px solid #86efac'}}>✓ Final</span>
+                    }
+                  </div>
+                  <div style={{fontSize:'.78rem',color:'var(--text2)',marginTop:4}}>
+                    {item.topik && <span>📚 {item.topik} · </span>}
+                    <span>Kelas {item.kelas||'—'} · {item.semester} {item.tahun_ajaran}</span>
+                  </div>
+                  <div style={{fontSize:'.73rem',color:'var(--text3)',marginTop:3}}>
+                    {item.mapel} · {(item.butir_soal||[]).length} butir soal
+                  </div>
+                </div>
+                {item.skor_total > 0 && (
+                  <div style={{textAlign:'right'}}>
+                    <div style={{fontSize:'1.3rem',fontWeight:900,color:warna}}>{item.skor_total}%</div>
+                    <span style={{padding:'2px 10px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
+                      background:item.skor_total>=87.5?'#d1fae5':item.skor_total>=75?'#dbeafe':item.skor_total>=62.5?'#fef3c7':'#fee2e2',
+                      color:item.skor_total>=87.5?'#065f46':item.skor_total>=75?'#1d4ed8':item.skor_total>=62.5?'#92400e':'#991b1b'}}>
+                      {item.predikat}
+                    </span>
+                  </div>
+                )}
+              </div>
+              {item.rekomendasi && (
+                <div style={{marginTop:8,padding:'6px 10px',background:'var(--surface2)',borderRadius:7,
+                  fontSize:'.73rem',color:'var(--text2)'}}>
+                  💡 {item.rekomendasi}
+                </div>
+              )}
+              <div style={{display:'flex',gap:6,marginTop:10,flexWrap:'wrap'}}>
+                <button onClick={()=>bukaEdit(item)}
+                  style={{padding:'5px 12px',background:'var(--p)',color:'#fff',border:'none',
+                    borderRadius:7,cursor:'pointer',fontSize:'.75rem',fontWeight:700}}>
+                  ✏️ {isDraft?'Lanjut Edit':'Edit'}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  // ── RENDER FORM ──
+  const stepLabel = ['','Identitas Instrumen','Butir Soal','Checklist Kualitas','Hasil Analisis'];
+  const hasil = formStep===4 ? hitungHasil(butirSoal, checkVal) : null;
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16,flexWrap:'wrap'}}>
+        <button onClick={()=>setMode('list')} className="btn btn-outline btn-sm">← Kembali</button>
+        <div style={{fontWeight:900,color:'var(--p3)'}}>
+          🔬 {aktif ? 'Edit Analisis' : 'Analisis Instrumen Baru'}
+        </div>
+      </div>
+
+      {/* Step indicator */}
+      <div style={{display:'flex',gap:4,marginBottom:20,overflowX:'auto'}}>
+        {[1,2,3,4].map(s=>(
+          <button key={s} onClick={()=>setFormStep(s)}
+            style={{flex:1,minWidth:80,padding:'8px 4px',borderRadius:8,border:'none',cursor:'pointer',
+              fontWeight:700,fontSize:'.75rem',textAlign:'center',
+              background:formStep===s?'var(--p)':s<formStep?'#d1fae5':'var(--surface2)',
+              color:formStep===s?'#fff':s<formStep?'#065f46':'var(--text2)'}}>
+            {s<formStep?'✓ ':''}{stepLabel[s]}
+          </button>
+        ))}
+      </div>
+
+      {/* STEP 1 — IDENTITAS */}
+      {formStep===1 && (
+        <div className="card">
+          <div style={{fontWeight:800,color:'var(--p3)',marginBottom:14}}>📋 Identitas Instrumen</div>
+          <div style={{display:'flex',flexDirection:'column',gap:12}}>
+
+            <div>
+              <label style={{fontWeight:700,fontSize:'.8rem',color:'var(--text2)',display:'block',marginBottom:6}}>
+                Jenis Penilaian *
+              </label>
+              <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                {JENIS.map(j=>(
+                  <button key={j} onClick={()=>setForm(f=>({...f,jenis_penilaian:j}))}
+                    style={{padding:'6px 14px',borderRadius:20,border:'1.5px solid',cursor:'pointer',
+                      fontWeight:700,fontSize:'.78rem',
+                      background:form.jenis_penilaian===j?'var(--p)':'#fff',
+                      color:form.jenis_penilaian===j?'#fff':'var(--p)',
+                      borderColor:'var(--p)'}}>
+                    {JENIS_LABEL[j]}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {[
+              {label:'Topik / Bab',key:'topik',ph:'Contoh: Bab 3 — Sistem Periodik Unsur'},
+              {label:'Mata Pelajaran',key:'mapel',ph:'Contoh: IPA'},
+              {label:'Kelas',key:'kelas',ph:'Contoh: IX-2'},
+            ].map(({label,key,ph})=>(
+              <div key={key}>
+                <label style={{fontWeight:700,fontSize:'.8rem',color:'var(--text2)',display:'block',marginBottom:4}}>{label}</label>
+                <input value={form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))}
+                  placeholder={ph}
+                  style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1.5px solid var(--border)',
+                    fontSize:'.85rem',boxSizing:'border-box'}}/>
+              </div>
+            ))}
+
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+              <div>
+                <label style={{fontWeight:700,fontSize:'.8rem',color:'var(--text2)',display:'block',marginBottom:4}}>Semester</label>
+                <select value={form.semester} onChange={e=>setForm(f=>({...f,semester:e.target.value}))}
+                  style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1.5px solid var(--border)',fontSize:'.85rem'}}>
+                  <option>Ganjil</option><option>Genap</option>
+                </select>
+              </div>
+              <div>
+                <label style={{fontWeight:700,fontSize:'.8rem',color:'var(--text2)',display:'block',marginBottom:4}}>Tahun Ajaran</label>
+                <input value={form.tahun_ajaran} onChange={e=>setForm(f=>({...f,tahun_ajaran:e.target.value}))}
+                  placeholder="2026/2027"
+                  style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1.5px solid var(--border)',fontSize:'.85rem',boxSizing:'border-box'}}/>
+              </div>
+            </div>
+
+            <div>
+              <label style={{fontWeight:700,fontSize:'.8rem',color:'var(--text2)',display:'block',marginBottom:4}}>Tanggal Pelaksanaan</label>
+              <input type="date" value={form.tanggal_pelaksanaan} onChange={e=>setForm(f=>({...f,tanggal_pelaksanaan:e.target.value}))}
+                style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1.5px solid var(--border)',fontSize:'.85rem',boxSizing:'border-box'}}/>
+            </div>
+
+            <div>
+              <label style={{fontWeight:700,fontSize:'.8rem',color:'var(--text2)',display:'block',marginBottom:4}}>Keterangan Tambahan</label>
+              <textarea value={form.keterangan} onChange={e=>setForm(f=>({...f,keterangan:e.target.value}))}
+                placeholder="Opsional — misal: UH setelah remedial, instrumen terevisi, dll"
+                rows={2}
+                style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1.5px solid var(--border)',
+                  fontSize:'.85rem',boxSizing:'border-box',resize:'vertical'}}/>
+            </div>
+          </div>
+          <div style={{marginTop:16,display:'flex',justifyContent:'flex-end',gap:8}}>
+            <button onClick={()=>simpan('draft')} disabled={saving||!form.jenis_penilaian}
+              style={{padding:'8px 16px',background:'#fff',color:'var(--p)',border:'1.5px solid var(--p)',
+                borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.8rem'}}>
+              💾 Simpan Draft
+            </button>
+            <button onClick={()=>setFormStep(2)} disabled={!form.jenis_penilaian}
+              style={{padding:'8px 18px',background:'var(--p)',color:'#fff',border:'none',
+                borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.8rem'}}>
+              Lanjut → Butir Soal
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2 — BUTIR SOAL */}
+      {formStep===2 && (
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          <div className="card">
+            <div style={{fontWeight:800,color:'var(--p3)',marginBottom:14}}>➕ Tambah Butir Soal</div>
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              <div>
+                <label style={{fontWeight:700,fontSize:'.8rem',color:'var(--text2)',display:'block',marginBottom:4}}>
+                  Deskripsi Soal *
+                </label>
+                <textarea value={butirForm.deskripsi}
+                  onChange={e=>setButirForm(f=>({...f,deskripsi:e.target.value}))}
+                  placeholder="Tulis deskripsi singkat soal, misal: Siswa menjelaskan pengertian fotosintesis"
+                  rows={2}
+                  style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1.5px solid var(--border)',
+                    fontSize:'.85rem',boxSizing:'border-box',resize:'vertical'}}/>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 80px',gap:8}}>
+                <div>
+                  <label style={{fontWeight:700,fontSize:'.78rem',color:'var(--text2)',display:'block',marginBottom:4}}>Level Bloom</label>
+                  <select value={butirForm.level_bloom} onChange={e=>setButirForm(f=>({...f,level_bloom:e.target.value}))}
+                    style={{width:'100%',padding:'7px 10px',borderRadius:8,border:'1.5px solid var(--border)',fontSize:'.82rem'}}>
+                    {BLOOM.map(b=><option key={b} value={b}>{b} — {BLOOM_LABEL[b]}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{fontWeight:700,fontSize:'.78rem',color:'var(--text2)',display:'block',marginBottom:4}}>Domain</label>
+                  <select value={butirForm.domain} onChange={e=>setButirForm(f=>({...f,domain:e.target.value}))}
+                    style={{width:'100%',padding:'7px 10px',borderRadius:8,border:'1.5px solid var(--border)',fontSize:'.82rem'}}>
+                    {DOMAIN.map(d=><option key={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{fontWeight:700,fontSize:'.78rem',color:'var(--text2)',display:'block',marginBottom:4}}>Bobot</label>
+                  <input type="number" min={1} max={100} value={butirForm.bobot}
+                    onChange={e=>setButirForm(f=>({...f,bobot:parseInt(e.target.value)||1}))}
+                    style={{width:'100%',padding:'7px 10px',borderRadius:8,border:'1.5px solid var(--border)',
+                      fontSize:'.82rem',boxSizing:'border-box'}}/>
+                </div>
+              </div>
+              <button onClick={tambahButir}
+                style={{padding:'8px 18px',background:'var(--g)',color:'#fff',border:'none',
+                  borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.8rem',alignSelf:'flex-start'}}>
+                + Tambah Butir
+              </button>
+            </div>
+          </div>
+
+          {/* Daftar butir */}
+          <div className="card">
+            <div style={{fontWeight:800,color:'var(--p3)',marginBottom:10}}>
+              📋 Daftar Butir Soal ({butirSoal.length} butir)
+            </div>
+            {butirSoal.length===0
+              ? <div style={{textAlign:'center',color:'var(--text3)',padding:16,fontSize:'.83rem'}}>
+                  Belum ada butir soal ditambahkan
+                </div>
+              : (
+                <>
+                  {/* Distribusi Bloom visual */}
+                  <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
+                    {BLOOM.map(b=>{
+                      const cnt = butirSoal.filter(s=>s.level_bloom===b).length;
+                      const pct = butirSoal.length ? Math.round(cnt/butirSoal.length*100) : 0;
+                      return cnt > 0 ? (
+                        <span key={b} style={{padding:'3px 10px',borderRadius:20,fontSize:'.72rem',fontWeight:800,
+                          background:BLOOM_COLOR[b]+'20',color:BLOOM_COLOR[b],border:'1.5px solid '+BLOOM_COLOR[b]}}>
+                          {b} ({cnt}) {pct}%
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                    {butirSoal.map((s,idx)=>(
+                      <div key={s.id} style={{display:'flex',alignItems:'flex-start',gap:10,padding:'8px 10px',
+                        background:'var(--surface2)',borderRadius:8,border:'1px solid var(--border)'}}>
+                        <span style={{fontWeight:800,color:'var(--text2)',fontSize:'.8rem',minWidth:20}}>{s.nomor}.</span>
+                        <div style={{flex:1,fontSize:'.82rem'}}>{s.deskripsi}</div>
+                        <div style={{display:'flex',gap:4,alignItems:'center',flexShrink:0}}>
+                          <span style={{padding:'2px 8px',borderRadius:12,fontSize:'.68rem',fontWeight:800,
+                            background:BLOOM_COLOR[s.level_bloom]+'20',color:BLOOM_COLOR[s.level_bloom]}}>
+                            {s.level_bloom}
+                          </span>
+                          <span style={{fontSize:'.68rem',color:'var(--text3)'}}>{s.domain}</span>
+                          <button onClick={()=>setButirSoal(prev=>prev.filter((_,i)=>i!==idx))}
+                            style={{background:'#fee2e2',color:'#dc2626',border:'none',borderRadius:6,
+                              cursor:'pointer',padding:'2px 7px',fontSize:'.72rem',fontWeight:700}}>
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )
+            }
+          </div>
+
+          <div style={{display:'flex',justifyContent:'space-between',gap:8}}>
+            <button onClick={()=>setFormStep(1)}
+              style={{padding:'8px 16px',background:'var(--surface2)',color:'var(--text2)',border:'none',
+                borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.8rem'}}>
+              ← Kembali
+            </button>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>simpan('draft')} disabled={saving}
+                style={{padding:'8px 16px',background:'#fff',color:'var(--p)',border:'1.5px solid var(--p)',
+                  borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.8rem'}}>
+                💾 Draft
+              </button>
+              <button onClick={()=>setFormStep(3)}
+                style={{padding:'8px 18px',background:'var(--p)',color:'#fff',border:'none',
+                  borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.8rem'}}>
+                Lanjut → Checklist
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 3 — CHECKLIST KUALITAS */}
+      {formStep===3 && (
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          {[
+            {judul:'✅ Validitas Isi', items: CHECKLIST.validitas},
+            {judul:'📖 Keterbacaan',   items: CHECKLIST.keterbacaan},
+            {judul:'🎯 Kesesuaian CP/ATP', items: CHECKLIST.kesesuaian},
+          ].map(({judul, items})=>(
+            <div key={judul} className="card">
+              <div style={{fontWeight:800,color:'var(--p3)',marginBottom:12}}>{judul}</div>
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                {items.map(item=>(
+                  <div key={item.id} style={{padding:'10px 12px',background:'var(--surface2)',borderRadius:8,
+                    border:'1px solid var(--border)'}}>
+                    <div style={{fontSize:'.83rem',marginBottom:8,lineHeight:1.4}}>{item.teks}</div>
+                    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                      {[
+                        {v:1, label:'Ya (4)', color:'#16a34a', bg:'#d1fae5'},
+                        {v:2, label:'Sebagian (3)', color:'#d97706', bg:'#fef3c7'},
+                        {v:3, label:'Tidak (2)', color:'#dc2626', bg:'#fee2e2'},
+                      ].map(({v,label,color,bg})=>(
+                        <button key={v} onClick={()=>setCheckVal(cv=>({...cv,[item.id]:v}))}
+                          style={{padding:'4px 12px',borderRadius:16,border:'1.5px solid',cursor:'pointer',
+                            fontWeight:700,fontSize:'.75rem',
+                            background: checkVal[item.id]===v ? color : '#fff',
+                            color: checkVal[item.id]===v ? '#fff' : color,
+                            borderColor: color}}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <div style={{display:'flex',justifyContent:'space-between',gap:8}}>
+            <button onClick={()=>setFormStep(2)}
+              style={{padding:'8px 16px',background:'var(--surface2)',color:'var(--text2)',border:'none',
+                borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.8rem'}}>
+              ← Kembali
+            </button>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>simpan('draft')} disabled={saving}
+                style={{padding:'8px 16px',background:'#fff',color:'var(--p)',border:'1.5px solid var(--p)',
+                  borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.8rem'}}>
+                💾 Draft
+              </button>
+              <button onClick={()=>setFormStep(4)}
+                style={{padding:'8px 18px',background:'var(--p)',color:'#fff',border:'none',
+                  borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.8rem'}}>
+                Lihat Hasil →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STEP 4 — HASIL ANALISIS */}
+      {formStep===4 && hasil && (
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          {/* Skor utama */}
+          <div className="card" style={{textAlign:'center',padding:24,
+            borderTop:`4px solid ${hasil.skorTotal>=87.5?'#16a34a':hasil.skorTotal>=75?'#2563eb':hasil.skorTotal>=62.5?'#d97706':'#dc2626'}`}}>
+            <div style={{fontSize:'3rem',fontWeight:900,
+              color:hasil.skorTotal>=87.5?'#16a34a':hasil.skorTotal>=75?'#2563eb':hasil.skorTotal>=62.5?'#d97706':'#dc2626'}}>
+              {hasil.skorTotal}%
+            </div>
+            <span style={{padding:'4px 16px',borderRadius:20,fontSize:'.85rem',fontWeight:800,
+              background:hasil.skorTotal>=87.5?'#d1fae5':hasil.skorTotal>=75?'#dbeafe':hasil.skorTotal>=62.5?'#fef3c7':'#fee2e2',
+              color:hasil.skorTotal>=87.5?'#065f46':hasil.skorTotal>=75?'#1d4ed8':hasil.skorTotal>=62.5?'#92400e':'#991b1b'}}>
+              {hasil.predikat}
+            </span>
+            <div style={{marginTop:10,fontSize:'.8rem',color:'var(--text2)'}}>
+              Checklist: {hasil.pctC.toFixed(1)}% · HOTS (C4-C6): {hasil.pctHOTS.toFixed(1)}%
+            </div>
+          </div>
+
+          {/* Distribusi Bloom */}
+          <div className="card">
+            <div style={{fontWeight:800,color:'var(--p3)',marginBottom:12}}>🧠 Distribusi Level Kognitif Bloom</div>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {BLOOM.map(b=>{
+                const cnt = hasil.dist[b]||0;
+                const total = butirSoal.length||1;
+                const pct = Math.round(cnt/total*100);
+                return (
+                  <div key={b} style={{display:'flex',alignItems:'center',gap:10}}>
+                    <span style={{fontSize:'.75rem',fontWeight:800,color:BLOOM_COLOR[b],width:28}}>{b}</span>
+                    <span style={{fontSize:'.72rem',color:'var(--text2)',width:80}}>{BLOOM_LABEL[b]}</span>
+                    <div style={{flex:1,background:'#e5e7eb',borderRadius:4,height:14,overflow:'hidden'}}>
+                      <div style={{width:pct+'%',height:'100%',background:BLOOM_COLOR[b],borderRadius:4,
+                        transition:'width .5s'}}/>
+                    </div>
+                    <span style={{fontSize:'.75rem',fontWeight:800,color:BLOOM_COLOR[b],width:40,textAlign:'right'}}>
+                      {cnt} ({pct}%)
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {hasil.pctHOTS >= 30
+              ? <div style={{marginTop:10,padding:'6px 10px',background:'#d1fae5',borderRadius:7,
+                  fontSize:'.75rem',color:'#065f46',fontWeight:700}}>
+                  ✅ HOTS sudah baik — {hasil.pctHOTS.toFixed(0)}% soal level tinggi (C4-C6)
+                </div>
+              : <div style={{marginTop:10,padding:'6px 10px',background:'#fef3c7',borderRadius:7,
+                  fontSize:'.75rem',color:'#92400e',fontWeight:700}}>
+                  ⚠️ HOTS masih rendah — {hasil.pctHOTS.toFixed(0)}% soal C4-C6 (idealnya ≥30%)
+                </div>
+            }
+          </div>
+
+          {/* Rekomendasi */}
+          <div className="card" style={{borderLeft:'4px solid var(--p)'}}>
+            <div style={{fontWeight:800,color:'var(--p3)',marginBottom:8}}>💡 Rekomendasi</div>
+            <div style={{fontSize:'.83rem',lineHeight:1.6,color:'var(--text)'}}>{hasil.rekomendasi}</div>
+          </div>
+
+          <div style={{display:'flex',justifyContent:'space-between',gap:8,flexWrap:'wrap'}}>
+            <button onClick={()=>setFormStep(3)}
+              style={{padding:'8px 16px',background:'var(--surface2)',color:'var(--text2)',border:'none',
+                borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.8rem'}}>
+              ← Kembali
+            </button>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              <button onClick={()=>simpan('draft')} disabled={saving}
+                style={{padding:'8px 16px',background:'#fff',color:'var(--p)',border:'1.5px solid var(--p)',
+                  borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.8rem'}}>
+                💾 Simpan Draft
+              </button>
+              <button onClick={()=>simpan('final')} disabled={saving}
+                style={{padding:'8px 20px',background:'#16a34a',color:'#fff',border:'none',
+                  borderRadius:8,cursor:'pointer',fontWeight:700,fontSize:'.85rem'}}>
+                ✅ Finalisasi Analisis
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
