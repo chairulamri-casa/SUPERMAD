@@ -2103,6 +2103,25 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
         </div>
       )}
 
+      {/* TAB ANALITIK */}
+      {tab==='analitik' && (
+        <TabAnalitikKanwil
+          madrasahList={madrasahList}
+          stats={stats}
+          filterSmt={filterSmt}
+          filterTA={filterTA}
+          showToast={showToast}
+        />
+      )}
+
+      {/* TAB TINDAK LANJUT KANWIL */}
+      {tab==='tindaklanjut' && (
+        <TabTindakLanjutKanwil
+          madrasahList={madrasahList}
+          showToast={showToast}
+        />
+      )}
+
       {/* TAB MADRASAH */}
       {tab==='madrasah' && (
         <div>
@@ -3920,7 +3939,7 @@ function DashboardGuru({sesi, showToast}) {
 
       {/* Tab */}
       <div style={{display:'flex',gap:6,marginBottom:14}}>
-        {[['hasil','📊 Hasil Supervisi'],['rtl','📋 RTL Saya']].map(([key,label])=>(
+        {[['hasil','📊 Hasil Supervisi'],['rtl','📋 RTL Saya'],['portofolio','🗂️ e-Portofolio']].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',
               fontWeight:700,fontSize:'.8rem',fontFamily:'inherit',
@@ -4043,6 +4062,12 @@ function DashboardGuru({sesi, showToast}) {
           )}
         </div>
       )}
+
+      {/* TAB PORTOFOLIO */}
+      {tab==='portofolio' && (
+        <TabPortofolio sesi={sesi} showToast={showToast} />
+      )}
+
     </div>
   );
 }
@@ -4050,6 +4075,683 @@ function DashboardGuru({sesi, showToast}) {
 
 // ── FORM SUPERVISI LENGKAP ────────────────────────────────────
 // Item penilaian PM-KBC
+
+
+// ── TAB ANALITIK KANWIL ──────────────────────────────────────
+function TabAnalitikKanwil({madrasahList, stats, filterSmt, filterTA, showToast}) {
+  const [filterKab2, setFilterKab2] = React.useState('');
+  const [filterTkt2, setFilterTkt2] = React.useState('');
+
+  const avg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+  const warna = v => v>=87.5?'#16a34a':v>=75?'#2563eb':v>=62.5?'#d97706':'#dc2626';
+  const pred  = v => v>=87.5?'Sangat Baik':v>=75?'Baik':v>=62.5?'Cukup':'Kurang';
+
+  const kabList = [...new Set(madrasahList.map(m=>m.kota_kab).filter(Boolean))].sort();
+
+  const filtered = madrasahList.filter(m => {
+    if (filterKab2 && m.kota_kab !== filterKab2) return false;
+    if (filterTkt2 && m.tingkat  !== filterTkt2) return false;
+    return true;
+  });
+
+  // Statistik per kab/kota
+  const kabStats = {};
+  filtered.forEach(m => {
+    const kab = m.kota_kab||'Lainnya';
+    if (!kabStats[kab]) kabStats[kab] = {madrasah:0,supervisi:0,rata:[],p:[],l:[],a:[]};
+    kabStats[kab].madrasah++;
+    const s = stats[m.id]||{selesai:0,rata:[],p:[],l:[],a:[]};
+    kabStats[kab].supervisi += s.selesai;
+    kabStats[kab].rata.push(...s.rata);
+    kabStats[kab].p.push(...s.p);
+    kabStats[kab].l.push(...s.l);
+    kabStats[kab].a.push(...s.a);
+  });
+
+  const kabRows = Object.entries(kabStats)
+    .map(([kab,s]) => ({kab, ...s, avgRata:avg(s.rata), avgP:avg(s.p), avgL:avg(s.l), avgA:avg(s.a)}))
+    .sort((a,b) => b.avgRata - a.avgRata);
+
+  // Statistik per tingkat
+  const tktStats = {};
+  ['MI','MTs','MA'].forEach(tkt => {
+    const mads = filtered.filter(m=>m.tingkat===tkt);
+    const allR=mads.flatMap(m=>(stats[m.id]||{rata:[]}).rata);
+    const allP=mads.flatMap(m=>(stats[m.id]||{p:[]}).p);
+    const allL=mads.flatMap(m=>(stats[m.id]||{l:[]}).l);
+    const allA=mads.flatMap(m=>(stats[m.id]||{a:[]}).a);
+    tktStats[tkt] = {
+      total:mads.length, sup:mads.reduce((s,m)=>s+(stats[m.id]||{selesai:0}).selesai,0),
+      rata:avg(allR), p:avg(allP), l:avg(allL), a:avg(allA),
+      len:allR.length,
+    };
+  });
+
+  // Distribusi predikat semua madrasah
+  const distrib = {SB:0,B:0,C:0,K:0,NA:0};
+  filtered.forEach(m => {
+    const s = stats[m.id]||{rata:[]};
+    if (!s.rata.length) { distrib.NA++; return; }
+    const r = avg(s.rata);
+    if (r>=87.5) distrib.SB++;
+    else if (r>=75) distrib.B++;
+    else if (r>=62.5) distrib.C++;
+    else distrib.K++;
+  });
+
+  const totalSupAll = filtered.reduce((s,m)=>s+(stats[m.id]||{selesai:0}).selesai,0);
+  const allRataAll  = filtered.flatMap(m=>(stats[m.id]||{rata:[]}).rata);
+
+  return (
+    <div>
+      <div style={{fontWeight:900,color:'var(--p3)',marginBottom:4}}>🔬 Analitik Mendalam</div>
+      <div style={{fontSize:'.75rem',color:'var(--text3)',marginBottom:14}}>
+        {filterSmt||'Semua semester'} · {filterTA||'Semua T.A.'}
+        {(filterKab2||filterTkt2) && ` · Filter aktif`}
+      </div>
+
+      {/* Filter tambahan */}
+      <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
+        <select value={filterKab2} onChange={e=>setFilterKab2(e.target.value)}
+          style={{padding:'5px 10px',borderRadius:8,border:'1.5px solid var(--border)',
+            fontSize:'.78rem',fontFamily:'inherit',outline:'none'}}>
+          <option value="">— Semua Kab/Kota —</option>
+          {kabList.map(k=><option key={k}>{k}</option>)}
+        </select>
+        <select value={filterTkt2} onChange={e=>setFilterTkt2(e.target.value)}
+          style={{padding:'5px 10px',borderRadius:8,border:'1.5px solid var(--border)',
+            fontSize:'.78rem',fontFamily:'inherit',outline:'none'}}>
+          <option value="">— Semua Tingkat —</option>
+          {['MI','MTs','MA'].map(t=><option key={t}>{t}</option>)}
+        </select>
+        {(filterKab2||filterTkt2) && (
+          <button className="btn btn-outline btn-sm" onClick={()=>{setFilterKab2('');setFilterTkt2('');}}>✕ Reset</button>
+        )}
+      </div>
+
+      {/* Distribusi predikat */}
+      <div className="card" style={{marginBottom:14}}>
+        <div style={{fontWeight:800,color:'var(--p3)',marginBottom:12}}>
+          🏆 Distribusi Predikat Madrasah
+          <span style={{fontSize:'.75rem',fontWeight:400,color:'var(--text3)',marginLeft:8}}>
+            Total: {filtered.length} madrasah · {totalSupAll} supervisi
+          </span>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8}}>
+          {[
+            {label:'Sangat Baik',val:distrib.SB,color:'#16a34a',bg:'#d1fae5',min:'≥87.5%'},
+            {label:'Baik',       val:distrib.B, color:'#2563eb',bg:'#dbeafe',min:'≥75%'},
+            {label:'Cukup',      val:distrib.C, color:'#d97706',bg:'#fef3c7',min:'≥62.5%'},
+            {label:'Kurang',     val:distrib.K, color:'#dc2626',bg:'#fee2e2',min:'<62.5%'},
+            {label:'Belum Data', val:distrib.NA,color:'#9ca3af',bg:'#f3f4f6',min:'—'},
+          ].map((d,i)=>(
+            <div key={i} style={{textAlign:'center',padding:'12px 8px',borderRadius:10,
+              background:d.bg,border:'1.5px solid '+d.color+'33'}}>
+              <div style={{fontSize:'1.6rem',fontWeight:900,color:d.color}}>{d.val}</div>
+              <div style={{fontSize:'.68rem',fontWeight:700,color:d.color,marginTop:2}}>{d.label}</div>
+              <div style={{fontSize:'.62rem',color:'#9ca3af',marginTop:2}}>{d.min}</div>
+            </div>
+          ))}
+        </div>
+        {allRataAll.length > 0 && (
+          <div style={{marginTop:12,padding:'8px 12px',background:'var(--surface2)',borderRadius:8,
+            fontSize:'.8rem',display:'flex',gap:20,flexWrap:'wrap'}}>
+            <span>📊 Rata-rata Provinsi: <b style={{color:warna(avg(allRataAll))}}>{avg(allRataAll).toFixed(1)}%</b></span>
+            <span>📈 Tertinggi: <b style={{color:'#16a34a'}}>{Math.max(...allRataAll).toFixed(1)}%</b></span>
+            <span>📉 Terendah: <b style={{color:'#dc2626'}}>{Math.min(...allRataAll).toFixed(1)}%</b></span>
+          </div>
+        )}
+      </div>
+
+      {/* Per tingkat madrasah */}
+      <div className="card" style={{marginBottom:14}}>
+        <div style={{fontWeight:800,color:'var(--p3)',marginBottom:14}}>
+          🏫 Perbandingan Capaian per Tingkat
+        </div>
+        <div style={{overflowX:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.8rem',minWidth:560}}>
+            <thead>
+              <tr style={{background:'var(--p3)',color:'#fff'}}>
+                {['Tingkat','Madrasah','Supervisi','Perencanaan','Pelaksanaan','Asesmen','Rata-rata','Predikat'].map(h=>(
+                  <th key={h} style={{padding:'7px 10px',textAlign:h==='Tingkat'||h==='Predikat'?'left':'center',fontWeight:700}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {['MI','MTs','MA'].map(tkt => {
+                const s = tktStats[tkt];
+                const fmt = v => s.len>0 ? v.toFixed(1)+'%' : '—';
+                return (
+                  <tr key={tkt} style={{borderBottom:'1px solid var(--border)'}}>
+                    <td style={{padding:'8px 10px'}}>
+                      <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.75rem',fontWeight:700,
+                        background:tkt==='MA'?'#dbeafe':tkt==='MTs'?'#fef3c7':'#d1fae5',
+                        color:tkt==='MA'?'#1d4ed8':tkt==='MTs'?'#92400e':'#065f46'}}>
+                        {tkt}
+                      </span>
+                    </td>
+                    <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700}}>{s.total}</td>
+                    <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700}}>{s.sup}</td>
+                    {[s.p,s.l,s.a].map((v,vi)=>(
+                      <td key={vi} style={{padding:'8px 10px',textAlign:'center',
+                        fontWeight:s.len>0?700:400,color:s.len>0?warna(v):'#9ca3af'}}>
+                        {fmt(v)}
+                      </td>
+                    ))}
+                    <td style={{padding:'8px 10px',textAlign:'center',
+                      fontWeight:s.len>0?900:400,fontSize:s.len>0?'1rem':'.8rem',
+                      color:s.len>0?warna(s.rata):'#9ca3af'}}>
+                      {s.len>0?s.rata.toFixed(1)+'%':'—'}
+                    </td>
+                    <td style={{padding:'8px 10px'}}>
+                      {s.len>0 && (
+                        <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
+                          background:s.rata>=87.5?'#d1fae5':s.rata>=75?'#dbeafe':s.rata>=62.5?'#fef3c7':'#fee2e2',
+                          color:s.rata>=87.5?'#065f46':s.rata>=75?'#1d4ed8':s.rata>=62.5?'#92400e':'#991b1b'}}>
+                          {pred(s.rata)}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Per Kab/Kota */}
+      {kabRows.length > 0 && (
+        <div className="card">
+          <div style={{fontWeight:800,color:'var(--p3)',marginBottom:14}}>
+            🗺️ Peringkat Capaian per Kabupaten/Kota
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {kabRows.map((k,i) => (
+              <div key={k.kab}>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                  <span style={{fontSize:'.82rem',fontWeight:700}}>
+                    <span style={{color:'var(--text3)',marginRight:6,fontWeight:400}}>{i+1}.</span>
+                    {k.kab}
+                    <span style={{fontSize:'.7rem',fontWeight:400,color:'var(--text3)',marginLeft:8}}>
+                      {k.madrasah} madrasah · {k.supervisi} supervisi
+                    </span>
+                  </span>
+                  <span style={{fontWeight:900,fontSize:'.9rem',color:k.rata.length?warna(k.avgRata):'#9ca3af'}}>
+                    {k.rata.length?k.avgRata.toFixed(1)+'%':'—'}
+                  </span>
+                </div>
+                {k.rata.length > 0 ? (
+                  <div>
+                    <div style={{background:'#f0f0f0',borderRadius:8,height:20,overflow:'hidden'}}>
+                      <div style={{width:k.avgRata+'%',height:'100%',background:warna(k.avgRata),
+                        borderRadius:8,display:'flex',alignItems:'center',paddingLeft:8}}>
+                        {k.avgRata >= 20 && (
+                          <span style={{fontSize:'.68rem',color:'#fff',fontWeight:700}}>{k.avgRata.toFixed(1)}%</span>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{display:'flex',gap:14,marginTop:4,fontSize:'.7rem',color:'var(--text3)'}}>
+                      <span style={{color:'#16a34a'}}>P: {k.avgP.toFixed(1)}%</span>
+                      <span style={{color:'#2563eb'}}>L: {k.avgL.toFixed(1)}%</span>
+                      <span style={{color:'#d97706'}}>A: {k.avgA.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{background:'#f0f0f0',borderRadius:8,height:20,display:'flex',
+                    alignItems:'center',paddingLeft:10,fontSize:'.7rem',color:'#9ca3af'}}>
+                    Belum ada data supervisi
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── TAB TINDAK LANJUT KANWIL ─────────────────────────────────
+function TabTindakLanjutKanwil({madrasahList, showToast}) {
+  const [catatan, setCatatan]         = React.useState({});   // {madrasahId: teks}
+  const [prioritas, setPrioritas]     = React.useState({});   // {madrasahId: 'rendah'|'sedang'|'tinggi'}
+  const [status, setStatus]           = React.useState({});   // {madrasahId: 'belum'|'proses'|'selesai'}
+  const [saving, setSaving]           = React.useState(null); // madrasahId yg sedang disimpan
+  const [loading, setLoading]         = React.useState(true);
+  const [filterStatus, setFilterStatus] = React.useState('');
+  const [editId, setEditId]           = React.useState(null);
+
+  React.useEffect(() => { loadData(); }, []);
+
+  async function loadData() {
+    setLoading(true);
+    const {data} = await sb.from('supermad_madrasah')
+      .select('id,tl_kanwil').eq('aktif',true);
+    const newCat={}, newPri={}, newStat={};
+    (data||[]).forEach(m => {
+      if (m.tl_kanwil) {
+        newCat[m.id]  = m.tl_kanwil.catatan||'';
+        newPri[m.id]  = m.tl_kanwil.prioritas||'sedang';
+        newStat[m.id] = m.tl_kanwil.status||'belum';
+      }
+    });
+    setCatatan(newCat); setPrioritas(newPri); setStatus(newStat);
+    setLoading(false);
+  }
+
+  async function simpan(madId) {
+    setSaving(madId);
+    const payload = {
+      catatan:   catatan[madId]||'',
+      prioritas: prioritas[madId]||'sedang',
+      status:    status[madId]||'belum',
+      updated_at: new Date().toISOString(),
+    };
+    const {error} = await sb.from('supermad_madrasah')
+      .update({tl_kanwil: payload}).eq('id', madId);
+    setSaving(null);
+    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    showToast('✅ Tindak lanjut tersimpan!');
+    setEditId(null);
+  }
+
+  if (loading) return <div style={{textAlign:'center',padding:32,color:'var(--text3)'}}>⏳ Memuat...</div>;
+
+  const filteredMad = madrasahList.filter(m => {
+    if (!filterStatus) return true;
+    return (status[m.id]||'belum') === filterStatus;
+  });
+
+  const priColor = {rendah:'#16a34a',sedang:'#d97706',tinggi:'#dc2626'};
+  const priBg    = {rendah:'#d1fae5',sedang:'#fef3c7',tinggi:'#fee2e2'};
+  const priLabel = {rendah:'🟢 Rendah',sedang:'🟡 Sedang',tinggi:'🔴 Tinggi'};
+  const statColor = {belum:'#dc2626',proses:'#d97706',selesai:'#16a34a'};
+  const statBg    = {belum:'#fee2e2',proses:'#fef3c7',selesai:'#d1fae5'};
+  const statLabel = {belum:'⏳ Belum',proses:'🔄 Dalam Proses',selesai:'✅ Selesai'};
+
+  const countSelesai = madrasahList.filter(m=>(status[m.id]||'belum')==='selesai').length;
+  const countProses  = madrasahList.filter(m=>(status[m.id]||'belum')==='proses').length;
+  const countBelum   = madrasahList.filter(m=>(status[m.id]||'belum')==='belum').length;
+
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:8}}>
+        <div>
+          <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1rem'}}>✍️ Tindak Lanjut Kanwil per Madrasah</div>
+          <div style={{fontSize:'.75rem',color:'var(--text3)',marginTop:2}}>
+            Catat hasil pembinaan lanjutan kanwil untuk setiap madrasah
+          </div>
+        </div>
+      </div>
+
+      {/* Ringkasan status */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
+        {[
+          {label:'Selesai',val:countSelesai,color:'#16a34a',bg:'#d1fae5'},
+          {label:'Dalam Proses',val:countProses,color:'#d97706',bg:'#fef3c7'},
+          {label:'Belum',val:countBelum,color:'#dc2626',bg:'#fee2e2'},
+        ].map((s,i)=>(
+          <div key={i} style={{textAlign:'center',padding:'12px 8px',borderRadius:10,
+            background:s.bg,border:'1.5px solid '+s.color+'33',cursor:'pointer'}
+            }
+            onClick={()=>setFilterStatus(filterStatus===Object.keys(statLabel)[i]?'':Object.keys(statLabel)[i])}>
+            <div style={{fontSize:'1.5rem',fontWeight:900,color:s.color}}>{s.val}</div>
+            <div style={{fontSize:'.72rem',fontWeight:700,color:s.color}}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filter */}
+      <div style={{display:'flex',gap:8,marginBottom:14,alignItems:'center'}}>
+        <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}
+          style={{padding:'6px 10px',borderRadius:8,border:'1.5px solid var(--border)',
+            fontSize:'.8rem',fontFamily:'inherit',outline:'none'}}>
+          <option value="">— Semua Status —</option>
+          <option value="belum">⏳ Belum</option>
+          <option value="proses">🔄 Dalam Proses</option>
+          <option value="selesai">✅ Selesai</option>
+        </select>
+        <span style={{fontSize:'.75rem',color:'var(--text3)'}}>
+          {filteredMad.length} madrasah
+        </span>
+      </div>
+
+      {/* Daftar madrasah */}
+      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+        {filteredMad.map(m => {
+          const isEdit = editId === m.id;
+          const st = status[m.id]||'belum';
+          const pri = prioritas[m.id]||'sedang';
+          const cat = catatan[m.id]||'';
+          return (
+            <div key={m.id} className="card" style={{borderLeft:'3px solid '+statColor[st]}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,flexWrap:'wrap'}}>
+                <div style={{flex:1,minWidth:200}}>
+                  <div style={{fontWeight:700,fontSize:'.88rem'}}>{m.nama}</div>
+                  <div style={{fontSize:'.72rem',color:'var(--text3)',marginTop:2}}>
+                    {m.tingkat} · {m.kota_kab||'—'} · {m.npsn||'—'}
+                  </div>
+                  {cat && !isEdit && (
+                    <div style={{marginTop:6,fontSize:'.8rem',color:'var(--text2)',
+                      padding:'6px 10px',background:'var(--surface2)',borderRadius:7,lineHeight:1.5}}>
+                      {cat}
+                    </div>
+                  )}
+                  {!cat && !isEdit && (
+                    <div style={{marginTop:6,fontSize:'.75rem',color:'#9ca3af',fontStyle:'italic'}}>
+                      Belum ada catatan tindak lanjut
+                    </div>
+                  )}
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end',flexShrink:0}}>
+                  <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
+                    background:statBg[st],color:statColor[st]}}>
+                    {statLabel[st]}
+                  </span>
+                  <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
+                    background:priBg[pri],color:priColor[pri]}}>
+                    {priLabel[pri]}
+                  </span>
+                  <button onClick={()=>setEditId(isEdit?null:m.id)}
+                    className="btn btn-outline btn-sm"
+                    style={{fontSize:'.72rem',padding:'4px 10px',
+                      color:isEdit?'#dc2626':'var(--p)',borderColor:isEdit?'#dc2626':'var(--p)'}}>
+                    {isEdit?'✕ Batal':'✏️ Edit'}
+                  </button>
+                </div>
+              </div>
+
+              {isEdit && (
+                <div style={{marginTop:12,paddingTop:12,borderTop:'1px solid var(--border)'}}>
+                  <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap'}}>
+                    <div className="form-group" style={{flex:1,minWidth:140,margin:0}}>
+                      <label style={{fontSize:'.75rem'}}>Status Tindak Lanjut</label>
+                      <select value={status[m.id]||'belum'} onChange={e=>setStatus({...status,[m.id]:e.target.value})}
+                        style={{padding:'6px 10px',borderRadius:8,border:'1.5px solid var(--border)',
+                          fontSize:'.8rem',fontFamily:'inherit',outline:'none',width:'100%'}}>
+                        <option value="belum">⏳ Belum</option>
+                        <option value="proses">🔄 Dalam Proses</option>
+                        <option value="selesai">✅ Selesai</option>
+                      </select>
+                    </div>
+                    <div className="form-group" style={{flex:1,minWidth:140,margin:0}}>
+                      <label style={{fontSize:'.75rem'}}>Prioritas</label>
+                      <select value={prioritas[m.id]||'sedang'} onChange={e=>setPrioritas({...prioritas,[m.id]:e.target.value})}
+                        style={{padding:'6px 10px',borderRadius:8,border:'1.5px solid var(--border)',
+                          fontSize:'.8rem',fontFamily:'inherit',outline:'none',width:'100%'}}>
+                        <option value="rendah">🟢 Rendah</option>
+                        <option value="sedang">🟡 Sedang</option>
+                        <option value="tinggi">🔴 Tinggi</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="form-group" style={{margin:0}}>
+                    <label style={{fontSize:'.75rem'}}>Catatan Pembinaan / Tindak Lanjut</label>
+                    <textarea rows={4}
+                      value={catatan[m.id]||''}
+                      onChange={e=>setCatatan({...catatan,[m.id]:e.target.value})}
+                      placeholder="Tuliskan catatan kunjungan, pembinaan, atau rencana tindak lanjut kanwil untuk madrasah ini..."
+                      style={{width:'100%',padding:'8px 10px',border:'1.5px solid var(--border)',
+                        borderRadius:8,fontSize:'.8rem',fontFamily:'inherit',resize:'vertical',outline:'none'}}/>
+                  </div>
+                  <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}>
+                    <button onClick={()=>simpan(m.id)} className="btn btn-primary"
+                      disabled={saving===m.id} style={{fontSize:'.8rem'}}>
+                      {saving===m.id?'⏳ Menyimpan...':'💾 Simpan'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── E-PORTOFOLIO GURU ─────────────────────────────────────────
+function TabPortofolio({sesi, showToast}) {
+  const KATEGORI = ['Sertifikat Pelatihan','Workshop/Seminar','PTK / Karya Ilmiah','Media/Perangkat Ajar','Penghargaan','Lainnya'];
+
+  const [items, setItems]       = React.useState([]);
+  const [loading, setLoading]   = React.useState(true);
+  const [showForm, setShowForm] = React.useState(false);
+  const [saving, setSaving]     = React.useState(false);
+  const [form, setForm]         = React.useState({
+    judul:'', kategori:'Sertifikat Pelatihan', deskripsi:'', tanggal:'',
+    penyelenggara:'', link_bukti:'',
+  });
+  const [filterKat, setFilterKat] = React.useState('');
+  const [editId, setEditId]       = React.useState(null);
+
+  React.useEffect(() => { loadData(); }, []);
+
+  async function loadData() {
+    setLoading(true);
+    const guruId = sesi.pengguna.id;
+    const {data} = await sb.from('supermad_portofolio')
+      .select('*').eq('guru_id', guruId)
+      .order('tanggal',{ascending:false});
+    setItems(data||[]);
+    setLoading(false);
+  }
+
+  async function simpan(e) {
+    e.preventDefault();
+    setSaving(true);
+    const guruId = sesi.pengguna.id;
+    const payload = {...form, guru_id:guruId, madrasah_id:sesi.mad.id};
+    let error;
+    if (editId) {
+      ({error} = await sb.from('supermad_portofolio').update(payload).eq('id', editId));
+    } else {
+      ({error} = await sb.from('supermad_portofolio').insert(payload));
+    }
+    setSaving(false);
+    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    showToast(editId?'✅ Portofolio diperbarui!':'✅ Portofolio ditambahkan!');
+    setShowForm(false);
+    setEditId(null);
+    setForm({judul:'',kategori:'Sertifikat Pelatihan',deskripsi:'',tanggal:'',penyelenggara:'',link_bukti:''});
+    loadData();
+  }
+
+  async function hapus(id) {
+    if (!confirm('Hapus item portofolio ini?')) return;
+    const {error} = await sb.from('supermad_portofolio').delete().eq('id',id);
+    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    showToast('Portofolio dihapus.');
+    loadData();
+  }
+
+  function startEdit(item) {
+    setForm({
+      judul:item.judul||'',
+      kategori:item.kategori||'Sertifikat Pelatihan',
+      deskripsi:item.deskripsi||'',
+      tanggal:item.tanggal||'',
+      penyelenggara:item.penyelenggara||'',
+      link_bukti:item.link_bukti||'',
+    });
+    setEditId(item.id);
+    setShowForm(true);
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  if (loading) return <div style={{textAlign:'center',padding:32,color:'var(--text3)'}}>⏳ Memuat portofolio...</div>;
+
+  const filtered = filterKat ? items.filter(i=>i.kategori===filterKat) : items;
+
+  const katColor = {
+    'Sertifikat Pelatihan':'#2563eb','Workshop/Seminar':'#7c3aed',
+    'PTK / Karya Ilmiah':'#16a34a','Media/Perangkat Ajar':'#d97706',
+    'Penghargaan':'#dc2626','Lainnya':'#6b7280',
+  };
+  const katBg = {
+    'Sertifikat Pelatihan':'#dbeafe','Workshop/Seminar':'#ede9fe',
+    'PTK / Karya Ilmiah':'#d1fae5','Media/Perangkat Ajar':'#fef3c7',
+    'Penghargaan':'#fee2e2','Lainnya':'#f3f4f6',
+  };
+
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:8}}>
+        <div>
+          <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1rem'}}>🗂️ e-Portofolio PKB Saya</div>
+          <div style={{fontSize:'.75rem',color:'var(--text3)',marginTop:2}}>
+            Kumpulkan bukti Pengembangan Keprofesian Berkelanjutan (PKB)
+          </div>
+        </div>
+        <button className="btn btn-primary btn-sm"
+          onClick={()=>{setShowForm(!showForm);setEditId(null);
+            setForm({judul:'',kategori:'Sertifikat Pelatihan',deskripsi:'',tanggal:'',penyelenggara:'',link_bukti:''});
+          }}>
+          {showForm&&!editId?'✕ Batal':'＋ Tambah'}
+        </button>
+      </div>
+
+      {/* Form tambah/edit */}
+      {showForm && (
+        <div className="card" style={{marginBottom:14,background:'#f8fffe',border:'1.5px solid var(--p)'}}>
+          <div style={{fontWeight:800,color:'var(--p3)',marginBottom:12}}>
+            {editId?'✏️ Edit Portofolio':'＋ Tambah Portofolio PKB'}
+          </div>
+          <form onSubmit={simpan}>
+            <div className="grid2">
+              <div className="form-group" style={{gridColumn:'1/-1'}}>
+                <label>Judul Kegiatan / Karya *</label>
+                <input value={form.judul} onChange={e=>setForm({...form,judul:e.target.value})}
+                  placeholder="Contoh: Pelatihan Implementasi KMA 1503/2025" required/>
+              </div>
+              <div className="form-group">
+                <label>Kategori *</label>
+                <select value={form.kategori} onChange={e=>setForm({...form,kategori:e.target.value})}>
+                  {KATEGORI.map(k=><option key={k}>{k}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Tanggal</label>
+                <input type="date" value={form.tanggal} onChange={e=>setForm({...form,tanggal:e.target.value})}/>
+              </div>
+              <div className="form-group">
+                <label>Penyelenggara</label>
+                <input value={form.penyelenggara} onChange={e=>setForm({...form,penyelenggara:e.target.value})}
+                  placeholder="Contoh: Kanwil Kemenag Aceh"/>
+              </div>
+              <div className="form-group">
+                <label>Link Bukti (URL)</label>
+                <input value={form.link_bukti} onChange={e=>setForm({...form,link_bukti:e.target.value})}
+                  type="url" placeholder="https://drive.google.com/..."/>
+              </div>
+              <div className="form-group" style={{gridColumn:'1/-1'}}>
+                <label>Deskripsi Singkat</label>
+                <textarea rows={3} value={form.deskripsi} onChange={e=>setForm({...form,deskripsi:e.target.value})}
+                  placeholder="Tuliskan ringkasan kegiatan, dampak, atau kompetensi yang dikembangkan..."
+                  style={{width:'100%',padding:'8px 10px',border:'1.5px solid var(--border)',
+                    borderRadius:8,fontSize:'.82rem',fontFamily:'inherit',resize:'vertical',outline:'none'}}/>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:8,marginTop:4}}>
+              <button className="btn btn-primary" type="submit" disabled={saving}>
+                {saving?'⏳ Menyimpan...':editId?'💾 Perbarui':'💾 Simpan'}
+              </button>
+              <button type="button" className="btn btn-outline" onClick={()=>{setShowForm(false);setEditId(null);}}>
+                Batal
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Statistik */}
+      {items.length > 0 && (
+        <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
+          {KATEGORI.map(k => {
+            const n = items.filter(i=>i.kategori===k).length;
+            if (!n) return null;
+            return (
+              <button key={k} onClick={()=>setFilterKat(filterKat===k?'':k)}
+                style={{padding:'5px 12px',borderRadius:20,border:'1.5px solid '+(filterKat===k?katColor[k]:'var(--border)'),
+                  background:filterKat===k?katBg[k]:'#fff',color:filterKat===k?katColor[k]:'var(--text2)',
+                  cursor:'pointer',fontSize:'.75rem',fontWeight:700,fontFamily:'inherit'}}>
+                {k} ({n})
+              </button>
+            );
+          })}
+          {filterKat && (
+            <button onClick={()=>setFilterKat('')}
+              style={{padding:'5px 10px',borderRadius:20,border:'1.5px solid var(--border)',
+                background:'#f3f4f6',color:'var(--text2)',cursor:'pointer',
+                fontSize:'.75rem',fontFamily:'inherit'}}>
+              ✕ Semua
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Daftar item */}
+      {filtered.length === 0 ? (
+        <div className="card" style={{textAlign:'center',padding:32,color:'var(--text3)'}}>
+          {items.length===0?'Belum ada portofolio. Klik "＋ Tambah" untuk mulai.':'Tidak ada item untuk kategori ini.'}
+        </div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {filtered.map(item => (
+            <div key={item.id} className="card"
+              style={{borderLeft:'3px solid '+(katColor[item.kategori]||'#6b7280')}}>
+              <div style={{display:'flex',justifyContent:'space-between',gap:10,flexWrap:'wrap'}}>
+                <div style={{flex:1,minWidth:200}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:4}}>
+                    <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.68rem',fontWeight:700,
+                      background:katBg[item.kategori]||'#f3f4f6',
+                      color:katColor[item.kategori]||'#6b7280'}}>
+                      {item.kategori}
+                    </span>
+                    {item.tanggal && (
+                      <span style={{fontSize:'.72rem',color:'var(--text3)'}}>
+                        📅 {new Date(item.tanggal).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'})}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{fontWeight:700,fontSize:'.88rem',marginBottom:2}}>{item.judul}</div>
+                  {item.penyelenggara && (
+                    <div style={{fontSize:'.75rem',color:'var(--text2)'}}>🏢 {item.penyelenggara}</div>
+                  )}
+                  {item.deskripsi && (
+                    <div style={{fontSize:'.78rem',color:'var(--text2)',marginTop:4,lineHeight:1.5}}>
+                      {item.deskripsi}
+                    </div>
+                  )}
+                  {item.link_bukti && (
+                    <a href={item.link_bukti} target="_blank" rel="noopener noreferrer"
+                      style={{display:'inline-flex',alignItems:'center',gap:4,marginTop:6,
+                        fontSize:'.75rem',color:'var(--p)',textDecoration:'none',fontWeight:600}}>
+                      🔗 Lihat Bukti
+                    </a>
+                  )}
+                </div>
+                <div style={{display:'flex',gap:6,flexShrink:0,alignItems:'flex-start'}}>
+                  <button onClick={()=>startEdit(item)}
+                    style={{padding:'5px 10px',borderRadius:7,border:'1px solid #d97706',
+                      background:'#fffbeb',color:'#92400e',cursor:'pointer',fontSize:'.75rem'}}>
+                    ✏️
+                  </button>
+                  <button onClick={()=>hapus(item.id)}
+                    style={{padding:'5px 10px',borderRadius:7,border:'1px solid #fca5a5',
+                      background:'#fef2f2',color:'#dc2626',cursor:'pointer',fontSize:'.75rem'}}>
+                    🗑️
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── TAB INSTRUMEN (EDITOR) ────────────────────────────────────
 function TabInstrumen({sesi, showToast}) {
