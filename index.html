@@ -1850,7 +1850,15 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
       try {
         const wb = XLSX.read(ev.target.result, {type:'array'});
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const raw = XLSX.utils.sheet_to_json(ws, {defval:''});
+        const rawOri = XLSX.utils.sheet_to_json(ws, {defval:''});
+        // normalisasi key: trim spasi & karakter invisible
+        const raw = rawOri.map(r => {
+          const clean = {};
+          Object.keys(r).forEach(k => {
+            clean[k.trim().replace(/[​-‍﻿]/g,'')] = r[k];
+          });
+          return clean;
+        });
         const errors = [];
         const rows = [];
         const npsnSudahAda = new Set(madrasahList.map(m=>String(m.npsn).trim()));
