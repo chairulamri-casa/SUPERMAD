@@ -1881,8 +1881,8 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
           const kota  = String(
             r['Kabupaten']||r['kabupaten']||r['kota_kab']||r['Kab/Kota']||r['kota']||r['Kabupaten/Kota']||''
           ).trim();
-          const kec   = String(r['Kecamatan']||r['kecamatan']||'').trim();
-          const alamat= String(r['Alamat']||r['alamat']||'').trim();
+          const kec   = String(r['Kecamatan']||r['kecamatan']||r['KECAMATAN']||r['Kec']||r['kec']||r['KEC']||r['Kecamatan/Kelurahan']||r['Kecamatan / Kelurahan']||'').trim();
+          const alamat= String(r['Alamat']||r['alamat']||r['ALAMAT']||r['Alamat Madrasah']||r['alamat_madrasah']||r['Alamat Lengkap']||'').trim();
           const status= String(r['Status']||r['status']||r['Naungan']||r['naungan']||'').trim();
           // Status EMIS: "Negeri"→Kemenag, "Swasta"→Swasta
           const naungan = status.toLowerCase().includes('swasta') ? 'Swasta' : 'Kemenag';
