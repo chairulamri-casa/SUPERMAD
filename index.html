@@ -1740,7 +1740,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
     const {error} = await sb.from('supermad_madrasah').update({
       nama:      formEdit.nama,
       npsn:      formEdit.npsn,
-      jenjang:   formEdit.jenjang,
+      tingkat:   formEdit.jenjang||formEdit.tingkat,
       kota_kab:  formEdit.kota_kab,
       provinsi:  formEdit.provinsi,
       alamat:    formEdit.alamat,
@@ -1934,7 +1934,6 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
         npsn:        r.npsn,
         nsm:         r.nsm||null,
         tingkat:     r.jenjang,
-        jenjang:     r.jenjang,
         kota_kab:    r.kota_kab,
         kecamatan:   r.kecamatan||null,
         provinsi:    'Aceh',
