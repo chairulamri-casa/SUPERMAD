@@ -1981,7 +1981,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
     const {error} = await sb.from('supermad_reg_token').insert({
       token, madrasah_id: m.id, dipakai: false
     });
-    if (error) { showToast('Gagal buat token: '+error.message,'error'); return; }
+    if (error) { alert('Error token: '+JSON.stringify(error)); showToast('Gagal buat token: '+error.message,'error'); return; }
     setTokenMad({mad:m, token});
   }
 
