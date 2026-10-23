@@ -1851,8 +1851,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
         const wb = XLSX.read(ev.target.result, {type:'array'});
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rawOri = XLSX.utils.sheet_to_json(ws, {defval:''});
-        if(rawOri.length>0) console.log('🔑 KEYS dari Excel:', JSON.stringify(Object.keys(rawOri[0])));
-        if(rawOri.length>0) console.log('📄 Baris pertama:', JSON.stringify(rawOri[0]));
+
         // normalisasi key: trim spasi & karakter invisible
         const raw = rawOri.map(r => {
           const clean = {};
