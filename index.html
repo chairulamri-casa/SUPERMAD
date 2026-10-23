@@ -1450,6 +1450,9 @@ function DashboardKanwil({showToast}) {
   const [editMad, setEditMad]         = useState(null); // madrasah yang sedang diedit
   const [formEdit, setFormEdit]       = useState({});
   const [savingEdit, setSavingEdit]   = useState(false);
+  const [uploadPreview, setUploadPreview] = useState(null); // {rows:[], errors:[]} dari parsing Excel
+  const [uploading, setUploading]     = useState(false);
+  const [showUpload, setShowUpload]   = useState(false);
   const [rtlKanwil, setRtlKanwil]     = useState([]);
   const [loadingRTL, setLoadingRTL]   = useState(false);
   const [filterSmt, setFilterSmt]     = useState('');
@@ -1762,6 +1765,168 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
     if (error) { showToast('Gagal hapus: ' + error.message, 'error'); return; }
     showToast('Madrasah ' + m.nama + ' berhasil dihapus.');
     loadData();
+  }
+
+  // ── Template Excel untuk upload master madrasah ───────────────
+  function generateTemplate() {
+    if (typeof XLSX === 'undefined') {
+      showToast('Library Excel belum siap. Pastikan internet aktif.','warning'); return;
+    }
+    const headers = [
+      'nama_madrasah','npsn','jenjang','kota_kab',
+      'nama_kepala','nip_kepala','alamat','naungan','tahun_ajaran'
+    ];
+    const contoh = [
+      {
+        nama_madrasah:'MIN 1 Kota Banda Aceh',
+        npsn:'60703523',
+        jenjang:'MI',
+        kota_kab:'Kota Banda Aceh',
+        nama_kepala:'Drs. Ahmad Fauzi, M.Pd',
+        nip_kepala:'196901011998031001',
+        alamat:'Jl. Prof. Ali Hasymi No.1 Banda Aceh',
+        naungan:'Kemenag',
+        tahun_ajaran:'2025/2026'
+      },
+      {
+        nama_madrasah:'MTsN 1 Aceh Besar',
+        npsn:'60703101',
+        jenjang:'MTs',
+        kota_kab:'Aceh Besar',
+        nama_kepala:'Drs. Ibrahim, M.Ag',
+        nip_kepala:'197002151997031003',
+        alamat:'Jl. Banda Aceh - Medan Km. 20',
+        naungan:'Kemenag',
+        tahun_ajaran:'2025/2026'
+      }
+    ];
+    const wb = XLSX.utils.book_new();
+    // Sheet data
+    const ws = XLSX.utils.json_to_sheet(contoh, {header: headers});
+    ws['!cols'] = [
+      {wch:30},{wch:10},{wch:8},{wch:20},
+      {wch:25},{wch:20},{wch:35},{wch:10},{wch:12}
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'Data Madrasah');
+    // Sheet panduan
+    const panduan = [
+      ['PANDUAN PENGISIAN TEMPLATE UPLOAD MASTER MADRASAH SUPERMAD'],
+      [''],
+      ['KOLOM','KETERANGAN','CONTOH','WAJIB?'],
+      ['nama_madrasah','Nama lengkap madrasah sesuai dokumen resmi','MIN 1 Kota Banda Aceh','✅ Ya'],
+      ['npsn','Nomor Pokok Sekolah Nasional (8 digit)','60703523','✅ Ya'],
+      ['jenjang','Jenjang madrasah: MI, MTs, MA, atau MAK','MI','✅ Ya'],
+      ['kota_kab','Nama Kabupaten/Kota (sesuai standar BPS/EMIS)','Kota Banda Aceh','✅ Ya'],
+      ['nama_kepala','Nama Kepala Madrasah dengan gelar','Drs. Ahmad Fauzi, M.Pd','☑️ Anjuran'],
+      ['nip_kepala','NIP Kepala Madrasah (18 digit) atau kosong jika honorer','196901011998031001','☑️ Anjuran'],
+      ['alamat','Alamat lengkap madrasah','Jl. Imam Bonjol No.1','☑️ Anjuran'],
+      ['naungan','Status naungan: Kemenag atau Swasta','Kemenag','☑️ Anjuran'],
+      ['tahun_ajaran','Tahun ajaran aktif format YYYY/YYYY','2025/2026','☑️ Anjuran'],
+      [''],
+      ['CATATAN PENTING:'],
+      ['• Kode akses akan di-generate otomatis oleh sistem — tidak perlu diisi'],
+      ['• Jangan ubah nama kolom di baris pertama (header)'],
+      ['• NPSN harus unik — madrasah dengan NPSN sama akan dilewati'],
+      ['• Jenjang hanya boleh: MI, MTs, MA, MAK (huruf kapital)'],
+      ['• Hapus baris contoh sebelum mengisi data asli'],
+      ['• Simpan file dalam format .xlsx atau .xls'],
+    ];
+    const ws2 = XLSX.utils.aoa_to_sheet(panduan);
+    ws2['!cols'] = [{wch:20},{wch:45},{wch:25},{wch:10}];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Panduan');
+    XLSX.writeFile(wb, 'Template_Upload_Madrasah_SUPERMAD.xlsx');
+    showToast('📥 Template berhasil diunduh!');
+  }
+
+  // ── Proses upload file Excel madrasah ─────────────────────────
+  function handleUploadExcel(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (typeof XLSX === 'undefined') {
+      showToast('Library Excel belum siap.','warning'); return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, {type:'array'});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json(ws, {defval:''});
+        const errors = [];
+        const rows = [];
+        const npsnSudahAda = new Set(madrasahList.map(m=>String(m.npsn).trim()));
+        raw.forEach((r, idx) => {
+          const no = idx+2; // nomor baris di Excel (header = baris 1)
+          const nama  = String(r['nama_madrasah']||r['nama']||r['Nama Madrasah']||'').trim();
+          const npsn  = String(r['npsn']||r['NPSN']||'').trim();
+          const jenjang = String(r['jenjang']||r['Jenjang']||r['tingkat']||'').trim().toUpperCase();
+          const kota  = String(r['kota_kab']||r['Kab/Kota']||r['kota']||'').trim();
+          if (!nama && !npsn) return; // baris kosong
+          if (!nama)    errors.push(`Baris ${no}: nama_madrasah kosong`);
+          if (!npsn)    errors.push(`Baris ${no}: npsn kosong`);
+          if (npsn && !/^\d{8}$/.test(npsn)) errors.push(`Baris ${no}: NPSN harus 8 digit angka (${npsn})`);
+          if (!['MI','MTS','MA','MAK'].includes(jenjang))
+            errors.push(`Baris ${no}: jenjang tidak valid (${jenjang}) — gunakan MI/MTs/MA/MAK`);
+          if (npsn && npsnSudahAda.has(npsn)) errors.push(`Baris ${no}: NPSN ${npsn} (${nama}) sudah terdaftar, akan dilewati`);
+          rows.push({
+            nama, npsn, jenjang: jenjang==='MTS'?'MTs':jenjang,
+            kota_kab:  kota,
+            nama_kepala: String(r['nama_kepala']||r['Nama Kepala']||'').trim(),
+            nip_kepala:  String(r['nip_kepala'] ||r['NIP Kepala'] ||'').trim(),
+            alamat:      String(r['alamat']      ||r['Alamat']      ||'').trim(),
+            naungan:     String(r['naungan']     ||r['Naungan']     ||'Kemenag').trim()||'Kemenag',
+            tahun_ajaran:String(r['tahun_ajaran']||r['Tahun Ajaran']||'2025/2026').trim()||'2025/2026',
+            _valid: !errors.some(er=>er.startsWith(`Baris ${no}:`) && !er.includes('sudah terdaftar')),
+            _duplikat: !!(npsn && npsnSudahAda.has(npsn)),
+          });
+        });
+        setUploadPreview({rows, errors, fileName:file.name});
+      } catch(err) {
+        showToast('Gagal membaca file: '+err.message,'error');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = ''; // reset input agar bisa pilih file sama lagi
+  }
+
+  // Generate kode akses acak: jenjang + 6 angka acak, cth: mi482937
+  function buatKodeAkses(jenjang) {
+    const prefix = (jenjang||'mad').toLowerCase().replace(/[^a-z]/g,'');
+    const angka  = Math.floor(100000 + Math.random()*900000); // 6 digit
+    return prefix + angka;
+  }
+
+  async function prosesUploadMadrasah() {
+    if (!uploadPreview) return;
+    const valid = uploadPreview.rows.filter(r=>r._valid && !r._duplikat);
+    if (!valid.length) { showToast('Tidak ada data valid untuk diimport.','warning'); return; }
+    setUploading(true);
+    try {
+      const toInsert = valid.map(r=>({
+        nama:        r.nama,
+        npsn:        r.npsn,
+        tingkat:     r.jenjang,
+        jenjang:     r.jenjang,
+        kota_kab:    r.kota_kab,
+        provinsi:    'Aceh',
+        kode_akses:  buatKodeAkses(r.jenjang),
+        nama_kepala: r.nama_kepala||null,
+        nip_kepala:  r.nip_kepala||null,
+        alamat:      r.alamat||null,
+        naungan:     r.naungan,
+        tahun_ajaran:r.tahun_ajaran,
+        aktif:       true,
+      }));
+      const {error} = await sb.from('supermad_madrasah').insert(toInsert);
+      if (error) { showToast('Gagal import: '+error.message,'error'); return; }
+      showToast(`✅ ${valid.length} madrasah berhasil diimport!`,'success');
+      setUploadPreview(null);
+      setShowUpload(false);
+      loadData();
+    } catch(err) {
+      showToast('Error: '+err.message,'error');
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function generateToken(m) {
@@ -2318,14 +2483,146 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
       {/* TAB MADRASAH */}
       {tab==='madrasah' && (
         <div>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}}>
             <div style={{fontWeight:700,color:'var(--text2)',fontSize:'.85rem'}}>
               {madrasahList.length} madrasah terdaftar
             </div>
-            <button className="btn btn-primary btn-sm" onClick={()=>setShowFormMad(!showFormMad)}>
-              {showFormMad?'✕ Batal':'+ Tambah Madrasah'}
-            </button>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              <button className="btn btn-outline btn-sm" onClick={generateTemplate}
+                style={{borderColor:'#7c3aed',color:'#7c3aed'}}>
+                📋 Unduh Template
+              </button>
+              <button className="btn btn-outline btn-sm" onClick={()=>{setShowUpload(!showUpload);setUploadPreview(null);setShowFormMad(false);}}
+                style={{borderColor:'#0891b2',color:'#0891b2'}}>
+                {showUpload?'✕ Tutup Upload':'📤 Upload Excel'}
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={()=>{setShowFormMad(!showFormMad);setShowUpload(false);}}>
+                {showFormMad?'✕ Batal':'+ Tambah Madrasah'}
+              </button>
+            </div>
           </div>
+
+          {/* PANEL UPLOAD EXCEL */}
+          {showUpload && (
+            <div className="card" style={{marginBottom:14,border:'2px solid #0891b2',background:'#f0f9ff'}}>
+              <div style={{fontWeight:800,color:'#0e7490',marginBottom:10,fontSize:'.9rem'}}>
+                📤 Upload Master Madrasah dari Excel
+              </div>
+              {!uploadPreview ? (
+                <div>
+                  <div style={{background:'#fff',border:'2px dashed #7dd3fc',borderRadius:10,
+                    padding:'24px',textAlign:'center',marginBottom:12}}>
+                    <div style={{fontSize:'2rem',marginBottom:8}}>📁</div>
+                    <div style={{fontSize:'.85rem',color:'var(--text2)',marginBottom:12}}>
+                      Pilih file Excel (.xlsx / .xls) berisi daftar madrasah.<br/>
+                      <span style={{fontSize:'.76rem',color:'var(--text3)'}}>Unduh template terlebih dahulu jika belum punya format yang benar.</span>
+                    </div>
+                    <label style={{display:'inline-block',cursor:'pointer',padding:'8px 20px',
+                      background:'#0891b2',color:'#fff',borderRadius:8,fontWeight:700,fontSize:'.82rem'}}>
+                      📂 Pilih File Excel
+                      <input type="file" accept=".xlsx,.xls" onChange={handleUploadExcel}
+                        style={{display:'none'}}/>
+                    </label>
+                  </div>
+                  <div style={{fontSize:'.74rem',color:'#0e7490',background:'#cffafe',
+                    borderRadius:8,padding:'8px 12px'}}>
+                    💡 <b>Kolom wajib:</b> nama_madrasah, npsn, jenjang, kota_kab<br/>
+                    <b>Kolom opsional:</b> nama_kepala, nip_kepala, alamat, naungan, tahun_ajaran<br/>
+                    <span style={{color:'#7c3aed'}}>🎲 Kode akses di-generate otomatis oleh sistem</span>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  {/* Ringkasan parse */}
+                  <div style={{display:'flex',gap:10,marginBottom:12,flexWrap:'wrap'}}>
+                    {[
+                      {label:'Total Baris',val:uploadPreview.rows.length,color:'#0891b2'},
+                      {label:'Siap Import',val:uploadPreview.rows.filter(r=>r._valid&&!r._duplikat).length,color:'#16a34a'},
+                      {label:'Sudah Ada (lewati)',val:uploadPreview.rows.filter(r=>r._duplikat).length,color:'#d97706'},
+                      {label:'Error',val:uploadPreview.errors.filter(e=>!e.includes('sudah terdaftar')).length,color:'#dc2626'},
+                    ].map((k,i)=>(
+                      <div key={i} style={{background:'#fff',border:'1.5px solid #e0f2fe',
+                        borderRadius:8,padding:'8px 14px',textAlign:'center',minWidth:100}}>
+                        <div style={{fontWeight:900,fontSize:'1.2rem',color:k.color}}>{k.val}</div>
+                        <div style={{fontSize:'.68rem',color:'var(--text2)'}}>{k.label}</div>
+                      </div>
+                    ))}
+                    <div style={{flex:1,background:'#fff',border:'1px solid #e0f2fe',
+                      borderRadius:8,padding:'8px 14px',fontSize:'.75rem',color:'var(--text2)',
+                      display:'flex',alignItems:'center'}}>
+                      📄 {uploadPreview.fileName}
+                    </div>
+                  </div>
+
+                  {/* Error list */}
+                  {uploadPreview.errors.filter(e=>!e.includes('sudah terdaftar')).length > 0 && (
+                    <div style={{background:'#fef2f2',border:'1px solid #fca5a5',borderRadius:8,
+                      padding:'10px 14px',marginBottom:12,fontSize:'.76rem',color:'#991b1b'}}>
+                      <b>⚠️ Peringatan / Error:</b>
+                      <ul style={{marginTop:6,paddingLeft:16}}>
+                        {uploadPreview.errors.filter(e=>!e.includes('sudah terdaftar')).map((er,i)=>(
+                          <li key={i}>{er}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Preview tabel */}
+                  <div style={{overflowX:'auto',marginBottom:12}}>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.75rem',minWidth:600}}>
+                      <thead>
+                        <tr style={{background:'#0e7490',color:'#fff'}}>
+                          {['Status','Nama Madrasah','NPSN','Jenjang','Kab/Kota','Kode Akses','Kepala'].map(h=>(
+                            <th key={h} style={{padding:'6px 8px',textAlign:'left',whiteSpace:'nowrap'}}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {uploadPreview.rows.map((r,i)=>{
+                          const status = r._duplikat ? '🔄 Lewati' : r._valid ? '✅ Import' : '❌ Error';
+                          const bg = r._duplikat ? '#fffbeb' : r._valid ? '#f0fdf4' : '#fef2f2';
+                          return (
+                            <tr key={i} style={{borderBottom:'1px solid #e0f2fe',background:bg}}>
+                              <td style={{padding:'5px 8px',fontWeight:700,whiteSpace:'nowrap',
+                                color:r._duplikat?'#d97706':r._valid?'#16a34a':'#dc2626'}}>
+                                {status}
+                              </td>
+                              <td style={{padding:'5px 8px'}}>{r.nama||'—'}</td>
+                              <td style={{padding:'5px 8px',fontFamily:'monospace'}}>{r.npsn||'—'}</td>
+                              <td style={{padding:'5px 8px'}}>{r.jenjang||'—'}</td>
+                              <td style={{padding:'5px 8px'}}>{r.kota_kab||'—'}</td>
+                              <td style={{padding:'5px 8px',fontFamily:'monospace',color:'#7c3aed',fontSize:'.7rem'}}>
+                                {r._valid&&!r._duplikat ? '🎲 auto' : '—'}
+                              </td>
+                              <td style={{padding:'5px 8px'}}>{r.nama_kepala||'—'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                    <button className="btn btn-primary" onClick={prosesUploadMadrasah}
+                      disabled={uploading||uploadPreview.rows.filter(r=>r._valid&&!r._duplikat).length===0}
+                      style={{background:'#0891b2',borderColor:'#0891b2'}}>
+                      {uploading ? '⏳ Mengimport...' :
+                        `✅ Import ${uploadPreview.rows.filter(r=>r._valid&&!r._duplikat).length} Madrasah`}
+                    </button>
+                    <label style={{padding:'10px 20px',borderRadius:9,border:'1.5px solid #0891b2',
+                      color:'#0891b2',fontWeight:700,cursor:'pointer',fontSize:'.88rem',
+                      display:'inline-flex',alignItems:'center',gap:7}}>
+                      📂 Ganti File
+                      <input type="file" accept=".xlsx,.xls" onChange={handleUploadExcel}
+                        style={{display:'none'}}/>
+                    </label>
+                    <button className="btn btn-outline btn-sm" onClick={()=>setUploadPreview(null)}
+                      style={{borderColor:'#dc2626',color:'#dc2626'}}>✕ Batal</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {showFormMad && (
             <div className="card" style={{marginBottom:14,background:'#f8fffe',border:'1.5px solid var(--p)'}}>
