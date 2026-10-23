@@ -1955,7 +1955,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
         aktif:       true,
       }));
       const {error} = await sb.from('supermad_madrasah').insert(toInsert);
-      if (error) { showToast('Gagal import: '+error.message,'error'); return; }
+      if (error) { console.error('DETAIL ERROR:', JSON.stringify(error)); alert('Error detail: '+JSON.stringify(error)); showToast('Gagal import: '+error.message,'error'); return; }
       showToast(`✅ ${valid.length} madrasah berhasil diimport!`,'success');
       setUploadPreview(null);
       setShowUpload(false);
