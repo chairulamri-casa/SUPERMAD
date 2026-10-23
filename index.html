@@ -1856,25 +1856,53 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
         const npsnSudahAda = new Set(madrasahList.map(m=>String(m.npsn).trim()));
         raw.forEach((r, idx) => {
           const no = idx+2; // nomor baris di Excel (header = baris 1)
-          const nama  = String(r['nama_madrasah']||r['nama']||r['Nama Madrasah']||'').trim();
-          const npsn  = String(r['npsn']||r['NPSN']||'').trim();
-          const jenjang = String(r['jenjang']||r['Jenjang']||r['tingkat']||'').trim().toUpperCase();
-          const kota  = String(r['kota_kab']||r['Kab/Kota']||r['kota']||'').trim();
-          if (!nama && !npsn) return; // baris kosong
-          if (!nama)    errors.push(`Baris ${no}: nama_madrasah kosong`);
-          if (!npsn)    errors.push(`Baris ${no}: npsn kosong`);
+          // Mapping fleksibel: support format EMIS, template SUPERMAD, atau variasi lain
+          const nama  = String(
+            r['Nama Madrasah']||r['nama_madrasah']||r['nama']||r['NAMA']||''
+          ).trim();
+          const npsn  = String(
+            r['NPSN']||r['npsn']||r['Npsn']||''
+          ).trim();
+          const nsm   = String(
+            r['NSM']||r['nsm']||r['Nsm']||''
+          ).trim();
+          const jenjangRaw = String(
+            r['Jenjang']||r['jenjang']||r['JENJANG']||r['tingkat']||r['Tingkat']||''
+          ).trim();
+          // Normalisasi jenjang: MI/MTs/MA/MAK dari berbagai format
+          const jenjangMap = {
+            'RA':'RA','RAUDHATUL ATHFAL':'RA','RAUDLATUL ATHFAL':'RA','RAUDHATUL ATFAL':'RA','ROUDLOTUL ATFAL':'RA',
+            'MI':'MI','MADRASAH IBTIDAIYAH':'MI','IBTIDAIYAH':'MI','MIN':'MI','MIS':'MI',
+            'MTS':'MTs','MTSN':'MTs','MTS.':'MTs','MTSS':'MTs','MADRASAH TSANAWIYAH':'MTs','TSANAWIYAH':'MTs',
+            'MA':'MA','MAN':'MA','MAS':'MA','MADRASAH ALIYAH':'MA','ALIYAH':'MA',
+            'MAK':'MAK','MADRASAH ALIYAH KEJURUAN':'MAK',
+          };
+          const jenjang = jenjangMap[jenjangRaw.toUpperCase()] || jenjangRaw.toUpperCase();
+          const kota  = String(
+            r['Kabupaten']||r['kabupaten']||r['kota_kab']||r['Kab/Kota']||r['kota']||r['Kabupaten/Kota']||''
+          ).trim();
+          const kec   = String(r['Kecamatan']||r['kecamatan']||'').trim();
+          const alamat= String(r['Alamat']||r['alamat']||'').trim();
+          const status= String(r['Status']||r['status']||r['Naungan']||r['naungan']||'').trim();
+          // Status EMIS: "Negeri"→Kemenag, "Swasta"→Swasta
+          const naungan = status.toLowerCase().includes('swasta') ? 'Swasta' : 'Kemenag';
+
+          if (!nama && !npsn && !nsm) return; // baris benar-benar kosong
+          if (!nama)    errors.push(`Baris ${no}: nama madrasah kosong`);
+          if (!npsn)    errors.push(`Baris ${no}: NPSN kosong`);
           if (npsn && !/^\d{8}$/.test(npsn)) errors.push(`Baris ${no}: NPSN harus 8 digit angka (${npsn})`);
-          if (!['MI','MTS','MA','MAK'].includes(jenjang))
-            errors.push(`Baris ${no}: jenjang tidak valid (${jenjang}) — gunakan MI/MTs/MA/MAK`);
+          if (!['RA','MI','MTs','MA','MAK'].includes(jenjang))
+            errors.push(`Baris ${no}: jenjang tidak dikenali (${jenjangRaw}) — gunakan RA/MI/MTs/MA/MAK`);
           if (npsn && npsnSudahAda.has(npsn)) errors.push(`Baris ${no}: NPSN ${npsn} (${nama}) sudah terdaftar, akan dilewati`);
           rows.push({
-            nama, npsn, jenjang: jenjang==='MTS'?'MTs':jenjang,
-            kota_kab:  kota,
-            nama_kepala: String(r['nama_kepala']||r['Nama Kepala']||'').trim(),
-            nip_kepala:  String(r['nip_kepala'] ||r['NIP Kepala'] ||'').trim(),
-            alamat:      String(r['alamat']      ||r['Alamat']      ||'').trim(),
-            naungan:     String(r['naungan']     ||r['Naungan']     ||'Kemenag').trim()||'Kemenag',
-            tahun_ajaran:String(r['tahun_ajaran']||r['Tahun Ajaran']||'2025/2026').trim()||'2025/2026',
+            nama, npsn, nsm, jenjang,
+            kota_kab: kota,
+            kecamatan: kec,
+            alamat:   alamat || (kec ? kec+', '+kota : kota),
+            naungan,
+            nama_kepala: String(r['nama_kepala']||r['Nama Kepala']||r['Kepala']||'').trim(),
+            nip_kepala:  String(r['nip_kepala'] ||r['NIP Kepala']||'').trim(),
+            tahun_ajaran: '2025/2026',
             _valid: !errors.some(er=>er.startsWith(`Baris ${no}:`) && !er.includes('sudah terdaftar')),
             _duplikat: !!(npsn && npsnSudahAda.has(npsn)),
           });
@@ -1904,9 +1932,11 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
       const toInsert = valid.map(r=>({
         nama:        r.nama,
         npsn:        r.npsn,
+        nsm:         r.nsm||null,
         tingkat:     r.jenjang,
         jenjang:     r.jenjang,
         kota_kab:    r.kota_kab,
+        kecamatan:   r.kecamatan||null,
         provinsi:    'Aceh',
         kode_akses:  buatKodeAkses(r.jenjang),
         nama_kepala: r.nama_kepala||null,
@@ -2526,8 +2556,8 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
                   </div>
                   <div style={{fontSize:'.74rem',color:'#0e7490',background:'#cffafe',
                     borderRadius:8,padding:'8px 12px'}}>
-                    💡 <b>Kolom wajib:</b> nama_madrasah, npsn, jenjang, kota_kab<br/>
-                    <b>Kolom opsional:</b> nama_kepala, nip_kepala, alamat, naungan, tahun_ajaran<br/>
+                    💡 <b>Format EMIS langsung bisa dipakai</b> — kolom NSM, NPSN, Nama Madrasah, Jenjang, Status, Kabupaten, Kecamatan, Alamat terbaca otomatis.<br/>
+                    <b>Kolom wajib:</b> NPSN, Nama Madrasah, Jenjang, Kabupaten<br/>
                     <span style={{color:'#7c3aed'}}>🎲 Kode akses di-generate otomatis oleh sistem</span>
                   </div>
                 </div>
@@ -2572,7 +2602,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
                     <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.75rem',minWidth:600}}>
                       <thead>
                         <tr style={{background:'#0e7490',color:'#fff'}}>
-                          {['Status','Nama Madrasah','NPSN','Jenjang','Kab/Kota','Kode Akses','Kepala'].map(h=>(
+                          {['Status','Nama Madrasah','NSM','NPSN','Jenjang','Kab/Kota','Kecamatan','Naungan'].map(h=>(
                             <th key={h} style={{padding:'6px 8px',textAlign:'left',whiteSpace:'nowrap'}}>{h}</th>
                           ))}
                         </tr>
@@ -2588,13 +2618,18 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
                                 {status}
                               </td>
                               <td style={{padding:'5px 8px'}}>{r.nama||'—'}</td>
+                              <td style={{padding:'5px 8px',fontFamily:'monospace',fontSize:'.7rem'}}>{r.nsm||'—'}</td>
                               <td style={{padding:'5px 8px',fontFamily:'monospace'}}>{r.npsn||'—'}</td>
-                              <td style={{padding:'5px 8px'}}>{r.jenjang||'—'}</td>
-                              <td style={{padding:'5px 8px'}}>{r.kota_kab||'—'}</td>
-                              <td style={{padding:'5px 8px',fontFamily:'monospace',color:'#7c3aed',fontSize:'.7rem'}}>
-                                {r._valid&&!r._duplikat ? '🎲 auto' : '—'}
+                              <td style={{padding:'5px 8px',textAlign:'center'}}>
+                                <span style={{padding:'2px 7px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
+                                  background:r.jenjang==='MA'?'#dbeafe':r.jenjang==='MAK'?'#ede9fe':r.jenjang==='MTs'?'#fef3c7':r.jenjang==='RA'?'#fce7f3':'#d1fae5',
+                                  color:r.jenjang==='MA'?'#1d4ed8':r.jenjang==='MAK'?'#6d28d9':r.jenjang==='MTs'?'#92400e':r.jenjang==='RA'?'#9d174d':'#065f46'}}>
+                                  {r.jenjang||'—'}
+                                </span>
                               </td>
-                              <td style={{padding:'5px 8px'}}>{r.nama_kepala||'—'}</td>
+                              <td style={{padding:'5px 8px'}}>{r.kota_kab||'—'}</td>
+                              <td style={{padding:'5px 8px',fontSize:'.72rem',color:'var(--text2)'}}>{r.kecamatan||'—'}</td>
+                              <td style={{padding:'5px 8px',fontSize:'.72rem'}}>{r.naungan||'—'}</td>
                             </tr>
                           );
                         })}
