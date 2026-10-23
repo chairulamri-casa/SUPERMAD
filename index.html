@@ -116,6 +116,10 @@ function HalamanLogin({onLogin}) {
     (window.location.search.includes('kanwil') || 
      window.location.hash.includes('kanwil'));
   const [mode, setMode]     = useState(isKanwilMode ? 'kanwil' : 'pilih');
+  const [regToken, setRegToken] = useState('');
+  const [regStep, setRegStep]   = useState('token'); // 'token' | 'form'
+  const [regMad, setRegMad]     = useState(null);
+  const [regForm, setRegForm]   = useState({nama:'',nip:'',jabatan:'Operator TU',username:'',password:'',konfirmasi:''});
   const [token, setToken]   = useState('');
   const [npsn, setNpsn]     = useState('');
   const [kode, setKode]     = useState('');
@@ -123,6 +127,56 @@ function HalamanLogin({onLogin}) {
   const [pass, setPass]     = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr]       = useState('');
+
+  async function cekToken(e) {
+    e.preventDefault();
+    setErr(''); setLoading(true);
+    try {
+      const {data:tok, error} = await sb.from('supermad_reg_token')
+        .select('*, supermad_madrasah(*)')
+        .eq('token', regToken.trim().toUpperCase())
+        .eq('dipakai', false)
+        .single();
+      if (error || !tok) { setErr('Token tidak valid atau sudah digunakan.'); return; }
+      setRegMad(tok.supermad_madrasah);
+      setRegStep('form');
+    } catch(err) { setErr('Koneksi gagal.'); }
+    finally { setLoading(false); }
+  }
+
+  async function daftarOperator(e) {
+    e.preventDefault();
+    if (regForm.password !== regForm.konfirmasi) { setErr('Password tidak cocok.'); return; }
+    if (regForm.password.length < 6) { setErr('Password minimal 6 karakter.'); return; }
+    setErr(''); setLoading(true);
+    try {
+      // Cek username belum dipakai
+      const {data:cek} = await sb.from('supermad_pengguna')
+        .select('id').eq('username', regForm.username.trim());
+      if (cek && cek.length > 0) { setErr('Username sudah dipakai, pilih username lain.'); return; }
+      // Buat akun operator
+      const {error:errIns} = await sb.from('supermad_pengguna').insert({
+        madrasah_id: regMad.id,
+        nama: regForm.nama.trim(),
+        nip: regForm.nip.trim(),
+        jabatan: regForm.jabatan,
+        role: 'operator',
+        username: regForm.username.trim(),
+        password_hash: regForm.password,
+        aktif: true,
+      });
+      if (errIns) { setErr('Gagal daftar: '+errIns.message); return; }
+      // Tandai token sudah dipakai
+      await sb.from('supermad_reg_token')
+        .update({dipakai:true, dipakai_oleh:regForm.nama.trim(), dipakai_at:new Date().toISOString()})
+        .eq('token', regToken.trim().toUpperCase());
+      // Langsung login
+      const {data:penggunaList} = await sb.from('supermad_pengguna')
+        .select('*').eq('madrasah_id', regMad.id).eq('aktif', true).order('nama');
+      onLogin({mad:regMad, penggunaList, mode:'madrasah'});
+    } catch(err) { setErr('Error: '+err.message); }
+    finally { setLoading(false); }
+  }
 
   async function loginMadrasah(e) {
     e.preventDefault();
@@ -214,8 +268,13 @@ function HalamanLogin({onLogin}) {
               onClick={() => setMode('guru')}>
               👨‍🏫 Login Guru (Token)
             </button>
+            <button className="btn btn-outline" style={{justifyContent:'center',padding:'12px',
+              borderColor:'#6366f1',color:'#6366f1'}}
+              onClick={() => {setMode('daftar');setRegStep('token');setRegToken('');setErr('');}}>
+              📝 Daftar Akun Operator
+            </button>
             {/* Kanwil login tersembunyi - akses via URL ?kanwil */}
-            <div style={{textAlign:'center',fontSize:'.72rem',color:'var(--text3)',marginTop:8}}>
+            <div style={{textAlign:'center',fontSize:'.72rem',color:'var(--text3)',marginTop:4}}>
               KMA 1503/2025 · Dirjenpendis 6077/2025
             </div>
           </div>
@@ -292,6 +351,77 @@ function HalamanLogin({onLogin}) {
             </button>
             <button type="button" className="btn btn-outline" style={{width:'100%',justifyContent:'center',marginTop:8}}
               onClick={()=>{setMode('pilih');setErr('')}}>← Kembali</button>
+          </form>
+        )}
+
+        {mode === 'daftar' && regStep === 'token' && (
+          <form onSubmit={cekToken}>
+            <div style={{fontWeight:800,color:'#6366f1',marginBottom:4,fontSize:'.9rem'}}>
+              📝 Daftar Akun Operator
+            </div>
+            <div style={{fontSize:'.76rem',color:'var(--text2)',marginBottom:16}}>
+              Masukkan token registrasi yang diberikan Kanwil Kemenag
+            </div>
+            <div className="form-group">
+              <label>Token Registrasi *</label>
+              <input value={regToken} onChange={e=>setRegToken(e.target.value.toUpperCase())}
+                placeholder="Contoh: AB3C7XY2" maxLength={8} required
+                style={{fontFamily:'monospace',fontSize:'1.3rem',letterSpacing:6,textAlign:'center',textTransform:'uppercase'}}/>
+            </div>
+            {err && <div style={{color:'var(--red)',fontSize:'.78rem',marginBottom:10}}>⚠️ {err}</div>}
+            <button className="btn btn-primary" type="submit" disabled={loading}
+              style={{width:'100%',justifyContent:'center',background:'#6366f1',borderColor:'#6366f1'}}>
+              {loading ? '⏳ Memeriksa...' : '→ Lanjut'}
+            </button>
+            <button type="button" className="btn btn-outline" style={{width:'100%',justifyContent:'center',marginTop:8}}
+              onClick={()=>{setMode('pilih');setErr('')}}>← Kembali</button>
+          </form>
+        )}
+
+        {mode === 'daftar' && regStep === 'form' && regMad && (
+          <form onSubmit={daftarOperator}>
+            <div style={{fontWeight:800,color:'#6366f1',marginBottom:4,fontSize:'.9rem'}}>
+              📝 Lengkapi Data Akun
+            </div>
+            <div style={{background:'#f0fdf4',border:'1px solid #86efac',borderRadius:8,
+              padding:'8px 12px',fontSize:'.78rem',color:'#065f46',marginBottom:14}}>
+              🏫 {regMad.nama}
+            </div>
+            <div className="form-group">
+              <label>Nama Lengkap *</label>
+              <input value={regForm.nama} onChange={e=>setRegForm({...regForm,nama:e.target.value})} required/>
+            </div>
+            <div className="form-group">
+              <label>NIP (opsional)</label>
+              <input value={regForm.nip} onChange={e=>setRegForm({...regForm,nip:e.target.value})}/>
+            </div>
+            <div className="form-group">
+              <label>Jabatan</label>
+              <select value={regForm.jabatan} onChange={e=>setRegForm({...regForm,jabatan:e.target.value})}>
+                {['Operator TU','Staf TU','Bendahara','Kepala Tata Usaha'].map(j=><option key={j}>{j}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Username *</label>
+              <input value={regForm.username} onChange={e=>setRegForm({...regForm,username:e.target.value})} required
+                placeholder="Unik, tidak bisa diubah"/>
+            </div>
+            <div className="form-group">
+              <label>Password *</label>
+              <input type="password" value={regForm.password} onChange={e=>setRegForm({...regForm,password:e.target.value})}
+                required minLength={6} placeholder="Min. 6 karakter"/>
+            </div>
+            <div className="form-group">
+              <label>Konfirmasi Password *</label>
+              <input type="password" value={regForm.konfirmasi} onChange={e=>setRegForm({...regForm,konfirmasi:e.target.value})} required/>
+            </div>
+            {err && <div style={{color:'var(--red)',fontSize:'.78rem',marginBottom:10}}>⚠️ {err}</div>}
+            <button className="btn btn-primary" type="submit" disabled={loading}
+              style={{width:'100%',justifyContent:'center',background:'#6366f1',borderColor:'#6366f1'}}>
+              {loading ? '⏳ Mendaftarkan...' : '✅ Daftar & Masuk'}
+            </button>
+            <button type="button" className="btn btn-outline" style={{width:'100%',justifyContent:'center',marginTop:8}}
+              onClick={()=>setRegStep('token')}>← Ganti Token</button>
           </form>
         )}
       </div>
@@ -1316,6 +1446,7 @@ function DashboardKanwil({showToast}) {
   const [filterTingkat, setFilterTingkat] = useState('');
   const [exporting, setExporting]     = useState(false);
   const [madAktif, setMadAktif]       = useState(null); // madrasah yang sedang dikelola
+  const [tokenMad, setTokenMad]       = useState(null); // {mad, token} untuk popup token
   const [editMad, setEditMad]         = useState(null); // madrasah yang sedang diedit
   const [formEdit, setFormEdit]       = useState({});
   const [savingEdit, setSavingEdit]   = useState(false);
@@ -1632,6 +1763,66 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
     showToast('Madrasah ' + m.nama + ' berhasil dihapus.');
     loadData();
   }
+
+  async function generateToken(m) {
+    // Generate token 8 karakter acak huruf kapital + angka
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let token = '';
+    for (let i=0; i<8; i++) token += chars[Math.floor(Math.random()*chars.length)];
+    // Cek sudah ada operator belum
+    const {data:opList} = await sb.from('supermad_pengguna')
+      .select('id').eq('madrasah_id', m.id).eq('role','operator');
+    if (opList && opList.length > 0) {
+      showToast('⚠️ Madrasah ini sudah punya operator.','warning'); return;
+    }
+    const {error} = await sb.from('supermad_reg_token').insert({
+      token, madrasah_id: m.id, dipakai: false
+    });
+    if (error) { showToast('Gagal buat token: '+error.message,'error'); return; }
+    setTokenMad({mad:m, token});
+  }
+
+  // Modal Token Registrasi
+  if (tokenMad) return (
+    <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,
+      background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',
+      justifyContent:'center',zIndex:1000,padding:20}}>
+      <div style={{background:'#fff',borderRadius:16,padding:32,
+        width:'100%',maxWidth:440,boxShadow:'0 20px 60px rgba(0,0,0,.4)',textAlign:'center'}}>
+        <div style={{fontSize:'2.5rem',marginBottom:12}}>🔑</div>
+        <div style={{fontWeight:900,fontSize:'1.1rem',color:'var(--p3)',marginBottom:6}}>
+          Token Registrasi Operator
+        </div>
+        <div style={{fontSize:'.85rem',color:'var(--text2)',marginBottom:20}}>
+          {tokenMad.mad.nama}
+        </div>
+        <div style={{background:'#f0fdf4',border:'2px solid #86efac',borderRadius:14,
+          padding:'20px 24px',marginBottom:20}}>
+          <div style={{fontSize:'2rem',fontWeight:900,letterSpacing:8,color:'#065f46',
+            fontFamily:'monospace'}}>
+            {tokenMad.token}
+          </div>
+          <div style={{fontSize:'.75rem',color:'#16a34a',marginTop:8}}>
+            Token sekali pakai · berlaku sampai digunakan
+          </div>
+        </div>
+        <div style={{background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:10,
+          padding:'10px 14px',fontSize:'.78rem',color:'#92400e',marginBottom:20,textAlign:'left'}}>
+          <b>Cara penggunaan:</b><br/>
+          1. Berikan token ini ke operator madrasah<br/>
+          2. Operator buka <b>supermad.my.id</b> → klik <b>"Daftar Akun"</b><br/>
+          3. Masukkan token, isi data diri, akun langsung aktif
+        </div>
+        <div style={{display:'flex',gap:10,justifyContent:'center'}}>
+          <button onClick={()=>{
+            navigator.clipboard?.writeText(tokenMad.token);
+            showToast('📋 Token disalin!');
+          }} className="btn btn-outline btn-sm">📋 Salin Token</button>
+          <button onClick={()=>setTokenMad(null)} className="btn btn-primary btn-sm">✓ Selesai</button>
+        </div>
+      </div>
+    </div>
+  );
 
   // Modal Edit Madrasah
   if (editMad) return (
@@ -2220,6 +2411,11 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
                       style={{padding:'5px 10px',borderRadius:7,border:'1px solid var(--p)',
                         background:'#fff',color:'var(--p)',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
                       👤 Pengguna
+                    </button>
+                    <button onClick={()=>generateToken(m)}
+                      style={{padding:'5px 10px',borderRadius:7,border:'1px solid #16a34a',
+                        background:'#f0fdf4',color:'#15803d',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
+                      🔑 Token
                     </button>
                     <button onClick={()=>{setEditMad(m);setFormEdit({...m});}}
                       style={{padding:'5px 10px',borderRadius:7,border:'1px solid #d97706',
