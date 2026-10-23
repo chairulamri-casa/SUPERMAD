@@ -2765,7 +2765,8 @@ function DashboardSupervisor({sesi, showToast}) {
       guru={guruAktif} sesi={sesi} showToast={showToast}
       filterSmt={filterSmt} filterTA={filterTA}
       jadwal={jadwalAktif}
-      onSelesai={()=>{ setGuruAktif(null); setJadwalAktif(null); setTab('sudah'); loadData(); }}
+      onBatal={()=>{ setGuruAktif(null); setJadwalAktif(null); }}
+      onSelesai={async()=>{ setGuruAktif(null); setJadwalAktif(null); await loadData(filterSmt, filterTA); setTab('sudah'); }}
     />
   );
 
@@ -2909,7 +2910,17 @@ function DashboardSupervisor({sesi, showToast}) {
             )}
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:8}}>
-            {supListFilter.map(s => {
+            {(() => {
+              // Hitung berapa sesi per guru untuk label "Sesi ke-X"
+              const sesiCountMap = {};
+              supListFilter.forEach(s => {
+                sesiCountMap[s.guru_id] = (sesiCountMap[s.guru_id]||0)+1;
+              });
+              const sesiIndexMap = {};
+              return supListFilter.map(s => {
+                sesiIndexMap[s.guru_id] = (sesiIndexMap[s.guru_id]||0)+1;
+                const sesiIndex = sesiIndexMap[s.guru_id];
+                const totalSesi = sesiCountMap[s.guru_id]||1;
               const capaian = parseFloat(s.capaian_rata)||0;
               const warna   = capaian>=87.5?'#16a34a':capaian>=75?'#2563eb':capaian>=62.5?'#d97706':'#dc2626';
               const pred    = capaian>=87.5?'Sangat Baik':capaian>=75?'Baik':capaian>=62.5?'Cukup':'Kurang';
@@ -2925,6 +2936,18 @@ function DashboardSupervisor({sesi, showToast}) {
                 loadData(filterSmt, filterTA);
               }
 
+              async function hapusSupervisi() {
+                const namaGuru = guru?.nama||'guru ini';
+                const tgl = s.tanggal_supervisi
+                  ? new Date(s.tanggal_supervisi).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'})
+                  : 'tanggal tidak diketahui';
+                if (!window.confirm(`Hapus data supervisi ${namaGuru} (${tgl})?\n\nData yang dihapus tidak bisa dikembalikan.`)) return;
+                const {error} = await sb.from('supermad_supervisi').delete().eq('id', s.id);
+                if (error) { showToast('❌ Gagal hapus: '+error.message,'error'); return; }
+                showToast('🗑️ Data supervisi '+namaGuru+' berhasil dihapus','success');
+                loadData(filterSmt, filterTA);
+              }
+
               return (
                 <div key={s.id} style={{padding:'12px 14px',background:'var(--surface2)',borderRadius:10,
                   border:`1.5px solid ${isDraft?'#fbbf24':'#86efac'}`}}>
@@ -2932,6 +2955,12 @@ function DashboardSupervisor({sesi, showToast}) {
                     <div style={{flex:1}}>
                       <div style={{fontWeight:700,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
                         {guru?.nama||'—'}
+                        {totalSesi > 1 && (
+                          <span style={{padding:'1px 8px',borderRadius:20,fontSize:'.65rem',fontWeight:700,
+                            background:'#e0e7ff',color:'#3730a3',border:'1px solid #a5b4fc'}}>
+                            Sesi {sesiIndex}/{totalSesi}
+                          </span>
+                        )}
                         {isDraft
                           ? <span style={{padding:'1px 8px',borderRadius:20,fontSize:'.65rem',fontWeight:700,
                               background:'#fef3c7',color:'#92400e',border:'1px solid #fbbf24'}}>Draft</span>
@@ -2980,10 +3009,17 @@ function DashboardSupervisor({sesi, showToast}) {
                         border:'none',borderRadius:7,cursor:'pointer',fontSize:'.75rem',fontWeight:700}}>
                       📋 RTL
                     </button>
+                    <button onClick={hapusSupervisi}
+                      style={{padding:'5px 12px',background:'#fff',color:'#dc2626',
+                        border:'1.5px solid #fca5a5',borderRadius:7,cursor:'pointer',
+                        fontSize:'.75rem',fontWeight:700,marginLeft:'auto'}}>
+                      🗑️ Hapus
+                    </button>
                   </div>
                 </div>
               );
-            })}
+            });
+            })()}
             {!supListFilter.length && (
               <div style={{textAlign:'center',color:'var(--text3)',padding:24,fontSize:'.85rem'}}>
                 Belum ada supervisi untuk periode {filterSmt} {filterTA}.
@@ -7125,7 +7161,7 @@ function TabelPenilaian({items, prefix, skor, onChange, catatan, setCatatan, lab
   );
 }
 
-function FormSupervisi({guru, sesi, showToast, onSelesai, filterSmt='Ganjil', filterTA='2025/2026', jadwal=null}) {
+function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ganjil', filterTA='2025/2026', jadwal=null}) {
   const [tab, setTab]   = useState('identitas');
   const [saving, setSaving] = useState(false);
 
@@ -7393,7 +7429,7 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, filterSmt='Ganjil', fi
     <div>
       {/* Header */}
       <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16,flexWrap:'wrap'}}>
-        <button className="btn btn-outline btn-sm" onClick={onSelesai}>← Kembali</button>
+        <button className="btn btn-outline btn-sm" onClick={onBatal||onSelesai}>← Kembali</button>
         <div>
           <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1rem'}}>
             Supervisi: {guru.nama}
