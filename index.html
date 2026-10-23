@@ -1955,7 +1955,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
         aktif:       true,
       }));
       const {error} = await sb.from('supermad_madrasah').insert(toInsert);
-      if (error) { console.error('DETAIL ERROR:', JSON.stringify(error)); alert('Error detail: '+JSON.stringify(error)); showToast('Gagal import: '+error.message,'error'); return; }
+      if (error) { showToast('Gagal import: '+error.message,'error'); return; }
       showToast(`✅ ${valid.length} madrasah berhasil diimport!`,'success');
       setUploadPreview(null);
       setShowUpload(false);
@@ -1981,7 +1981,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
     const {error} = await sb.from('supermad_reg_token').insert({
       token, madrasah_id: m.id, dipakai: false
     });
-    if (error) { alert('Error token: '+JSON.stringify(error)); showToast('Gagal buat token: '+error.message,'error'); return; }
+    if (error) { showToast('Gagal buat token: '+error.message,'error'); return; }
     setTokenMad({mad:m, token});
   }
 
