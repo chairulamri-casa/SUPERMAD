@@ -7775,15 +7775,33 @@ function TabKelasSiswa({sesi, showToast}) {
   const [editSiswa, setEditSiswa]   = React.useState(null);
   const [formSiswa, setFormSiswa]   = React.useState({nama:'',nis:'',jenis_kelamin:'L'});
   const [importSiswaStatus, setImportSiswaStatus] = React.useState('');
+  const [statsAll, setStatsAll] = React.useState(null); // {total,L,P,perKelas:{...}}
 
   React.useEffect(()=>{ loadKelas(filterTA); }, [filterTA]);
 
   async function loadKelas(ta) {
     setLoading(true);
-    const {data} = await sb.from('supermad_kelas').select('*')
-      .eq('madrasah_id', sesi.mad.id).eq('tahun_ajaran', ta||filterTA)
-      .order('tingkat').order('nama_kelas');
-    setKelasList(data||[]);
+    const [{data:kData},{data:sData}] = await Promise.all([
+      sb.from('supermad_kelas').select('*')
+        .eq('madrasah_id', sesi.mad.id).eq('tahun_ajaran', ta||filterTA)
+        .order('tingkat').order('nama_kelas'),
+      sb.from('supermad_siswa').select('id,kelas,jenis_kelamin')
+        .eq('madrasah_id', sesi.mad.id).eq('tahun_ajaran', ta||filterTA).eq('aktif',true),
+    ]);
+    setKelasList(kData||[]);
+    // Hitung stats
+    const all = sData||[];
+    const perKelas = {};
+    all.forEach(s=>{
+      if (!perKelas[s.kelas]) perKelas[s.kelas] = {L:0,P:0};
+      perKelas[s.kelas][s.jenis_kelamin==='P'?'P':'L']++;
+    });
+    setStatsAll({
+      total: all.length,
+      L: all.filter(s=>s.jenis_kelamin!=='P').length,
+      P: all.filter(s=>s.jenis_kelamin==='P').length,
+      perKelas,
+    });
     setLoading(false);
   }
 
@@ -8136,6 +8154,93 @@ function TabKelasSiswa({sesi, showToast}) {
         </button>
       </div>
 
+      {/* Stats Dashboard */}
+      {statsAll && (
+        <div style={{marginBottom:14}}>
+          {/* Stat cards baris atas */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:10,marginBottom:10}}>
+            {[
+              {label:'Total Siswa',val:statsAll.total,icon:'👥',color:'#2563eb',bg:'#dbeafe'},
+              {label:'Laki-laki',  val:statsAll.L,    icon:'👦',color:'#0891b2',bg:'#cffafe'},
+              {label:'Perempuan',  val:statsAll.P,    icon:'👧',color:'#db2777',bg:'#fce7f3'},
+              {label:'Jumlah Kelas',val:kelasList.length,icon:'🏫',color:'#059669',bg:'#d1fae5'},
+            ].map(({label,val,icon,color,bg})=>(
+              <div key={label} style={{background:bg,borderRadius:12,padding:'14px 16px',
+                border:'1.5px solid '+color+'33'}}>
+                <div style={{fontSize:'1.5rem',marginBottom:4}}>{icon}</div>
+                <div style={{fontSize:'1.6rem',fontWeight:900,color,lineHeight:1}}>{val}</div>
+                <div style={{fontSize:'.72rem',color,fontWeight:600,marginTop:3}}>{label}</div>
+              </div>
+            ))}
+          </div>
+          {/* Bar rasio L/P */}
+          {statsAll.total > 0 && (
+            <div style={{background:'#fff',borderRadius:12,padding:'12px 16px',
+              border:'1.5px solid var(--border)',marginBottom:2}}>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:'.75rem',
+                fontWeight:700,marginBottom:6}}>
+                <span style={{color:'#0891b2'}}>👦 L: {statsAll.L} ({Math.round(statsAll.L/statsAll.total*100)}%)</span>
+                <span style={{color:'#db2777'}}>P: {statsAll.P} ({Math.round(statsAll.P/statsAll.total*100)}%) 👧</span>
+              </div>
+              <div style={{display:'flex',borderRadius:20,overflow:'hidden',height:10}}>
+                <div style={{width:(statsAll.L/statsAll.total*100)+'%',background:'#0891b2',transition:'width .4s'}}/>
+                <div style={{flex:1,background:'#db2777'}}/>
+              </div>
+            </div>
+          )}
+          {/* Rekap per tingkat */}
+          {(()=>{
+            const perTingkat = {};
+            kelasList.forEach(k=>{
+              const t = k.tingkat||k.nama_kelas;
+              if (!perTingkat[t]) perTingkat[t] = {kelas:0,L:0,P:0};
+              perTingkat[t].kelas++;
+              const st = statsAll.perKelas[k.nama_kelas]||{L:0,P:0};
+              perTingkat[t].L += st.L; perTingkat[t].P += st.P;
+            });
+            const entries = Object.entries(perTingkat).sort(([a],[b])=>a>b?1:-1);
+            if (!entries.length) return null;
+            return (
+              <div style={{background:'#fff',borderRadius:12,padding:'12px 16px',
+                border:'1.5px solid var(--border)',overflowX:'auto'}}>
+                <div style={{fontWeight:700,fontSize:'.8rem',color:'var(--p3)',marginBottom:8}}>
+                  📊 Rekap Per Tingkat
+                </div>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.78rem',minWidth:300}}>
+                  <thead>
+                    <tr style={{background:'var(--surface2)'}}>
+                      {['Tingkat','Rombel','L','P','Total'].map(h=>(
+                        <th key={h} style={{padding:'5px 10px',textAlign:h==='Tingkat'?'left':'center',
+                          color:'var(--text2)',fontWeight:700}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entries.map(([t,v],i)=>(
+                      <tr key={t} style={{borderBottom:'1px solid var(--border)',
+                        background:i%2===0?'#fff':'var(--surface2)'}}>
+                        <td style={{padding:'5px 10px',fontWeight:700,color:'var(--p3)'}}>Tingkat {t}</td>
+                        <td style={{padding:'5px 10px',textAlign:'center'}}>{v.kelas}</td>
+                        <td style={{padding:'5px 10px',textAlign:'center',color:'#0891b2',fontWeight:700}}>{v.L}</td>
+                        <td style={{padding:'5px 10px',textAlign:'center',color:'#db2777',fontWeight:700}}>{v.P}</td>
+                        <td style={{padding:'5px 10px',textAlign:'center',fontWeight:800}}>{v.L+v.P}</td>
+                      </tr>
+                    ))}
+                    <tr style={{background:'var(--p3)',color:'#fff',fontWeight:800}}>
+                      <td style={{padding:'6px 10px'}}>TOTAL</td>
+                      <td style={{padding:'6px 10px',textAlign:'center'}}>{kelasList.length}</td>
+                      <td style={{padding:'6px 10px',textAlign:'center'}}>{statsAll.L}</td>
+                      <td style={{padding:'6px 10px',textAlign:'center'}}>{statsAll.P}</td>
+                      <td style={{padding:'6px 10px',textAlign:'center'}}>{statsAll.total}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {/* Import massal */}
       <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center',
         padding:'10px 14px',background:'#f0fdf4',borderRadius:10,border:'1.5px solid #86efac'}}>
@@ -8191,12 +8296,27 @@ function TabKelasSiswa({sesi, showToast}) {
           {kelasList.map(k=>(
             <div key={k.id} className="card" style={{cursor:'pointer',borderTop:'3px solid var(--p)',transition:'box-shadow .15s'}}
               onClick={()=>bukaKelas(k)}>
-              <div style={{fontWeight:900,fontSize:'1.1rem',color:'var(--p3)',marginBottom:4}}>
+              <div style={{fontWeight:900,fontSize:'1.1rem',color:'var(--p3)',marginBottom:2}}>
                 🏫 {k.nama_kelas}
               </div>
-              <div style={{fontSize:'.78rem',color:'var(--text2)',marginBottom:8}}>
+              <div style={{fontSize:'.78rem',color:'var(--text2)',marginBottom:6}}>
                 Tingkat {k.tingkat} {k.wali_kelas?'· WK: '+k.wali_kelas:''}
               </div>
+              {statsAll?.perKelas[k.nama_kelas] ? (
+                <div style={{display:'flex',gap:6,marginBottom:8}}>
+                  <span style={{fontSize:'.7rem',fontWeight:700,padding:'2px 7px',borderRadius:20,background:'#cffafe',color:'#0891b2'}}>
+                    👦 {statsAll.perKelas[k.nama_kelas].L}
+                  </span>
+                  <span style={{fontSize:'.7rem',fontWeight:700,padding:'2px 7px',borderRadius:20,background:'#fce7f3',color:'#db2777'}}>
+                    👧 {statsAll.perKelas[k.nama_kelas].P}
+                  </span>
+                  <span style={{fontSize:'.7rem',fontWeight:700,padding:'2px 7px',borderRadius:20,background:'var(--surface2)',color:'var(--text2)'}}>
+                    ∑ {statsAll.perKelas[k.nama_kelas].L + statsAll.perKelas[k.nama_kelas].P}
+                  </span>
+                </div>
+              ) : (
+                <div style={{fontSize:'.7rem',color:'var(--text3)',marginBottom:8}}>Belum ada siswa</div>
+              )}
               <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
                 <button onClick={e=>{e.stopPropagation();setEditKelas(k);setFormKelas({nama_kelas:k.nama_kelas,tingkat:k.tingkat,wali_kelas:k.wali_kelas||''});setShowFormKelas(true);}}
                   style={{padding:'3px 8px',borderRadius:6,border:'1px solid var(--p)',
