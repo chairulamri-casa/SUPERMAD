@@ -3687,7 +3687,7 @@ function DashboardSupervisor({sesi, showToast}) {
 
       {/* TAB DOKUMEN ADMIN */}
       {tab === 'dokumen' && (
-        <TabDokumenSupervisor sesi={sesi} guruList={guruList} showToast={showToast} />
+        <TabDokumenSupervisor sesi={sesi} guruList={guruList} showToast={showToast} defaultTA={filterTA} />
       )}
 
       {/* TAB PORTOFOLIO GURU */}
@@ -7369,12 +7369,12 @@ function TabDokumenGuru({sesi, showToast}) {
 }
 
 // ── DOKUMEN ADMINISTRASI — VIEW SUPERVISOR ─────────────────────
-function TabDokumenSupervisor({sesi, guruList, showToast}) {
+function TabDokumenSupervisor({sesi, guruList, showToast, defaultTA}) {
   const [dokList, setDokList]     = React.useState([]);
   const [loading, setLoading]     = React.useState(true);
   const [filterGuru, setFilterGuru] = React.useState('');
   const [detailGuru, setDetailGuru] = React.useState(null);
-  const [filterTA, setFilterTA]   = React.useState(getTASekarang());
+  const [filterTA, setFilterTA]   = React.useState(defaultTA||getTASekarang());
 
   React.useEffect(()=>{ loadData(filterTA); }, [filterTA]);
 
