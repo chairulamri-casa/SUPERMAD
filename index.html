@@ -7876,18 +7876,19 @@ function TabKelasSiswa({sesi, showToast}) {
 
   function downloadTemplateSiswa() {
     try {
+      const XL = window.XLSX;
+      if (!XL) { alert('Library Excel belum siap, coba refresh halaman.'); return; }
       const rows = [
         ['Tingkat','Rombel','Nama Siswa','NISN','Gender (L/P)'],
         ['VII','VII-A','NAMA SISWA CONTOH','3201234567','L'],
         ['VII','VII-A','NAMA SISWA KEDUA','3201234568','P'],
         ['VIII','VIII-B','NAMA SISWA KETIGA','3201234569','P'],
       ];
-      const ws = XLSX.utils.aoa_to_sheet(rows);
+      const ws = XL.utils.aoa_to_sheet(rows);
       ws['!cols'] = [{wch:10},{wch:12},{wch:30},{wch:15},{wch:12}];
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb,'Siswa',ws);
-      // Gunakan type:'binary' lalu convert ke Uint8Array — paling kompatibel
-      const wbout = XLSX.write(wb, {bookType:'xlsx', type:'binary'});
+      const wb2 = XL.utils.book_new();
+      XL.utils.book_append_sheet(wb2,'Siswa',ws);
+      const wbout = XL.write(wb2, {bookType:'xlsx', type:'binary'});
       const buf = new ArrayBuffer(wbout.length);
       const view = new Uint8Array(buf);
       for (let i=0; i<wbout.length; i++) view[i] = wbout.charCodeAt(i) & 0xFF;
@@ -7902,6 +7903,34 @@ function TabKelasSiswa({sesi, showToast}) {
     } catch(err) {
       alert('Gagal download template: ' + err.message);
     }
+  }
+
+  // Hapus semua siswa + kelas untuk TA yang dipilih
+  async function hapusSemuaData() {
+    const konfirm = window.confirm(
+      `⚠️ HAPUS SEMUA DATA TA ${filterTA}?\n\nIni akan menghapus:\n- Semua siswa (${statsAll?.total||0} siswa)\n- Semua kelas (${kelasList.length} kelas)\n\nData yang sudah terhapus TIDAK bisa dikembalikan.\n\nKetik OK untuk konfirmasi.`
+    );
+    if (!konfirm) return;
+    setLoading(true);
+    try {
+      // Hapus siswa dulu
+      const {error:e1} = await sb.from('supermad_siswa')
+        .delete()
+        .eq('madrasah_id', sesi.mad.id)
+        .eq('tahun_ajaran', filterTA);
+      if (e1) throw new Error('Gagal hapus siswa: ' + e1.message);
+      // Hapus kelas
+      const {error:e2} = await sb.from('supermad_kelas')
+        .delete()
+        .eq('madrasah_id', sesi.mad.id)
+        .eq('tahun_ajaran', filterTA);
+      if (e2) throw new Error('Gagal hapus kelas: ' + e2.message);
+      setImportSiswaStatus('✅ Semua data siswa dan kelas TA ' + filterTA + ' berhasil dihapus. Silakan import ulang.');
+      await loadKelas(filterTA);
+    } catch(err) {
+      setImportSiswaStatus('❌ ' + err.message);
+    }
+    setLoading(false);
   }
 
   // Import excel dari view kelas (auto-buat kelas + siswa)
@@ -7946,8 +7975,8 @@ function TabKelasSiswa({sesi, showToast}) {
         if (!kelasMap[namaKelas]) kelasMap[namaKelas] = {tingkat, siswa:[]};
         kelasMap[namaKelas].siswa.push({
           nama,
-          nis: String(r[iNisn]>-1 ? r[iNisn]||'' : '').trim(),
-          jenis_kelamin: String(r[iGender]>-1 ? r[iGender]||'L':'L').trim().toUpperCase()==='P'?'P':'L',
+          nis: iNisn > -1 ? String(r[iNisn]||'').trim() : '',
+          jenis_kelamin: iGender > -1 ? (String(r[iGender]||'').trim().toUpperCase()==='P' ? 'P' : 'L') : 'L',
         });
       });
 
@@ -8259,7 +8288,7 @@ function TabKelasSiswa({sesi, showToast}) {
       )}
 
       {/* Import massal */}
-      <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center',
+      <div style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap',alignItems:'center',
         padding:'10px 14px',background:'#f0fdf4',borderRadius:10,border:'1.5px solid #86efac'}}>
         <div style={{fontSize:'.8rem',color:'#166534',flex:1}}>
           <b>📤 Import Massal</b> — Upload Excel berisi kolom: <i>Tingkat, Rombel, Nama Siswa, NISN, Gender (L/P)</i>
@@ -8270,6 +8299,13 @@ function TabKelasSiswa({sesi, showToast}) {
           📤 Import Excel
           <input type="file" accept=".xlsx,.xls" onChange={importSiswaExcelGlobal} style={{display:'none'}}/>
         </label>
+      </div>
+      {/* Hapus semua data */}
+      <div style={{display:'flex',justifyContent:'flex-end',marginBottom:14}}>
+        <button className="btn btn-sm" onClick={hapusSemuaData}
+          style={{background:'#fef2f2',color:'#991b1b',border:'1.5px solid #fca5a5',fontSize:'.75rem'}}>
+          🗑️ Hapus Semua Data TA {filterTA}
+        </button>
       </div>
 
       {showFormKelas && (
