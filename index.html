@@ -5407,6 +5407,7 @@ function DashboardGuru({sesi, showToast}) {
           ['hasil',     '📊 Hasil Supervisi',      fiturAktif.supervisi !== false],
           ['rtl',       '📋 RTL Saya',              fiturAktif.rtl !== false],
           ['jurnal',    '📓 Jurnal Mengajar',        true],
+          ['nilai',     '📝 Nilai Siswa',            true],
           ['dokumen',   '📁 Dok. Admin',             true],
           ['portofolio','🗂️ e-Portofolio',         fiturAktif.portofolio !== false],
           ['asesmen',   '📈 Analisis Asesmen',       fiturAktif.analisis_asesmen !== false],
@@ -5538,6 +5539,11 @@ function DashboardGuru({sesi, showToast}) {
       {/* TAB JURNAL MENGAJAR */}
       {tab==='jurnal' && (
         <TabJurnal sesi={sesi} showToast={showToast} />
+      )}
+
+      {/* TAB NILAI SISWA */}
+      {tab==='nilai' && (
+        <TabNilai sesi={sesi} showToast={showToast} />
       )}
 
       {/* TAB DOKUMEN ADMIN */}
@@ -8380,6 +8386,323 @@ function TabKelasSiswa({sesi, showToast}) {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── TAB NILAI SISWA (GURU) ────────────────────────────────────
+function TabNilai({sesi, showToast}) {
+  const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+  const [filterTA,  setFilterTA]  = React.useState(getTASekarang());
+  const [filterSmt, setFilterSmt] = React.useState('1');
+  const [kelasList, setKelasList] = React.useState([]);
+  const [siswaList, setSiswaList] = React.useState([]);
+  const [nilaiMap,  setNilaiMap]  = React.useState({}); // {siswa_id+jenis: nilai}
+  const [filterKelas, setFilterKelas] = React.useState('');
+  const [filterJenis, setFilterJenis] = React.useState('formatif');
+  const [loading,   setLoading]   = React.useState(false);
+  const [importStatus, setImportStatus] = React.useState('');
+  const [view, setView] = React.useState('list'); // 'list'|'rekap'|'grafik'
+  const [kktp, setKktp] = React.useState(70);
+
+  const jenisOpt = [
+    {val:'formatif', label:'Formatif (Harian/Kuis)'},
+    {val:'sts',      label:'Sumatif Tengah Semester'},
+    {val:'sas',      label:'Sumatif Akhir Semester'},
+    {val:'proyek',   label:'Proyek / Praktik'},
+  ];
+
+  React.useEffect(()=>{ loadKelas(); }, [filterTA]);
+  React.useEffect(()=>{ if(filterKelas) loadSiswaData(); }, [filterKelas, filterJenis, filterSmt, filterTA]);
+
+  async function loadKelas() {
+    const {data} = await sb.from('supermad_kelas').select('*')
+      .eq('madrasah_id', sesi.mad.id).eq('tahun_ajaran', filterTA).order('tingkat').order('nama_kelas');
+    setKelasList(data||[]);
+    if (data && data.length > 0 && !filterKelas) setFilterKelas(data[0].nama_kelas);
+  }
+
+  async function loadSiswaData() {
+    setLoading(true);
+    const [{data:sw},{data:nl}] = await Promise.all([
+      sb.from('supermad_siswa').select('id,nama,nis,jenis_kelamin')
+        .eq('madrasah_id', sesi.mad.id).eq('kelas', filterKelas)
+        .eq('tahun_ajaran', filterTA).eq('aktif', true).order('nama'),
+      sb.from('supermad_nilai').select('*')
+        .eq('madrasah_id', sesi.mad.id).eq('kelas', filterKelas)
+        .eq('mapel', sesi.pengguna.mapel||'').eq('jenis_nilai', filterJenis)
+        .eq('semester', filterSmt).eq('tahun_ajaran', filterTA),
+    ]);
+    setSiswaList(sw||[]);
+    const mp = {};
+    (nl||[]).forEach(n=>{ mp[n.siswa_id] = n.nilai; });
+    setNilaiMap(mp);
+    setLoading(false);
+  }
+
+  // Download template Excel dengan nama siswa sudah terisi
+  function downloadTemplate() {
+    if (!siswaList.length) { alert('Pilih kelas dulu, tunggu data siswa muncul.'); return; }
+    const jenisLabel = jenisOpt.find(j=>j.val===filterJenis)?.label || filterJenis;
+    const csv = [
+      'sep=;',
+      `NISN;Nama Siswa;Nilai;KKTP`,
+      ...siswaList.map(s=>`${s.nis||''};${s.nama};${nilaiMap[s.id]!==undefined?nilaiMap[s.id]:''};${kktp}`),
+    ].join('\r\n');
+    const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `nilai_${filterKelas}_${filterJenis}_smt${filterSmt}_${filterTA.replace('/','_')}.csv`;
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+  }
+
+  // Import Excel nilai
+  async function importNilai(e) {
+    const file = e.target.files[0]; if (!file) return;
+    e.target.value = '';
+    setImportStatus('⏳ Memproses...');
+    try {
+      let rows;
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        const text = await file.text();
+        const lines = text.split(/\r?\n/).filter(l=>l.trim()&&!l.startsWith('sep='));
+        const sep = lines[0]&&lines[0].includes(';')?';':',';
+        rows = lines.map(l=>l.split(sep).map(c=>c.trim().replace(/^"|"$/g,'')));
+      } else {
+        const buf = await file.arrayBuffer();
+        const wb  = window.XLSX.read(buf,{type:'array'});
+        rows = window.XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+      }
+      if (rows.length < 2) { setImportStatus('❌ File kosong.'); return; }
+      const hdr   = rows[0].map(h=>String(h).toLowerCase().trim());
+      const iNisn = hdr.findIndex(h=>h.includes('nisn')||h.includes('nis'));
+      const iNama = hdr.findIndex(h=>h.includes('nama'));
+      const iNilai= hdr.findIndex(h=>h.includes('nilai'));
+      const iKktp = hdr.findIndex(h=>h.includes('kktp'));
+      if (iNilai===-1) { setImportStatus('❌ Kolom "Nilai" tidak ditemukan.'); return; }
+
+      // Cocokkan NISN/Nama ke siswa_id
+      const upserts = [];
+      rows.slice(1).forEach(r=>{
+        const nilaiRaw = String(r[iNilai]||'').trim();
+        if (!nilaiRaw) return;
+        const nilai = parseFloat(nilaiRaw);
+        if (isNaN(nilai)||nilai<0||nilai>100) return;
+        const nisn  = iNisn>-1 ? String(r[iNisn]||'').trim() : '';
+        const nama  = iNama>-1 ? String(r[iNama]||'').trim() : '';
+        const ktpVal= iKktp>-1 ? parseFloat(r[iKktp])||kktp : kktp;
+        // Cari siswa
+        const siswa = siswaList.find(s=>(nisn&&s.nis===nisn)||(nama&&s.nama===nama));
+        if (!siswa) return;
+        upserts.push({
+          madrasah_id: sesi.mad.id,
+          tahun_ajaran: filterTA,
+          semester: filterSmt,
+          siswa_id: siswa.id,
+          kelas: filterKelas,
+          guru_id: sesi.pengguna.id,
+          mapel: sesi.pengguna.mapel||'',
+          jenis_nilai: filterJenis,
+          nilai, kktp: ktpVal,
+          updated_at: new Date().toISOString(),
+        });
+      });
+      if (!upserts.length) { setImportStatus('❌ Tidak ada nilai valid yang dikenali.'); return; }
+      const {error} = await sb.from('supermad_nilai')
+        .upsert(upserts, {onConflict:'siswa_id,mapel,jenis_nilai,semester,tahun_ajaran'});
+      if (error) throw new Error(error.message);
+      setImportStatus(`✅ ${upserts.length} nilai berhasil disimpan.`);
+      await loadSiswaData();
+    } catch(err) { setImportStatus('❌ '+err.message); }
+  }
+
+  const nilaiArr  = siswaList.map(s=>nilaiMap[s.id]).filter(v=>v!==undefined);
+  const rataRata  = nilaiArr.length ? (nilaiArr.reduce((a,b)=>a+b,0)/nilaiArr.length).toFixed(1) : '—';
+  const tertinggi = nilaiArr.length ? Math.max(...nilaiArr) : '—';
+  const terendah  = nilaiArr.length ? Math.min(...nilaiArr) : '—';
+  const lulus     = nilaiArr.filter(v=>v>=kktp).length;
+
+  // Distribusi nilai untuk grafik batang sederhana
+  const distrib = [
+    {label:'91-100', min:91, max:100, color:'#16a34a'},
+    {label:'81-90',  min:81, max:90,  color:'#2563eb'},
+    {label:'71-80',  min:71, max:80,  color:'#0891b2'},
+    {label:'61-70',  min:61, max:70,  color:'#d97706'},
+    {label:'≤60',    min:0,  max:60,  color:'#dc2626'},
+  ].map(d=>({...d, jml: nilaiArr.filter(v=>v>=d.min&&v<=d.max).length}));
+  const maxJml = Math.max(...distrib.map(d=>d.jml), 1);
+
+  return (
+    <div>
+      {/* Header filter */}
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:12}}>
+        <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1rem',flex:1}}>📝 Nilai Siswa</div>
+        <select value={filterTA} onChange={e=>{setFilterTA(e.target.value);setFilterKelas('');}}
+          style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit'}}>
+          {[getTASekarang(),(()=>{const[a]=getTASekarang().split('/');return(a-1)+'/'+a;})(),(()=>{const[a]=getTASekarang().split('/');return(parseInt(a)+1)+'/'+(parseInt(a)+2);})()] .filter((v,i,a)=>a.indexOf(v)===i).map(ta=>(
+            <option key={ta} value={ta}>{ta}</option>
+          ))}
+        </select>
+        <select value={filterSmt} onChange={e=>setFilterSmt(e.target.value)}
+          style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit'}}>
+          <option value="1">Semester 1</option>
+          <option value="2">Semester 2</option>
+        </select>
+      </div>
+
+      {/* Pilih Kelas + Jenis */}
+      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
+        <select value={filterKelas} onChange={e=>setFilterKelas(e.target.value)}
+          style={{padding:'7px 12px',border:'1.5px solid var(--p)',borderRadius:8,fontSize:'.85rem',fontFamily:'inherit',fontWeight:700,color:'var(--p)'}}>
+          <option value="">— Pilih Kelas —</option>
+          {kelasList.map(k=><option key={k.id} value={k.nama_kelas}>{k.nama_kelas}</option>)}
+        </select>
+        <select value={filterJenis} onChange={e=>setFilterJenis(e.target.value)}
+          style={{padding:'7px 12px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.85rem',fontFamily:'inherit'}}>
+          {jenisOpt.map(j=><option key={j.val} value={j.val}>{j.label}</option>)}
+        </select>
+        <div style={{display:'flex',alignItems:'center',gap:6,fontSize:'.8rem',color:'var(--text2)'}}>
+          KKTP:
+          <input type="number" min={0} max={100} value={kktp} onChange={e=>setKktp(Number(e.target.value))}
+            style={{width:56,padding:'5px 8px',borderRadius:7,border:'1.5px solid var(--border)',textAlign:'center',fontFamily:'inherit'}}/>
+        </div>
+      </div>
+
+      {!filterKelas ? (
+        <div className="card" style={{textAlign:'center',padding:32,color:'var(--text3)'}}>
+          Pilih kelas dan jenis nilai untuk mulai.
+        </div>
+      ) : loading ? (
+        <div style={{textAlign:'center',padding:32,color:'var(--text3)'}}>⏳ Memuat data...</div>
+      ) : (
+        <>
+          {/* Stat cards */}
+          {nilaiArr.length > 0 && (
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10,marginBottom:12}}>
+              {[
+                {label:'Rata-rata',  val:rataRata, icon:'📊', color:'#2563eb', bg:'#dbeafe'},
+                {label:'Tertinggi',  val:tertinggi,icon:'🏆', color:'#16a34a', bg:'#dcfce7'},
+                {label:'Terendah',   val:terendah, icon:'📉', color:'#dc2626', bg:'#fee2e2'},
+                {label:`Tuntas (≥${kktp})`, val:`${lulus}/${nilaiArr.length}`, icon:'✅', color:'#059669', bg:'#d1fae5'},
+              ].map(({label,val,icon,color,bg})=>(
+                <div key={label} style={{background:bg,borderRadius:10,padding:'12px 14px',border:'1.5px solid '+color+'33'}}>
+                  <div style={{fontSize:'1.3rem',marginBottom:3}}>{icon}</div>
+                  <div style={{fontSize:'1.4rem',fontWeight:900,color,lineHeight:1}}>{val}</div>
+                  <div style={{fontSize:'.7rem',color,fontWeight:600,marginTop:2}}>{label}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Grafik distribusi */}
+          {nilaiArr.length > 0 && (
+            <div className="card" style={{marginBottom:12,padding:'14px 16px'}}>
+              <div style={{fontWeight:700,color:'var(--p3)',marginBottom:10,fontSize:'.85rem'}}>📊 Distribusi Nilai</div>
+              <div style={{display:'flex',gap:8,alignItems:'flex-end',height:80}}>
+                {distrib.map(d=>(
+                  <div key={d.label} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+                    <div style={{fontSize:'.7rem',fontWeight:700,color:d.color}}>{d.jml}</div>
+                    <div style={{width:'100%',background:d.color,borderRadius:'4px 4px 0 0',
+                      height: d.jml===0?2:Math.max(8,(d.jml/maxJml)*64),opacity:.85}}/>
+                    <div style={{fontSize:'.65rem',color:'var(--text2)',textAlign:'center'}}>{d.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Toolbar import/download */}
+          <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap',alignItems:'center',
+            padding:'10px 14px',background:'#f0fdf4',borderRadius:10,border:'1.5px solid #86efac'}}>
+            <div style={{fontSize:'.8rem',color:'#166534',flex:1}}>
+              <b>📥 Mapel: {sesi.pengguna.mapel||'(belum diset)'}</b>
+              {' · '}{jenisOpt.find(j=>j.val===filterJenis)?.label}
+              {' · '}{filterKelas} · Smt {filterSmt}
+            </div>
+            <button className="btn btn-outline btn-sm" onClick={downloadTemplate}>
+              📥 Download Template
+            </button>
+            <label className="btn btn-primary btn-sm" style={{cursor:'pointer',margin:0}}>
+              📤 Import Nilai
+              <input type="file" accept=".xlsx,.xls,.csv" onChange={importNilai} style={{display:'none'}}/>
+            </label>
+          </div>
+
+          {importStatus && (
+            <div style={{marginBottom:10,padding:'8px 14px',borderRadius:8,fontSize:'.82rem',
+              background:importStatus.startsWith('✅')?'#f0fdf4':importStatus.startsWith('❌')?'#fef2f2':'#fffbeb',
+              border:'1px solid '+(importStatus.startsWith('✅')?'#86efac':importStatus.startsWith('❌')?'#fca5a5':'#fcd34d'),
+              color:importStatus.startsWith('✅')?'#166534':importStatus.startsWith('❌')?'#991b1b':'#92400e'}}>
+              {importStatus}
+            </div>
+          )}
+
+          {/* Tabel nilai siswa */}
+          <div className="card" style={{padding:0,overflow:'hidden'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.82rem'}}>
+              <thead>
+                <tr style={{background:'var(--p)',color:'#fff'}}>
+                  <th style={{padding:'8px 12px',textAlign:'left',width:32}}>#</th>
+                  <th style={{padding:'8px 12px',textAlign:'left'}}>Nama Siswa</th>
+                  <th style={{padding:'8px 12px',textAlign:'center',width:60}}>L/P</th>
+                  <th style={{padding:'8px 12px',textAlign:'center',width:80}}>Nilai</th>
+                  <th style={{padding:'8px 12px',textAlign:'center',width:80}}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {siswaList.length === 0 ? (
+                  <tr><td colSpan={5} style={{padding:24,textAlign:'center',color:'var(--text3)'}}>
+                    Belum ada siswa di kelas ini.
+                  </td></tr>
+                ) : siswaList.map((s,i)=>{
+                  const n = nilaiMap[s.id];
+                  const tuntas = n!==undefined && n>=kktp;
+                  return (
+                    <tr key={s.id} style={{borderTop:'1px solid var(--border)',
+                      background:i%2===0?'#fff':'var(--surface2)'}}>
+                      <td style={{padding:'7px 12px',color:'var(--text3)'}}>{i+1}</td>
+                      <td style={{padding:'7px 12px',fontWeight:600}}>{s.nama}</td>
+                      <td style={{padding:'7px 12px',textAlign:'center'}}>
+                        <span style={{fontWeight:700,color:s.jenis_kelamin==='P'?'#db2777':'#0891b2'}}>
+                          {s.jenis_kelamin||'L'}
+                        </span>
+                      </td>
+                      <td style={{padding:'7px 12px',textAlign:'center',fontWeight:700,
+                        color:n===undefined?'var(--text3)':tuntas?'#16a34a':'#dc2626',fontSize:'.9rem'}}>
+                        {n!==undefined ? n : '—'}
+                      </td>
+                      <td style={{padding:'7px 12px',textAlign:'center'}}>
+                        {n===undefined ? (
+                          <span style={{fontSize:'.7rem',color:'var(--text3)'}}>Belum</span>
+                        ) : (
+                          <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
+                            background:tuntas?'#dcfce7':'#fee2e2',
+                            color:tuntas?'#16a34a':'#dc2626'}}>
+                            {tuntas?'Tuntas':'Belum Tuntas'}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {nilaiArr.length > 0 && (
+                <tfoot>
+                  <tr style={{background:'var(--surface2)',fontWeight:700,borderTop:'2px solid var(--border)'}}>
+                    <td colSpan={3} style={{padding:'8px 12px',color:'var(--text2)'}}>Rata-rata Kelas</td>
+                    <td style={{padding:'8px 12px',textAlign:'center',color:'var(--p)',fontSize:'1rem'}}>{rataRata}</td>
+                    <td style={{padding:'8px 12px',textAlign:'center',fontSize:'.75rem',color:'var(--text2)'}}>
+                      {lulus}/{nilaiArr.length} tuntas
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
