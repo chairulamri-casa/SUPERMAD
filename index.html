@@ -7875,12 +7875,14 @@ function TabKelasSiswa({sesi, showToast}) {
   }
 
   function downloadTemplateSiswa() {
-    // Pakai CSV — tidak perlu library XLSX, langsung bisa dibuka Excel
+    // Pakai CSV dengan separator semicolon (sesuai Excel Indonesia)
+    // Tambahkan 'sep=;' di baris pertama agar Excel otomatis pakai semicolon
     const csv = [
-      'Tingkat,Rombel,Nama Siswa,NISN,Gender (L/P)',
-      'VII,VII-A,NAMA SISWA CONTOH,3201234567,L',
-      'VII,VII-A,NAMA SISWA KEDUA,3201234568,P',
-      'VIII,VIII-B,NAMA SISWA KETIGA,3201234569,P',
+      'sep=;',
+      'Tingkat;Rombel;Nama Siswa;NISN;Gender (L/P)',
+      'VII;VII-A;NAMA SISWA CONTOH;3201234567;L',
+      'VII;VII-A;NAMA SISWA KEDUA;3201234568;P',
+      'VIII;VIII-B;NAMA SISWA KETIGA;3201234569;P',
     ].join('\r\n');
     const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
     const url = URL.createObjectURL(blob);
@@ -7930,9 +7932,10 @@ function TabKelasSiswa({sesi, showToast}) {
       if (file.name.toLowerCase().endsWith('.csv')) {
         // Baca CSV langsung tanpa XLSX
         const text = await file.text();
-        rows = text.split(/\r?\n/).filter(l=>l.trim()).map(l=>
-          l.split(',').map(c=>c.trim().replace(/^"|"$/g,''))
-        );
+        const lines = text.split(/\r?\n/).filter(l=>l.trim() && !l.startsWith('sep='));
+        // Deteksi separator: semicolon atau koma
+        const sep = lines[0] && lines[0].includes(';') ? ';' : ',';
+        rows = lines.map(l=>l.split(sep).map(c=>c.trim().replace(/^"|"$/g,'')));
       } else {
         const buf = await file.arrayBuffer();
         const wb  = window.XLSX.read(buf,{type:'array'});
@@ -8293,7 +8296,7 @@ function TabKelasSiswa({sesi, showToast}) {
         <button className="btn btn-outline btn-sm" onClick={downloadTemplateSiswa}>📥 Download Template</button>
         <label className="btn btn-primary btn-sm" style={{cursor:'pointer',margin:0}}>
           📤 Import Excel
-          <input type="file" accept=".xlsx,.xls" onChange={importSiswaExcelGlobal} style={{display:'none'}}/>
+          <input type="file" accept=".xlsx,.xls,.csv" onChange={importSiswaExcelGlobal} style={{display:'none'}}/>
         </label>
       </div>
       {/* Hapus semua data */}
