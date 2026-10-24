@@ -7875,34 +7875,21 @@ function TabKelasSiswa({sesi, showToast}) {
   }
 
   function downloadTemplateSiswa() {
-    try {
-      const XL = window.XLSX;
-      if (!XL) { alert('Library Excel belum siap, coba refresh halaman.'); return; }
-      const rows = [
-        ['Tingkat','Rombel','Nama Siswa','NISN','Gender (L/P)'],
-        ['VII','VII-A','NAMA SISWA CONTOH','3201234567','L'],
-        ['VII','VII-A','NAMA SISWA KEDUA','3201234568','P'],
-        ['VIII','VIII-B','NAMA SISWA KETIGA','3201234569','P'],
-      ];
-      const ws = XL.utils.aoa_to_sheet(rows);
-      ws['!cols'] = [{wch:10},{wch:12},{wch:30},{wch:15},{wch:12}];
-      const wb2 = XL.utils.book_new();
-      XL.utils.book_append_sheet(wb2,'Siswa',ws);
-      const wbout = XL.write(wb2, {bookType:'xlsx', type:'binary'});
-      const buf = new ArrayBuffer(wbout.length);
-      const view = new Uint8Array(buf);
-      for (let i=0; i<wbout.length; i++) view[i] = wbout.charCodeAt(i) & 0xFF;
-      const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'template_import_siswa.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
-    } catch(err) {
-      alert('Gagal download template: ' + err.message);
-    }
+    // Pakai CSV — tidak perlu library XLSX, langsung bisa dibuka Excel
+    const csv = [
+      'Tingkat,Rombel,Nama Siswa,NISN,Gender (L/P)',
+      'VII,VII-A,NAMA SISWA CONTOH,3201234567,L',
+      'VII,VII-A,NAMA SISWA KEDUA,3201234568,P',
+      'VIII,VIII-B,NAMA SISWA KETIGA,3201234569,P',
+    ].join('\r\n');
+    const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'template_import_siswa.csv';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
   }
 
   // Hapus semua siswa + kelas untuk TA yang dipilih
@@ -7939,10 +7926,19 @@ function TabKelasSiswa({sesi, showToast}) {
     if (!file) return;
     setImportSiswaStatus('⏳ Memproses file...');
     try {
-      const buf = await file.arrayBuffer();
-      const wb  = XLSX.read(buf,{type:'array'});
-      const ws  = wb.Sheets[wb.SheetNames[0]];
-      const rows= XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      let rows;
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        // Baca CSV langsung tanpa XLSX
+        const text = await file.text();
+        rows = text.split(/\r?\n/).filter(l=>l.trim()).map(l=>
+          l.split(',').map(c=>c.trim().replace(/^"|"$/g,''))
+        );
+      } else {
+        const buf = await file.arrayBuffer();
+        const wb  = window.XLSX.read(buf,{type:'array'});
+        const ws  = wb.Sheets[wb.SheetNames[0]];
+        rows = window.XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      }
       if (rows.length < 2) { setImportSiswaStatus('❌ File kosong atau tidak ada data.'); return; }
 
       // Deteksi format header
