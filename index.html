@@ -810,7 +810,7 @@ function DashboardOperator({sesi, showToast}) {
 
       {/* Tab */}
       <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
-        {[['guru','👨‍🏫 Daftar Guru'],['pengguna','👤 Pengguna'],['instrumen','📋 Instrumen'],['profil','🏫 Profil']].map(([key,label])=>(
+        {[['guru','👨‍🏫 Daftar Guru'],['pengguna','👤 Pengguna'],['kelas','🏫 Kelas & Siswa'],['instrumen','📋 Instrumen'],['profil','⚙️ Profil']].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',
               fontWeight:700,fontSize:'.8rem',fontFamily:'inherit',
@@ -1127,9 +1127,14 @@ function DashboardOperator({sesi, showToast}) {
         </div>
       )}
 
-      {/* TAB PROFIL */}
+      {/* TAB INSTRUMEN */}
       {tab==='instrumen' && (
         <TabInstrumen sesi={sesi} showToast={showToast} />
+      )}
+
+      {/* TAB KELAS & SISWA */}
+      {tab==='kelas' && (
+        <TabKelasSiswa sesi={sesi} showToast={showToast} />
       )}
 
       {tab==='profil' && (
@@ -5401,6 +5406,7 @@ function DashboardGuru({sesi, showToast}) {
         {[
           ['hasil',     '📊 Hasil Supervisi',      fiturAktif.supervisi !== false],
           ['rtl',       '📋 RTL Saya',              fiturAktif.rtl !== false],
+          ['jurnal',    '📓 Jurnal Mengajar',        true],
           ['dokumen',   '📁 Dok. Admin',             true],
           ['portofolio','🗂️ e-Portofolio',         fiturAktif.portofolio !== false],
           ['asesmen',   '📈 Analisis Asesmen',       fiturAktif.analisis_asesmen !== false],
@@ -5527,6 +5533,11 @@ function DashboardGuru({sesi, showToast}) {
             </div>
           )}
         </div>
+      )}
+
+      {/* TAB JURNAL MENGAJAR */}
+      {tab==='jurnal' && (
+        <TabJurnal sesi={sesi} showToast={showToast} />
       )}
 
       {/* TAB DOKUMEN ADMIN */}
@@ -7736,6 +7747,822 @@ function TabPortofolio({sesi, showToast}) {
                   </button>
                   <button onClick={()=>hapus(item.id)}
                     style={{padding:'5px 10px',borderRadius:7,border:'1px solid #fca5a5',
+                      background:'#fef2f2',color:'#dc2626',cursor:'pointer',fontSize:'.75rem'}}>
+                    🗑️
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── TAB KELAS & SISWA (OPERATOR) ─────────────────────────────
+function TabKelasSiswa({sesi, showToast}) {
+  const [kelasList, setKelasList]   = React.useState([]);
+  const [siswaList, setSiswaList]   = React.useState([]);
+  const [loading, setLoading]       = React.useState(true);
+  const [view, setView]             = React.useState('kelas'); // 'kelas' | 'siswa'
+  const [activeKelas, setActiveKelas] = React.useState(null);
+  const [filterTA, setFilterTA]     = React.useState(getTASekarang());
+  const [showFormKelas, setShowFormKelas] = React.useState(false);
+  const [editKelas, setEditKelas]   = React.useState(null);
+  const [formKelas, setFormKelas]   = React.useState({nama_kelas:'',tingkat:'VII',wali_kelas:''});
+  const [showFormSiswa, setShowFormSiswa] = React.useState(false);
+  const [editSiswa, setEditSiswa]   = React.useState(null);
+  const [formSiswa, setFormSiswa]   = React.useState({nama:'',nis:'',jenis_kelamin:'L'});
+  const [importSiswaStatus, setImportSiswaStatus] = React.useState('');
+
+  React.useEffect(()=>{ loadKelas(filterTA); }, [filterTA]);
+
+  async function loadKelas(ta) {
+    setLoading(true);
+    const {data} = await sb.from('supermad_kelas').select('*')
+      .eq('madrasah_id', sesi.mad.id).eq('tahun_ajaran', ta||filterTA)
+      .order('tingkat').order('nama_kelas');
+    setKelasList(data||[]);
+    setLoading(false);
+  }
+
+  async function loadSiswa(kelasNama, ta) {
+    const {data} = await sb.from('supermad_siswa').select('*')
+      .eq('madrasah_id', sesi.mad.id)
+      .eq('kelas', kelasNama)
+      .eq('tahun_ajaran', ta||filterTA)
+      .eq('aktif', true)
+      .order('nama');
+    setSiswaList(data||[]);
+  }
+
+  function bukaKelas(k) {
+    setActiveKelas(k);
+    setView('siswa');
+    loadSiswa(k.nama_kelas, filterTA);
+  }
+
+  async function simpanKelas(e) {
+    e.preventDefault();
+    const payload = {...formKelas, madrasah_id: sesi.mad.id, tahun_ajaran: filterTA, aktif: true};
+    let error;
+    if (editKelas) {
+      ({error} = await sb.from('supermad_kelas').update(payload).eq('id', editKelas.id));
+    } else {
+      ({error} = await sb.from('supermad_kelas').insert(payload));
+    }
+    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    showToast('✅ Kelas '+(editKelas?'diperbarui':'ditambahkan')+'!');
+    setShowFormKelas(false); setEditKelas(null);
+    setFormKelas({nama_kelas:'',tingkat:'VII',wali_kelas:''});
+    loadKelas(filterTA);
+  }
+
+  async function hapusKelas(k) {
+    if (!confirm(`Hapus kelas "${k.nama_kelas}"? Semua siswa di kelas ini juga akan dihapus.`)) return;
+    await sb.from('supermad_siswa').delete().eq('madrasah_id', sesi.mad.id).eq('kelas', k.nama_kelas).eq('tahun_ajaran', filterTA);
+    await sb.from('supermad_kelas').delete().eq('id', k.id);
+    showToast('🗑️ Kelas dihapus');
+    loadKelas(filterTA);
+  }
+
+  async function simpanSiswa(e) {
+    e.preventDefault();
+    const payload = {
+      ...formSiswa,
+      madrasah_id: sesi.mad.id,
+      kelas: activeKelas.nama_kelas,
+      tahun_ajaran: filterTA,
+      aktif: true,
+    };
+    let error;
+    if (editSiswa) {
+      ({error} = await sb.from('supermad_siswa').update(payload).eq('id', editSiswa.id));
+    } else {
+      ({error} = await sb.from('supermad_siswa').insert(payload));
+    }
+    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    showToast('✅ Siswa '+(editSiswa?'diperbarui':'ditambahkan')+'!');
+    setShowFormSiswa(false); setEditSiswa(null);
+    setFormSiswa({nama:'',nis:'',jenis_kelamin:'L'});
+    loadSiswa(activeKelas.nama_kelas, filterTA);
+  }
+
+  async function hapusSiswa(s) {
+    if (!confirm(`Hapus siswa "${s.nama}"?`)) return;
+    await sb.from('supermad_siswa').delete().eq('id', s.id);
+    showToast('🗑️ Siswa dihapus');
+    loadSiswa(activeKelas.nama_kelas, filterTA);
+  }
+
+  async function downloadTemplateSiswa() {
+    const rows = [['No','Nama Lengkap','NIS','Jenis Kelamin (L/P)']];
+    for (let i=1;i<=10;i++) rows.push([i,'','','L']);
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,'Siswa',ws);
+    XLSX.writeFile(wb,`template_siswa_${activeKelas?.nama_kelas||'kelas'}.xlsx`);
+  }
+
+  async function importSiswaExcel(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImportSiswaStatus('⏳ Memproses...');
+    try {
+      const buf = await file.arrayBuffer();
+      const wb  = XLSX.read(buf,{type:'array'});
+      const ws  = wb.Sheets[wb.SheetNames[0]];
+      const rows= XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      const data= rows.slice(1).filter(r=>r[1]).map(r=>({
+        madrasah_id: sesi.mad.id,
+        kelas: activeKelas.nama_kelas,
+        tahun_ajaran: filterTA,
+        nama: String(r[1]).trim(),
+        nis: String(r[2]||'').trim(),
+        jenis_kelamin: String(r[3]||'L').trim().toUpperCase()==='P'?'P':'L',
+        aktif: true,
+      }));
+      if (!data.length) { setImportSiswaStatus('❌ Tidak ada data ditemukan.'); return; }
+      const {error} = await sb.from('supermad_siswa').insert(data);
+      if (error) { setImportSiswaStatus('❌ '+error.message); return; }
+      setImportSiswaStatus(`✅ ${data.length} siswa berhasil diimport!`);
+      loadSiswa(activeKelas.nama_kelas, filterTA);
+    } catch(err) {
+      setImportSiswaStatus('❌ '+err.message);
+    }
+    e.target.value='';
+  }
+
+  const tingkatList = sesi.mad.naungan==='Pesantren'
+    ? ['Kelas 1','Kelas 2','Kelas 3','Kelas 4','Kelas 5','Kelas 6']
+    : ['VII','VIII','IX','X','XI','XII'];
+
+  if (loading) return <Loading text="Memuat kelas..." />;
+
+  // VIEW DAFTAR SISWA
+  if (view==='siswa' && activeKelas) return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16,flexWrap:'wrap'}}>
+        <button className="btn btn-outline btn-sm" onClick={()=>{setView('kelas');setActiveKelas(null);setSiswaList([]);}}>
+          ← Kembali
+        </button>
+        <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1rem',flex:1}}>
+          🏫 Siswa Kelas {activeKelas.nama_kelas}
+        </div>
+        <span style={{fontSize:'.8rem',color:'var(--text2)'}}>
+          {siswaList.length} siswa · {filterTA}
+        </span>
+      </div>
+
+      {importSiswaStatus && (
+        <div style={{padding:'10px 14px',borderRadius:9,marginBottom:12,fontSize:'.8rem',
+          background:importSiswaStatus.startsWith('✅')?'#f0fdf4':importSiswaStatus.startsWith('❌')?'#fef2f2':'#fffbeb',
+          border:'1px solid '+(importSiswaStatus.startsWith('✅')?'#86efac':importSiswaStatus.startsWith('❌')?'#fca5a5':'#fcd34d'),
+          color:importSiswaStatus.startsWith('✅')?'#166534':importSiswaStatus.startsWith('❌')?'#991b1b':'#92400e'}}>
+          {importSiswaStatus}
+        </div>
+      )}
+
+      <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap',alignItems:'center'}}>
+        <div style={{flex:1}}/>
+        <button className="btn btn-outline btn-sm" onClick={downloadTemplateSiswa}>📥 Template Excel</button>
+        <label className="btn btn-outline btn-sm" style={{cursor:'pointer',margin:0}}>
+          📤 Import Excel
+          <input type="file" accept=".xlsx,.xls" onChange={importSiswaExcel} style={{display:'none'}}/>
+        </label>
+        <button className="btn btn-primary btn-sm" onClick={()=>{
+          setShowFormSiswa(!showFormSiswa); setEditSiswa(null);
+          setFormSiswa({nama:'',nis:'',jenis_kelamin:'L'});
+        }}>
+          {showFormSiswa?'✕ Batal':'+ Tambah Siswa'}
+        </button>
+      </div>
+
+      {showFormSiswa && (
+        <div className="card" style={{marginBottom:14,background:'#f8fffe',border:'1.5px solid var(--p)'}}>
+          <div style={{fontWeight:800,color:'var(--p3)',marginBottom:12}}>
+            {editSiswa?'✏️ Edit Siswa':'+ Tambah Siswa'}
+          </div>
+          <form onSubmit={simpanSiswa}>
+            <div className="grid2">
+              <div className="form-group">
+                <label>Nama Lengkap *</label>
+                <input value={formSiswa.nama} onChange={e=>setFormSiswa({...formSiswa,nama:e.target.value})} required placeholder="Nama siswa"/>
+              </div>
+              <div className="form-group">
+                <label>NIS</label>
+                <input value={formSiswa.nis} onChange={e=>setFormSiswa({...formSiswa,nis:e.target.value})} placeholder="Nomor Induk Siswa"/>
+              </div>
+              <div className="form-group">
+                <label>Jenis Kelamin</label>
+                <select value={formSiswa.jenis_kelamin} onChange={e=>setFormSiswa({...formSiswa,jenis_kelamin:e.target.value})}>
+                  <option value="L">Laki-laki</option>
+                  <option value="P">Perempuan</option>
+                </select>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button className="btn btn-primary" type="submit">💾 {editSiswa?'Simpan':'Tambah'}</button>
+              <button type="button" className="btn btn-outline" onClick={()=>{setShowFormSiswa(false);setEditSiswa(null);}}>Batal</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div className="card" style={{overflowX:'auto'}}>
+        {siswaList.length===0 ? (
+          <div style={{textAlign:'center',padding:32,color:'var(--text3)'}}>
+            Belum ada siswa. Tambah manual atau import Excel.
+          </div>
+        ) : (
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.8rem',minWidth:400}}>
+            <thead>
+              <tr style={{background:'var(--p3)',color:'#fff'}}>
+                {['No','Nama Siswa','NIS','L/P','Aksi'].map(h=>(
+                  <th key={h} style={{padding:'8px 10px',textAlign:'left',fontWeight:700}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {siswaList.map((s,i)=>(
+                <tr key={s.id} style={{borderBottom:'1px solid var(--border)',background:i%2===0?'#fff':'var(--surface2)'}}>
+                  <td style={{padding:'7px 10px',color:'var(--text3)'}}>{i+1}</td>
+                  <td style={{padding:'7px 10px',fontWeight:600}}>{s.nama}</td>
+                  <td style={{padding:'7px 10px',color:'var(--text2)'}}>{s.nis||'—'}</td>
+                  <td style={{padding:'7px 10px'}}>
+                    <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
+                      background:s.jenis_kelamin==='P'?'#fce7f3':'#dbeafe',
+                      color:s.jenis_kelamin==='P'?'#9d174d':'#1e40af'}}>
+                      {s.jenis_kelamin==='P'?'P':'L'}
+                    </span>
+                  </td>
+                  <td style={{padding:'7px 10px'}}>
+                    <div style={{display:'flex',gap:4}}>
+                      <button onClick={()=>{setEditSiswa(s);setFormSiswa({nama:s.nama,nis:s.nis||'',jenis_kelamin:s.jenis_kelamin||'L'});setShowFormSiswa(true);}}
+                        style={{padding:'3px 8px',borderRadius:6,border:'1px solid var(--p)',
+                          background:'#fff',color:'var(--p)',cursor:'pointer',fontSize:'.72rem'}}>✏️</button>
+                      <button onClick={()=>hapusSiswa(s)}
+                        style={{padding:'3px 8px',borderRadius:6,border:'1px solid #ef4444',
+                          background:'#fef2f2',color:'#dc2626',cursor:'pointer',fontSize:'.72rem'}}>🗑️</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {siswaList.length > 0 && (
+        <div style={{marginTop:10,fontSize:'.78rem',color:'var(--text3)',textAlign:'right'}}>
+          Total: {siswaList.filter(s=>s.jenis_kelamin==='L').length} L / {siswaList.filter(s=>s.jenis_kelamin==='P').length} P
+        </div>
+      )}
+    </div>
+  );
+
+  // VIEW DAFTAR KELAS
+  return (
+    <div>
+      <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center'}}>
+        <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1rem',flex:1}}>🏫 Kelas & Siswa</div>
+        <select value={filterTA} onChange={e=>setFilterTA(e.target.value)}
+          style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit'}}>
+          {[getTASekarang(), (()=>{const [a]=getTASekarang().split('/');return (a-1)+'/'+(a);})(),(()=>{const [a]=getTASekarang().split('/');return (parseInt(a)+1)+'/'+(parseInt(a)+2);})()] .filter((v,i,a)=>a.indexOf(v)===i).map(ta=>(
+            <option key={ta} value={ta}>{ta}</option>
+          ))}
+        </select>
+        <button className="btn btn-primary btn-sm" onClick={()=>{
+          setShowFormKelas(!showFormKelas); setEditKelas(null);
+          setFormKelas({nama_kelas:'',tingkat:tingkatList[0],wali_kelas:''});
+        }}>
+          {showFormKelas?'✕ Batal':'+ Tambah Kelas'}
+        </button>
+      </div>
+
+      {showFormKelas && (
+        <div className="card" style={{marginBottom:14,background:'#f8fffe',border:'1.5px solid var(--p)'}}>
+          <div style={{fontWeight:800,color:'var(--p3)',marginBottom:12}}>
+            {editKelas?'✏️ Edit Kelas':'+ Tambah Kelas'}
+          </div>
+          <form onSubmit={simpanKelas}>
+            <div className="grid2">
+              <div className="form-group">
+                <label>Nama Kelas *</label>
+                <input value={formKelas.nama_kelas} onChange={e=>setFormKelas({...formKelas,nama_kelas:e.target.value})} required
+                  placeholder="Contoh: VII-A atau 7A"/>
+              </div>
+              <div className="form-group">
+                <label>Tingkat *</label>
+                <select value={formKelas.tingkat} onChange={e=>setFormKelas({...formKelas,tingkat:e.target.value})}>
+                  {tingkatList.map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Wali Kelas</label>
+                <input value={formKelas.wali_kelas} onChange={e=>setFormKelas({...formKelas,wali_kelas:e.target.value})}
+                  placeholder="Nama wali kelas"/>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button className="btn btn-primary" type="submit">💾 {editKelas?'Simpan Perubahan':'Tambah Kelas'}</button>
+              <button type="button" className="btn btn-outline" onClick={()=>{setShowFormKelas(false);setEditKelas(null);}}>Batal</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {kelasList.length===0 ? (
+        <div className="card" style={{textAlign:'center',padding:32,color:'var(--text3)'}}>
+          Belum ada kelas untuk TA {filterTA}. Tambah kelas terlebih dahulu.
+        </div>
+      ) : (
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:12}}>
+          {kelasList.map(k=>(
+            <div key={k.id} className="card" style={{cursor:'pointer',borderTop:'3px solid var(--p)',transition:'box-shadow .15s'}}
+              onClick={()=>bukaKelas(k)}>
+              <div style={{fontWeight:900,fontSize:'1.1rem',color:'var(--p3)',marginBottom:4}}>
+                🏫 {k.nama_kelas}
+              </div>
+              <div style={{fontSize:'.78rem',color:'var(--text2)',marginBottom:8}}>
+                Tingkat {k.tingkat} {k.wali_kelas?'· WK: '+k.wali_kelas:''}
+              </div>
+              <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
+                <button onClick={e=>{e.stopPropagation();setEditKelas(k);setFormKelas({nama_kelas:k.nama_kelas,tingkat:k.tingkat,wali_kelas:k.wali_kelas||''});setShowFormKelas(true);}}
+                  style={{padding:'3px 8px',borderRadius:6,border:'1px solid var(--p)',
+                    background:'#fff',color:'var(--p)',cursor:'pointer',fontSize:'.72rem'}}>✏️ Edit</button>
+                <button onClick={e=>{e.stopPropagation();hapusKelas(k);}}
+                  style={{padding:'3px 8px',borderRadius:6,border:'1px solid #ef4444',
+                    background:'#fef2f2',color:'#dc2626',cursor:'pointer',fontSize:'.72rem'}}>🗑️</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── TAB JURNAL MENGAJAR (GURU) ────────────────────────────────
+function TabJurnal({sesi, showToast}) {
+  const taList = [getTASekarang(),(()=>{const [a]=getTASekarang().split('/');return (a-1)+'/'+a;})()];
+  const [filterTA,  setFilterTA]  = React.useState(getTASekarang());
+  const [filterSmt, setFilterSmt] = React.useState('Ganjil');
+  const [jurnalList, setJurnalList] = React.useState([]);
+  const [kelasList,  setKelasList]  = React.useState([]);
+  const [siswaList,  setSiswaList]  = React.useState([]);
+  const [loading,    setLoading]    = React.useState(true);
+  const [view,       setView]       = React.useState('list'); // 'list' | 'form' | 'absensi' | 'rekap'
+  const [editJurnal, setEditJurnal] = React.useState(null);
+  const [activeJurnal, setActiveJurnal] = React.useState(null);
+  const [absensiMap, setAbsensiMap] = React.useState({}); // siswa_id -> status
+  const [savingAbsensi, setSavingAbsensi] = React.useState(false);
+  const [form, setForm] = React.useState({
+    tanggal: new Date().toISOString().split('T')[0],
+    kelas: '',
+    jam_ke: '1',
+    mapel: sesi.pengguna.mapel||'',
+    materi: '',
+    tujuan_pembelajaran: '',
+    kendala: '',
+    tindak_lanjut: '',
+    refleksi: '',
+  });
+  const [saving, setSaving] = React.useState(false);
+  const [rekapMode, setRekapMode] = React.useState(false); // true = tampilkan rekap
+
+  React.useEffect(()=>{ loadData(filterTA, filterSmt); }, [filterTA, filterSmt]);
+
+  async function loadData(ta, smt) {
+    setLoading(true);
+    const [j, k] = await Promise.all([
+      sb.from('supermad_jurnal').select('*')
+        .eq('guru_id', sesi.pengguna.id)
+        .eq('madrasah_id', sesi.mad.id)
+        .eq('tahun_ajaran', ta||filterTA)
+        .eq('semester', smt||filterSmt)
+        .order('tanggal', {ascending:false}),
+      sb.from('supermad_kelas').select('*')
+        .eq('madrasah_id', sesi.mad.id)
+        .eq('tahun_ajaran', ta||filterTA)
+        .eq('aktif', true)
+        .order('tingkat').order('nama_kelas'),
+    ]);
+    setJurnalList(j.data||[]);
+    setKelasList(k.data||[]);
+    setLoading(false);
+  }
+
+  async function loadSiswa(kelasNama) {
+    const {data} = await sb.from('supermad_siswa').select('*')
+      .eq('madrasah_id', sesi.mad.id)
+      .eq('kelas', kelasNama)
+      .eq('tahun_ajaran', filterTA)
+      .eq('aktif', true)
+      .order('nama');
+    setSiswaList(data||[]);
+    return data||[];
+  }
+
+  async function loadAbsensi(jurnalId, siswas) {
+    const {data} = await sb.from('supermad_absensi').select('*').eq('jurnal_id', jurnalId);
+    const map = {};
+    siswas.forEach(s=>{ map[s.id] = 'hadir'; });
+    (data||[]).forEach(a=>{ map[a.siswa_id] = a.status; });
+    setAbsensiMap(map);
+  }
+
+  async function bukaAbsensi(jurnal) {
+    setActiveJurnal(jurnal);
+    const siswas = await loadSiswa(jurnal.kelas);
+    await loadAbsensi(jurnal.id, siswas);
+    setView('absensi');
+  }
+
+  async function simpanJurnal(e) {
+    e.preventDefault();
+    setSaving(true);
+    const payload = {
+      ...form,
+      guru_id: sesi.pengguna.id,
+      madrasah_id: sesi.mad.id,
+      tahun_ajaran: filterTA,
+      semester: filterSmt,
+      updated_at: new Date().toISOString(),
+    };
+    let error, insertedId;
+    if (editJurnal) {
+      ({error} = await sb.from('supermad_jurnal').update(payload).eq('id', editJurnal.id));
+      insertedId = editJurnal.id;
+    } else {
+      const {data, error:e2} = await sb.from('supermad_jurnal').insert(payload).select('id').single();
+      error = e2; insertedId = data?.id;
+    }
+    setSaving(false);
+    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    showToast('✅ Jurnal '+(editJurnal?'diperbarui':'disimpan')+'!');
+    setView('list');
+    setEditJurnal(null);
+    loadData(filterTA, filterSmt);
+    // Auto buka absensi kalau baru
+    if (!editJurnal && insertedId) {
+      const newJurnal = {...payload, id: insertedId};
+      setTimeout(()=>bukaAbsensi(newJurnal), 400);
+    }
+  }
+
+  async function simpanAbsensi() {
+    if (!activeJurnal) return;
+    setSavingAbsensi(true);
+    // Upsert semua absensi
+    const rows = siswaList.map(s=>({
+      jurnal_id: activeJurnal.id,
+      siswa_id: s.id,
+      madrasah_id: sesi.mad.id,
+      status: absensiMap[s.id]||'hadir',
+    }));
+    const {error} = await sb.from('supermad_absensi').upsert(rows, {onConflict:'jurnal_id,siswa_id'});
+    if (error) { showToast('Gagal simpan absensi: '+error.message,'error'); setSavingAbsensi(false); return; }
+    // Hitung rekap dan update jurnal
+    const hadir  = rows.filter(r=>r.status==='hadir').length;
+    const sakit  = rows.filter(r=>r.status==='sakit').length;
+    const izin   = rows.filter(r=>r.status==='izin').length;
+    const alpa   = rows.filter(r=>r.status==='alpa').length;
+    await sb.from('supermad_jurnal').update({
+      jumlah_hadir:hadir,jumlah_sakit:sakit,jumlah_izin:izin,jumlah_alpa:alpa,
+      updated_at:new Date().toISOString()
+    }).eq('id', activeJurnal.id);
+    setSavingAbsensi(false);
+    showToast('✅ Absensi tersimpan!');
+    setView('list');
+    setActiveJurnal(null);
+    loadData(filterTA, filterSmt);
+  }
+
+  async function hapusJurnal(j) {
+    if (!confirm('Hapus jurnal ini? Data absensi terkait juga terhapus.')) return;
+    await sb.from('supermad_absensi').delete().eq('jurnal_id', j.id);
+    await sb.from('supermad_jurnal').delete().eq('id', j.id);
+    showToast('🗑️ Jurnal dihapus');
+    loadData(filterTA, filterSmt);
+  }
+
+  function formatTgl(tgl) {
+    if (!tgl) return '—';
+    return new Date(tgl+'T00:00:00').toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  }
+
+  // VIEW ABSENSI
+  if (view==='absensi' && activeJurnal) {
+    const statusOpts = ['hadir','sakit','izin','alpa'];
+    const statusColor = {hadir:'#16a34a',sakit:'#d97706',izin:'#2563eb',alpa:'#dc2626'};
+    const statusBg    = {hadir:'#d1fae5',sakit:'#fef3c7',izin:'#dbeafe',alpa:'#fee2e2'};
+    const hitungAbsensi = (st) => siswaList.filter(s=>(absensiMap[s.id]||'hadir')===st).length;
+    return (
+      <div>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+          <button className="btn btn-outline btn-sm" onClick={()=>{setView('list');setActiveJurnal(null);}}>← Kembali</button>
+          <div style={{fontWeight:900,color:'var(--p3)',flex:1}}>📋 Absensi Siswa</div>
+        </div>
+        <div className="card" style={{marginBottom:12,background:'#f8fffe',border:'1.5px solid var(--p)',fontSize:'.8rem'}}>
+          <div style={{fontWeight:700}}>{formatTgl(activeJurnal.tanggal)} · Kelas {activeJurnal.kelas} · Jam ke-{activeJurnal.jam_ke}</div>
+          <div style={{color:'var(--text2)',marginTop:3}}>{activeJurnal.materi}</div>
+        </div>
+        {/* Rekap cepat */}
+        <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
+          {statusOpts.map(st=>(
+            <div key={st} style={{padding:'6px 14px',borderRadius:20,fontWeight:700,fontSize:'.78rem',
+              background:statusBg[st],color:statusColor[st]}}>
+              {st.charAt(0).toUpperCase()+st.slice(1)}: {hitungAbsensi(st)}
+            </div>
+          ))}
+          <div style={{padding:'6px 14px',borderRadius:20,fontWeight:700,fontSize:'.78rem',
+            background:'var(--surface2)',color:'var(--text2)'}}>
+            Total: {siswaList.length}
+          </div>
+        </div>
+
+        {siswaList.length===0 ? (
+          <div className="card" style={{textAlign:'center',padding:24,color:'var(--text3)'}}>
+            Tidak ada siswa di kelas {activeJurnal.kelas} untuk TA {filterTA}.
+            <br/><small>Tambahkan siswa melalui menu Kelas & Siswa.</small>
+          </div>
+        ) : (
+          <div className="card" style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.8rem'}}>
+              <thead>
+                <tr style={{background:'var(--p3)',color:'#fff'}}>
+                  <th style={{padding:'8px 10px',textAlign:'left'}}>No</th>
+                  <th style={{padding:'8px 10px',textAlign:'left'}}>Nama Siswa</th>
+                  {statusOpts.map(st=>(
+                    <th key={st} style={{padding:'8px 10px',textAlign:'center',fontWeight:700,
+                      color:statusBg[st],textTransform:'capitalize'}}>{st}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {siswaList.map((s,i)=>{
+                  const cur = absensiMap[s.id]||'hadir';
+                  return (
+                    <tr key={s.id} style={{borderBottom:'1px solid var(--border)',background:i%2===0?'#fff':'var(--surface2)'}}>
+                      <td style={{padding:'7px 10px',color:'var(--text3)'}}>{i+1}</td>
+                      <td style={{padding:'7px 10px',fontWeight:600}}>{s.nama}</td>
+                      {statusOpts.map(st=>(
+                        <td key={st} style={{padding:'7px 10px',textAlign:'center'}}>
+                          <button onClick={()=>setAbsensiMap(prev=>({...prev,[s.id]:st}))}
+                            style={{width:28,height:28,borderRadius:'50%',border:'2px solid '+(cur===st?statusColor[st]:'var(--border)'),
+                              background:cur===st?statusBg[st]:'#fff',cursor:'pointer',fontWeight:700,fontSize:'.65rem',
+                              color:cur===st?statusColor[st]:'var(--text3)',transition:'all .15s'}}>
+                            {st==='hadir'?'H':st==='sakit'?'S':st==='izin'?'I':'A'}
+                          </button>
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div style={{display:'flex',gap:8,marginTop:14}}>
+          <button className="btn btn-primary" onClick={simpanAbsensi} disabled={savingAbsensi||siswaList.length===0}>
+            {savingAbsensi?'⏳ Menyimpan...':'💾 Simpan Absensi'}
+          </button>
+          <button className="btn btn-outline" onClick={()=>{setView('list');setActiveJurnal(null);}}>Batal</button>
+        </div>
+      </div>
+    );
+  }
+
+  // VIEW FORM JURNAL
+  if (view==='form') {
+    return (
+      <div>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+          <button className="btn btn-outline btn-sm" onClick={()=>{setView('list');setEditJurnal(null);}}>← Kembali</button>
+          <div style={{fontWeight:900,color:'var(--p3)',flex:1}}>
+            {editJurnal?'✏️ Edit Jurnal':'📝 Tambah Jurnal Mengajar'}
+          </div>
+        </div>
+        <div className="card">
+          <form onSubmit={simpanJurnal}>
+            <div className="grid2">
+              <div className="form-group">
+                <label>Hari / Tanggal *</label>
+                <input type="date" value={form.tanggal} onChange={e=>setForm({...form,tanggal:e.target.value})} required/>
+              </div>
+              <div className="form-group">
+                <label>Kelas *</label>
+                <select value={form.kelas} onChange={e=>setForm({...form,kelas:e.target.value})} required>
+                  <option value="">-- Pilih Kelas --</option>
+                  {kelasList.map(k=><option key={k.id} value={k.nama_kelas}>{k.nama_kelas}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Jam Ke- *</label>
+                <select value={form.jam_ke} onChange={e=>setForm({...form,jam_ke:e.target.value})}>
+                  {['1','2','3','4','5','6','7','8','1-2','2-3','3-4','4-5','5-6','6-7','7-8'].map(j=>(
+                    <option key={j} value={j}>{j}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Mata Pelajaran</label>
+                <input value={form.mapel} onChange={e=>setForm({...form,mapel:e.target.value})}
+                  placeholder="Mapel yang diajarkan"/>
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Materi / TP (Tujuan Pembelajaran) *</label>
+              <textarea rows={2} value={form.materi} onChange={e=>setForm({...form,materi:e.target.value})} required
+                placeholder="Tuliskan materi atau tujuan pembelajaran hari ini..."
+                style={{width:'100%',padding:'10px 12px',border:'1.5px solid var(--border)',borderRadius:9,
+                  fontSize:'.85rem',fontFamily:'inherit',resize:'vertical',outline:'none'}}/>
+            </div>
+            <div className="form-group">
+              <label>Tujuan Pembelajaran (TP) Spesifik</label>
+              <textarea rows={2} value={form.tujuan_pembelajaran} onChange={e=>setForm({...form,tujuan_pembelajaran:e.target.value})}
+                placeholder="Uraian tujuan pembelajaran yang lebih detail..."
+                style={{width:'100%',padding:'10px 12px',border:'1.5px solid var(--border)',borderRadius:9,
+                  fontSize:'.85rem',fontFamily:'inherit',resize:'vertical',outline:'none'}}/>
+            </div>
+            <div className="grid2">
+              <div className="form-group">
+                <label>Kendala</label>
+                <textarea rows={2} value={form.kendala} onChange={e=>setForm({...form,kendala:e.target.value})}
+                  placeholder="Kendala yang dihadapi saat pembelajaran..."
+                  style={{width:'100%',padding:'10px 12px',border:'1.5px solid var(--border)',borderRadius:9,
+                    fontSize:'.85rem',fontFamily:'inherit',resize:'vertical',outline:'none'}}/>
+              </div>
+              <div className="form-group">
+                <label>Tindak Lanjut</label>
+                <textarea rows={2} value={form.tindak_lanjut} onChange={e=>setForm({...form,tindak_lanjut:e.target.value})}
+                  placeholder="Rencana tindak lanjut..."
+                  style={{width:'100%',padding:'10px 12px',border:'1.5px solid var(--border)',borderRadius:9,
+                    fontSize:'.85rem',fontFamily:'inherit',resize:'vertical',outline:'none'}}/>
+              </div>
+            </div>
+            <div className="form-group">
+              <label>Refleksi Guru</label>
+              <textarea rows={2} value={form.refleksi} onChange={e=>setForm({...form,refleksi:e.target.value})}
+                placeholder="Refleksi pembelajaran hari ini..."
+                style={{width:'100%',padding:'10px 12px',border:'1.5px solid var(--border)',borderRadius:9,
+                  fontSize:'.85rem',fontFamily:'inherit',resize:'vertical',outline:'none'}}/>
+            </div>
+            <div style={{display:'flex',gap:8,marginTop:4}}>
+              <button className="btn btn-primary" type="submit" disabled={saving}>
+                {saving?'⏳ Menyimpan...':'💾 Simpan Jurnal'}
+              </button>
+              <button type="button" className="btn btn-outline" onClick={()=>{setView('list');setEditJurnal(null);}}>Batal</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // VIEW REKAP
+  if (rekapMode) {
+    // Group by bulan
+    const bulanMap = {};
+    jurnalList.forEach(j=>{
+      const bln = j.tanggal ? j.tanggal.slice(0,7) : '—';
+      if (!bulanMap[bln]) bulanMap[bln] = [];
+      bulanMap[bln].push(j);
+    });
+    return (
+      <div>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+          <button className="btn btn-outline btn-sm" onClick={()=>setRekapMode(false)}>← Kembali</button>
+          <div style={{fontWeight:900,color:'var(--p3)',flex:1}}>📊 Rekap Absensi — {filterTA} {filterSmt}</div>
+          <button className="btn btn-outline btn-sm" onClick={()=>window.print()}>🖨️ Print</button>
+        </div>
+        {Object.entries(bulanMap).sort().map(([bln,juListBln])=>{
+          const blnLabel = bln!=='—' ? new Date(bln+'-01').toLocaleDateString('id-ID',{month:'long',year:'numeric'}) : '—';
+          const totHadir  = juListBln.reduce((a,j)=>a+(j.jumlah_hadir||0),0);
+          const totSakit  = juListBln.reduce((a,j)=>a+(j.jumlah_sakit||0),0);
+          const totIzin   = juListBln.reduce((a,j)=>a+(j.jumlah_izin||0),0);
+          const totAlpa   = juListBln.reduce((a,j)=>a+(j.jumlah_alpa||0),0);
+          return (
+            <div key={bln} className="card" style={{marginBottom:12}}>
+              <div style={{fontWeight:800,color:'var(--p3)',marginBottom:10}}>📅 {blnLabel}</div>
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.78rem',minWidth:500}}>
+                  <thead>
+                    <tr style={{background:'var(--p3)',color:'#fff'}}>
+                      {['Tgl','Kelas','Jam','Materi','Hadir','Sakit','Izin','Alpa'].map(h=>(
+                        <th key={h} style={{padding:'6px 8px',textAlign:'left',fontWeight:700}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {juListBln.sort((a,b)=>a.tanggal>b.tanggal?1:-1).map((j,i)=>(
+                      <tr key={j.id} style={{borderBottom:'1px solid var(--border)',background:i%2===0?'#fff':'var(--surface2)'}}>
+                        <td style={{padding:'6px 8px',whiteSpace:'nowrap'}}>{j.tanggal}</td>
+                        <td style={{padding:'6px 8px',fontWeight:600}}>{j.kelas}</td>
+                        <td style={{padding:'6px 8px',textAlign:'center'}}>{j.jam_ke}</td>
+                        <td style={{padding:'6px 8px',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.materi}</td>
+                        <td style={{padding:'6px 8px',textAlign:'center',color:'#16a34a',fontWeight:700}}>{j.jumlah_hadir||0}</td>
+                        <td style={{padding:'6px 8px',textAlign:'center',color:'#d97706',fontWeight:700}}>{j.jumlah_sakit||0}</td>
+                        <td style={{padding:'6px 8px',textAlign:'center',color:'#2563eb',fontWeight:700}}>{j.jumlah_izin||0}</td>
+                        <td style={{padding:'6px 8px',textAlign:'center',color:'#dc2626',fontWeight:700}}>{j.jumlah_alpa||0}</td>
+                      </tr>
+                    ))}
+                    <tr style={{background:'#f8fffe',fontWeight:800,borderTop:'2px solid var(--p)'}}>
+                      <td colSpan={4} style={{padding:'6px 8px',color:'var(--p3)'}}>TOTAL {blnLabel}</td>
+                      <td style={{padding:'6px 8px',textAlign:'center',color:'#16a34a'}}>{totHadir}</td>
+                      <td style={{padding:'6px 8px',textAlign:'center',color:'#d97706'}}>{totSakit}</td>
+                      <td style={{padding:'6px 8px',textAlign:'center',color:'#2563eb'}}>{totIzin}</td>
+                      <td style={{padding:'6px 8px',textAlign:'center',color:'#dc2626'}}>{totAlpa}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })}
+        {Object.keys(bulanMap).length===0 && (
+          <div className="card" style={{textAlign:'center',padding:32,color:'var(--text3)'}}>
+            Belum ada jurnal untuk periode ini.
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // VIEW LIST JURNAL
+  if (loading) return <Loading text="Memuat jurnal..." />;
+  return (
+    <div>
+      {/* Toolbar */}
+      <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center'}}>
+        <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1rem',flex:1}}>📓 Jurnal Mengajar</div>
+        <select value={filterTA} onChange={e=>setFilterTA(e.target.value)}
+          style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit'}}>
+          {taList.map(ta=><option key={ta} value={ta}>{ta}</option>)}
+        </select>
+        <select value={filterSmt} onChange={e=>setFilterSmt(e.target.value)}
+          style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit'}}>
+          <option value="Ganjil">Ganjil</option>
+          <option value="Genap">Genap</option>
+        </select>
+        <button className="btn btn-outline btn-sm" onClick={()=>setRekapMode(true)}>📊 Rekap</button>
+        <button className="btn btn-primary btn-sm" onClick={()=>{
+          setView('form'); setEditJurnal(null);
+          setForm({tanggal:new Date().toISOString().split('T')[0],kelas:'',jam_ke:'1',
+            mapel:sesi.pengguna.mapel||'',materi:'',tujuan_pembelajaran:'',kendala:'',tindak_lanjut:'',refleksi:''});
+        }}>+ Tambah Jurnal</button>
+      </div>
+
+      {jurnalList.length===0 ? (
+        <div className="card" style={{textAlign:'center',padding:32,color:'var(--text3)'}}>
+          Belum ada jurnal untuk {filterSmt} {filterTA}.<br/>
+          <small>Klik "+ Tambah Jurnal" untuk mulai mencatat.</small>
+        </div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {jurnalList.map((j,i)=>(
+            <div key={j.id} className="card" style={{borderLeft:'4px solid var(--p)'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,flexWrap:'wrap'}}>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,marginBottom:2}}>
+                    {formatTgl(j.tanggal)} &nbsp;·&nbsp; Kelas <b>{j.kelas}</b> &nbsp;·&nbsp; Jam ke-{j.jam_ke}
+                  </div>
+                  <div style={{fontSize:'.8rem',color:'var(--p3)',fontWeight:600,marginBottom:4}}>{j.mapel||''}</div>
+                  <div style={{fontSize:'.82rem',color:'var(--text2)'}}>{j.materi}</div>
+                  {/* Rekap absensi */}
+                  <div style={{marginTop:8,display:'flex',gap:6,flexWrap:'wrap'}}>
+                    {[
+                      {label:'Hadir',val:j.jumlah_hadir||0,c:'#16a34a',bg:'#d1fae5'},
+                      {label:'Sakit',val:j.jumlah_sakit||0,c:'#d97706',bg:'#fef3c7'},
+                      {label:'Izin', val:j.jumlah_izin||0, c:'#2563eb',bg:'#dbeafe'},
+                      {label:'Alpa', val:j.jumlah_alpa||0, c:'#dc2626',bg:'#fee2e2'},
+                    ].map(({label,val,c,bg})=>(
+                      <span key={label} style={{padding:'2px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,color:c,background:bg}}>
+                        {label}: {val}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div style={{display:'flex',gap:6,flexShrink:0}}>
+                  <button onClick={()=>bukaAbsensi(j)}
+                    style={{padding:'4px 10px',borderRadius:7,border:'1.5px solid var(--p)',
+                      background:'#fff',color:'var(--p)',cursor:'pointer',fontSize:'.75rem',fontWeight:700}}>
+                    📋 Absensi
+                  </button>
+                  <button onClick={()=>{setEditJurnal(j);setForm({
+                    tanggal:j.tanggal,kelas:j.kelas,jam_ke:j.jam_ke,mapel:j.mapel||'',
+                    materi:j.materi,tujuan_pembelajaran:j.tujuan_pembelajaran||'',
+                    kendala:j.kendala||'',tindak_lanjut:j.tindak_lanjut||'',refleksi:j.refleksi||''
+                  });setView('form');}}
+                    style={{padding:'4px 10px',borderRadius:7,border:'1px solid var(--border)',
+                      background:'#fff',color:'var(--text2)',cursor:'pointer',fontSize:'.75rem'}}>
+                    ✏️
+                  </button>
+                  <button onClick={()=>hapusJurnal(j)}
+                    style={{padding:'4px 10px',borderRadius:7,border:'1px solid #ef4444',
                       background:'#fef2f2',color:'#dc2626',cursor:'pointer',fontSize:'.75rem'}}>
                     🗑️
                   </button>
