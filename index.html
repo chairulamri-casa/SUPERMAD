@@ -7857,14 +7857,105 @@ function TabKelasSiswa({sesi, showToast}) {
   }
 
   async function downloadTemplateSiswa() {
-    const rows = [['No','Nama Lengkap','NIS','Jenis Kelamin (L/P)']];
-    for (let i=1;i<=10;i++) rows.push([i,'','','L']);
+    const rows = [
+      ['Tingkat','Rombel','Nama Siswa','NISN','Gender (L/P)'],
+      ['VII','VII-A','NAMA SISWA CONTOH','3201234567','L'],
+      ['VII','VII-A','NAMA SISWA KEDUA','3201234568','P'],
+    ];
     const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{wch:10},{wch:12},{wch:30},{wch:15},{wch:12}];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb,'Siswa',ws);
-    XLSX.writeFile(wb,`template_siswa_${activeKelas?.nama_kelas||'kelas'}.xlsx`);
+    XLSX.writeFile(wb,'template_import_siswa.xlsx');
   }
 
+  // Import excel dari view kelas (auto-buat kelas + siswa)
+  async function importSiswaExcelGlobal(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setImportSiswaStatus('⏳ Memproses file...');
+    try {
+      const buf = await file.arrayBuffer();
+      const wb  = XLSX.read(buf,{type:'array'});
+      const ws  = wb.Sheets[wb.SheetNames[0]];
+      const rows= XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      if (rows.length < 2) { setImportSiswaStatus('❌ File kosong atau tidak ada data.'); return; }
+
+      // Deteksi format header
+      const header = rows[0].map(h=>String(h).toLowerCase().trim());
+      const iFormatBaru = header.findIndex(h=>h.includes('rombel')||h.includes('kelas'));
+      const iFormatTingkat = header.findIndex(h=>h.includes('tingkat'));
+      const iNama  = header.findIndex(h=>h.includes('nama'));
+      const iNisn  = header.findIndex(h=>h.includes('nisn')||h.includes('nis'));
+      const iGender= header.findIndex(h=>h.includes('gender')||h.includes('jenis')||h.includes('l/p'));
+
+      if (iNama === -1) { setImportSiswaStatus('❌ Kolom "Nama Siswa" tidak ditemukan.'); return; }
+
+      // Kelompokkan siswa per kelas
+      const kelasMap = {}; // nama_kelas -> [{nama, nisn, gender, tingkat}]
+      rows.slice(1).forEach(r=>{
+        const nama = String(r[iNama]||'').trim();
+        if (!nama) return;
+        let namaKelas = activeKelas ? activeKelas.nama_kelas : '';
+        let tingkat = '';
+        if (iFormatBaru > -1 && !activeKelas) {
+          namaKelas = String(r[iFormatBaru]||'').trim();
+        }
+        if (iFormatTingkat > -1) {
+          tingkat = String(r[iFormatTingkat]||'').trim();
+          // Kalau kelas kosong, pakai Tingkat-Rombel
+          if (!namaKelas && iFormatBaru > -1) namaKelas = String(r[iFormatBaru]||'').trim();
+          if (!namaKelas) namaKelas = tingkat;
+        }
+        if (!namaKelas) return;
+        if (!kelasMap[namaKelas]) kelasMap[namaKelas] = {tingkat, siswa:[]};
+        kelasMap[namaKelas].siswa.push({
+          nama,
+          nis: String(r[iNisn]>-1 ? r[iNisn]||'' : '').trim(),
+          jenis_kelamin: String(r[iGender]>-1 ? r[iGender]||'L':'L').trim().toUpperCase()==='P'?'P':'L',
+        });
+      });
+
+      const namaKelasList = Object.keys(kelasMap);
+      if (!namaKelasList.length) { setImportSiswaStatus('❌ Tidak ada data valid.'); return; }
+
+      let totalKelasNew = 0, totalSiswa = 0;
+
+      for (const namaKelas of namaKelasList) {
+        const {tingkat, siswa} = kelasMap[namaKelas];
+        // Auto-buat kelas kalau belum ada
+        const existing = kelasList.find(k=>k.nama_kelas===namaKelas);
+        if (!existing) {
+          const {error:ek} = await sb.from('supermad_kelas').insert({
+            madrasah_id: sesi.mad.id,
+            nama_kelas: namaKelas,
+            tingkat: tingkat||namaKelas,
+            tahun_ajaran: filterTA,
+            aktif: true,
+          });
+          if (!ek) totalKelasNew++;
+        }
+        // Insert siswa
+        const rows2 = siswa.map(s=>({
+          ...s,
+          madrasah_id: sesi.mad.id,
+          kelas: namaKelas,
+          tahun_ajaran: filterTA,
+          aktif: true,
+        }));
+        const {error:es} = await sb.from('supermad_siswa').insert(rows2);
+        if (!es) totalSiswa += rows2.length;
+      }
+
+      setImportSiswaStatus(`✅ Import selesai! ${totalKelasNew} kelas baru dibuat, ${totalSiswa} siswa ditambahkan.`);
+      loadKelas(filterTA);
+    } catch(err) {
+      setImportSiswaStatus('❌ '+err.message);
+    }
+    e.target.value='';
+  }
+
+  // Import dari dalam view siswa (sudah di dalam kelas tertentu)
   async function importSiswaExcel(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -7874,13 +7965,17 @@ function TabKelasSiswa({sesi, showToast}) {
       const wb  = XLSX.read(buf,{type:'array'});
       const ws  = wb.Sheets[wb.SheetNames[0]];
       const rows= XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-      const data= rows.slice(1).filter(r=>r[1]).map(r=>({
+      const header = rows[0].map(h=>String(h).toLowerCase().trim());
+      const iNama  = header.findIndex(h=>h.includes('nama'));
+      const iNisn  = header.findIndex(h=>h.includes('nisn')||h.includes('nis'));
+      const iGender= header.findIndex(h=>h.includes('gender')||h.includes('jenis')||h.includes('l/p'));
+      const data= rows.slice(1).filter(r=>r[iNama>-1?iNama:1]).map(r=>({
         madrasah_id: sesi.mad.id,
         kelas: activeKelas.nama_kelas,
         tahun_ajaran: filterTA,
-        nama: String(r[1]).trim(),
-        nis: String(r[2]||'').trim(),
-        jenis_kelamin: String(r[3]||'L').trim().toUpperCase()==='P'?'P':'L',
+        nama: String(r[iNama>-1?iNama:1]).trim(),
+        nis: String(r[iNisn>-1?iNisn:2]||'').trim(),
+        jenis_kelamin: String(r[iGender>-1?iGender:3]||'L').trim().toUpperCase()==='P'?'P':'L',
         aktif: true,
       }));
       if (!data.length) { setImportSiswaStatus('❌ Tidak ada data ditemukan.'); return; }
@@ -8025,7 +8120,7 @@ function TabKelasSiswa({sesi, showToast}) {
   // VIEW DAFTAR KELAS
   return (
     <div>
-      <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center'}}>
+      <div style={{display:'flex',gap:8,marginBottom:8,flexWrap:'wrap',alignItems:'center'}}>
         <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1rem',flex:1}}>🏫 Kelas & Siswa</div>
         <select value={filterTA} onChange={e=>setFilterTA(e.target.value)}
           style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit'}}>
@@ -8039,6 +8134,20 @@ function TabKelasSiswa({sesi, showToast}) {
         }}>
           {showFormKelas?'✕ Batal':'+ Tambah Kelas'}
         </button>
+      </div>
+
+      {/* Import massal */}
+      <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center',
+        padding:'10px 14px',background:'#f0fdf4',borderRadius:10,border:'1.5px solid #86efac'}}>
+        <div style={{fontSize:'.8rem',color:'#166534',flex:1}}>
+          <b>📤 Import Massal</b> — Upload Excel berisi kolom: <i>Tingkat, Rombel, Nama Siswa, NISN, Gender (L/P)</i>
+          <br/>Kelas otomatis dibuat jika belum ada.
+        </div>
+        <button className="btn btn-outline btn-sm" onClick={downloadTemplateSiswa}>📥 Download Template</button>
+        <label className="btn btn-primary btn-sm" style={{cursor:'pointer',margin:0}}>
+          📤 Import Excel
+          <input type="file" accept=".xlsx,.xls" onChange={importSiswaExcelGlobal} style={{display:'none'}}/>
+        </label>
       </div>
 
       {showFormKelas && (
