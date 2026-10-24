@@ -7175,13 +7175,16 @@ function TabDokumenGuru({sesi, showToast}) {
     e.preventDefault();
     setSaving(true);
     const existing = getDok(editDok.kode);
+    // Otomatis naikkan status ke 'sebagian' kalau ada file_url tapi status masih 'belum'
+    let autoStatus = form.status;
+    if (form.file_url && autoStatus === 'belum') autoStatus = 'sebagian';
     const payload = {
       guru_id: sesi.pengguna.id,
       madrasah_id: sesi.mad.id,
       tahun_ajaran: TA,
       kode_dok: editDok.kode,
       nama_dok: editDok.nama,
-      status: form.status,
+      status: autoStatus,
       file_url: form.file_url||null,
       catatan: form.catatan||null,
       updated_at: new Date().toISOString(),
