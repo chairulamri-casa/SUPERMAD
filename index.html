@@ -8398,10 +8398,14 @@ function TabNilai({sesi, showToast}) {
   const [filterSmt, setFilterSmt] = React.useState('1');
   const [kelasList, setKelasList] = React.useState([]);
   const [siswaList, setSiswaList] = React.useState([]);
-  const [nilaiMap,  setNilaiMap]  = React.useState({}); // {siswa_id+jenis: nilai}
+  const [nilaiMap,  setNilaiMap]  = React.useState({}); // {siswa_id: nilai}
+  const [editMap,   setEditMap]   = React.useState({}); // {siswa_id: nilai_draft}
+  const [dirtySet,  setDirtySet]  = React.useState(new Set()); // siswa_id yg diubah
+  const [savingId,  setSavingId]  = React.useState(null); // auto-save single
   const [filterKelas, setFilterKelas] = React.useState('');
   const [filterJenis, setFilterJenis] = React.useState('formatif');
   const [loading,   setLoading]   = React.useState(false);
+  const [saving,    setSaving]    = React.useState(false);
   const [importStatus, setImportStatus] = React.useState('');
   const [view, setView] = React.useState('list'); // 'list'|'rekap'|'grafik'
   const [kktp, setKktp] = React.useState(70);
@@ -8414,7 +8418,9 @@ function TabNilai({sesi, showToast}) {
   ];
 
   React.useEffect(()=>{ loadKelas(); }, [filterTA]);
-  React.useEffect(()=>{ if(filterKelas) loadSiswaData(); }, [filterKelas, filterJenis, filterSmt, filterTA]);
+  React.useEffect(()=>{
+    if(filterKelas) { setEditMap({}); setDirtySet(new Set()); loadSiswaData(); }
+  }, [filterKelas, filterJenis, filterSmt, filterTA]);
 
   async function loadKelas() {
     const {data} = await sb.from('supermad_kelas').select('*')
@@ -8439,6 +8445,184 @@ function TabNilai({sesi, showToast}) {
     (nl||[]).forEach(n=>{ mp[n.siswa_id] = n.nilai; });
     setNilaiMap(mp);
     setLoading(false);
+  }
+
+  // Inline edit helpers
+  function onNilaiChange(siswaId, val) {
+    setEditMap(m=>({...m,[siswaId]:val}));
+    setDirtySet(s=>{ const ns=new Set(s); ns.add(siswaId); return ns; });
+  }
+
+  async function simpanSatu(siswa) {
+    const valStr = editMap[siswa.id];
+    if (valStr===undefined||valStr==='') {
+      // hapus nilai jika dikosongkan
+      const {error} = await sb.from('supermad_nilai').delete()
+        .eq('siswa_id', siswa.id).eq('mapel', sesi.pengguna.mapel||'')
+        .eq('jenis_nilai', filterJenis).eq('semester', filterSmt).eq('tahun_ajaran', filterTA);
+      if (!error) {
+        setNilaiMap(m=>{ const nm={...m}; delete nm[siswa.id]; return nm; });
+        setDirtySet(s=>{ const ns=new Set(s); ns.delete(siswa.id); return ns; });
+      }
+      return;
+    }
+    const nilai = parseFloat(valStr);
+    if (isNaN(nilai)||nilai<0||nilai>100) return;
+    setSavingId(siswa.id);
+    const {error} = await sb.from('supermad_nilai').upsert([{
+      madrasah_id: sesi.mad.id, tahun_ajaran: filterTA, semester: filterSmt,
+      siswa_id: siswa.id, kelas: filterKelas,
+      guru_id: sesi.pengguna.id, mapel: sesi.pengguna.mapel||'',
+      jenis_nilai: filterJenis, nilai, kktp,
+      updated_at: new Date().toISOString(),
+    }], {onConflict:'siswa_id,mapel,jenis_nilai,semester,tahun_ajaran'});
+    setSavingId(null);
+    if (!error) {
+      setNilaiMap(m=>({...m,[siswa.id]:nilai}));
+      setDirtySet(s=>{ const ns=new Set(s); ns.delete(siswa.id); return ns; });
+    } else {
+      showToast && showToast('❌ Gagal simpan: '+error.message, 'error');
+    }
+  }
+
+  async function simpanSemua() {
+    if (!dirtySet.size) return;
+    setSaving(true);
+    const upserts=[];
+    const hapus=[];
+    dirtySet.forEach(sid=>{
+      const valStr=editMap[sid];
+      if(valStr===undefined||valStr==='') { hapus.push(sid); return; }
+      const nilai=parseFloat(valStr);
+      if(isNaN(nilai)||nilai<0||nilai>100) return;
+      const siswa=siswaList.find(s=>s.id===sid); if(!siswa) return;
+      upserts.push({
+        madrasah_id:sesi.mad.id, tahun_ajaran:filterTA, semester:filterSmt,
+        siswa_id:sid, kelas:filterKelas,
+        guru_id:sesi.pengguna.id, mapel:sesi.pengguna.mapel||'',
+        jenis_nilai:filterJenis, nilai, kktp,
+        updated_at:new Date().toISOString(),
+      });
+    });
+    let errMsg='';
+    if(upserts.length){
+      const {error}=await sb.from('supermad_nilai')
+        .upsert(upserts,{onConflict:'siswa_id,mapel,jenis_nilai,semester,tahun_ajaran'});
+      if(error) errMsg=error.message;
+      else {
+        const nm={...nilaiMap};
+        upserts.forEach(u=>{ nm[u.siswa_id]=u.nilai; });
+        setNilaiMap(nm);
+      }
+    }
+    for(const sid of hapus){
+      await sb.from('supermad_nilai').delete()
+        .eq('siswa_id',sid).eq('mapel',sesi.pengguna.mapel||'')
+        .eq('jenis_nilai',filterJenis).eq('semester',filterSmt).eq('tahun_ajaran',filterTA);
+      setNilaiMap(m=>{ const nm={...m}; delete nm[sid]; return nm; });
+    }
+    setDirtySet(new Set());
+    setSaving(false);
+    if(errMsg) setImportStatus('❌ '+errMsg);
+    else setImportStatus('✅ Semua nilai berhasil disimpan.');
+  }
+
+  function cetakRekap() {
+    const jenisLabel = jenisOpt.find(j=>j.val===filterJenis)?.label||filterJenis;
+    const mapel = sesi.pengguna.mapel||'—';
+    const madNama = sesi.mad?.nama||'Madrasah';
+    const tgl = new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
+
+    const nilaiArr2 = siswaList.map(s=>{
+      const n = (editMap[s.id]!==undefined&&editMap[s.id]!=='') ? parseFloat(editMap[s.id]) : nilaiMap[s.id];
+      return {s, n};
+    });
+    const vals = nilaiArr2.map(x=>x.n).filter(v=>v!==undefined);
+    const rata = vals.length?(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1):'—';
+    const lls  = vals.filter(v=>v>=kktp).length;
+
+    const rows = nilaiArr2.map(({s,n},i)=>`
+      <tr>
+        <td>${i+1}</td>
+        <td>${s.nama}</td>
+        <td>${s.nis||'—'}</td>
+        <td style="text-align:center">${s.jenis_kelamin||'L'}</td>
+        <td style="text-align:center;font-weight:bold;color:${n===undefined?'#888':n>=kktp?'#16a34a':'#dc2626'}">${n!==undefined?n:'—'}</td>
+        <td style="text-align:center">${n===undefined?'—':n>=kktp?'Tuntas':'Belum Tuntas'}</td>
+      </tr>`).join('');
+
+    const html=`<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Rekap Nilai — ${filterKelas}</title>
+<style>
+  @page{size:A4;margin:15mm 12mm}
+  *{box-sizing:border-box}
+  body{font-family:'Arial',sans-serif;font-size:11pt;color:#111;margin:0;padding:0}
+  .header{text-align:center;margin-bottom:14px;border-bottom:2px solid #1e3a8a;padding-bottom:8px}
+  .header h2{margin:0;font-size:14pt;color:#1e3a8a}
+  .header p{margin:2px 0;font-size:9.5pt;color:#444}
+  .meta{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;margin-bottom:12px;font-size:9.5pt}
+  .meta b{color:#1e3a8a}
+  table{width:100%;border-collapse:collapse;font-size:10pt}
+  thead tr{background:#1e3a8a;color:#fff}
+  th,td{border:1px solid #cbd5e1;padding:5px 8px}
+  tbody tr:nth-child(even){background:#f8fafc}
+  tfoot tr{background:#f1f5f9;font-weight:bold}
+  .stat{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+  .stat-box{border:1px solid #cbd5e1;border-radius:6px;padding:8px 10px;text-align:center}
+  .stat-box .val{font-size:18pt;font-weight:900;color:#1e3a8a}
+  .stat-box .lbl{font-size:8pt;color:#64748b;margin-top:2px}
+  .footer{margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:9.5pt}
+  .ttd{text-align:center;padding-top:4px}
+  .ttd .space{height:48px}
+  @media print{button{display:none}}
+</style></head><body>
+<button onclick="window.print()" style="margin:10px;padding:6px 18px;background:#1e3a8a;color:#fff;border:none;border-radius:6px;font-size:10pt;cursor:pointer">🖨️ Cetak</button>
+<div class="header">
+  <h2>${madNama}</h2>
+  <p>REKAP NILAI ${jenisLabel.toUpperCase()}</p>
+  <p>Mapel: <b>${mapel}</b> &nbsp;|&nbsp; Kelas: <b>${filterKelas}</b> &nbsp;|&nbsp; Semester <b>${filterSmt}</b> &nbsp;|&nbsp; TA <b>${filterTA}</b></p>
+</div>
+<div class="meta">
+  <div><b>Guru:</b> ${sesi.pengguna.nama||'—'}</div>
+  <div><b>Tanggal Cetak:</b> ${tgl}</div>
+  <div><b>Jenis Penilaian:</b> ${jenisLabel}</div>
+  <div><b>KKTP:</b> ${kktp}</div>
+</div>
+<table>
+  <thead><tr>
+    <th style="width:32px">#</th>
+    <th>Nama Siswa</th>
+    <th style="width:110px">NISN</th>
+    <th style="width:44px">L/P</th>
+    <th style="width:60px">Nilai</th>
+    <th style="width:90px">Keterangan</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+  <tfoot><tr>
+    <td colspan="4" style="text-align:right">Rata-rata Kelas</td>
+    <td style="text-align:center">${rata}</td>
+    <td style="text-align:center;font-size:9pt">${lls}/${vals.length} tuntas</td>
+  </tr></tfoot>
+</table>
+<div class="stat">
+  <div class="stat-box"><div class="val">${rata}</div><div class="lbl">Rata-rata</div></div>
+  <div class="stat-box"><div class="val" style="color:#16a34a">${vals.length?Math.max(...vals):'—'}</div><div class="lbl">Tertinggi</div></div>
+  <div class="stat-box"><div class="val" style="color:#dc2626">${vals.length?Math.min(...vals):'—'}</div><div class="lbl">Terendah</div></div>
+  <div class="stat-box"><div class="val">${lls}<span style="font-size:11pt;color:#64748b">/${vals.length}</span></div><div class="lbl">Tuntas</div></div>
+</div>
+<div class="footer">
+  <div></div>
+  <div class="ttd">
+    <div>${tgl}</div>
+    <div>Guru Mapel ${mapel},</div>
+    <div class="space"></div>
+    <div style="border-top:1px solid #333;padding-top:4px;font-weight:bold">${sesi.pengguna.nama||'_________________'}</div>
+  </div>
+</div>
+</body></html>`;
+
+    const win=window.open('','_blank','width=850,height=1000');
+    if(win){ win.document.write(html); win.document.close(); }
   }
 
   // Download template Excel dengan nama siswa sudah terisi
@@ -8519,7 +8703,12 @@ function TabNilai({sesi, showToast}) {
     } catch(err) { setImportStatus('❌ '+err.message); }
   }
 
-  const nilaiArr  = siswaList.map(s=>nilaiMap[s.id]).filter(v=>v!==undefined);
+  // Gabungkan saved + draft untuk statistik live
+  const nilaiArr  = siswaList.map(s=>{
+    const dv = editMap[s.id];
+    if(dv!==undefined) return dv==='' ? undefined : parseFloat(dv);
+    return nilaiMap[s.id];
+  }).filter(v=>v!==undefined && !isNaN(v));
   const rataRata  = nilaiArr.length ? (nilaiArr.reduce((a,b)=>a+b,0)/nilaiArr.length).toFixed(1) : '—';
   const tertinggi = nilaiArr.length ? Math.max(...nilaiArr) : '—';
   const terendah  = nilaiArr.length ? Math.min(...nilaiArr) : '—';
@@ -8618,12 +8807,22 @@ function TabNilai({sesi, showToast}) {
           <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap',alignItems:'center',
             padding:'10px 14px',background:'#f0fdf4',borderRadius:10,border:'1.5px solid #86efac'}}>
             <div style={{fontSize:'.8rem',color:'#166534',flex:1}}>
-              <b>📥 Mapel: {sesi.pengguna.mapel||'(belum diset)'}</b>
+              <b>📝 Mapel: {sesi.pengguna.mapel||'(belum diset)'}</b>
               {' · '}{jenisOpt.find(j=>j.val===filterJenis)?.label}
               {' · '}{filterKelas} · Smt {filterSmt}
             </div>
+            {dirtySet.size > 0 && (
+              <button className="btn btn-sm" onClick={simpanSemua} disabled={saving}
+                style={{background:'#16a34a',color:'#fff',border:'none',fontWeight:700}}>
+                {saving ? '⏳ Menyimpan...' : `💾 Simpan Semua (${dirtySet.size})`}
+              </button>
+            )}
+            <button className="btn btn-outline btn-sm" onClick={cetakRekap}
+              title="Buka rekap siap cetak di tab baru">
+              🖨️ Cetak Rekap
+            </button>
             <button className="btn btn-outline btn-sm" onClick={downloadTemplate}>
-              📥 Download Template
+              📥Template CSV
             </button>
             <label className="btn btn-primary btn-sm" style={{cursor:'pointer',margin:0}}>
               📤 Import Nilai
@@ -8640,6 +8839,11 @@ function TabNilai({sesi, showToast}) {
             </div>
           )}
 
+          {/* Petunjuk input */}
+          <div style={{fontSize:'.77rem',color:'var(--text3)',marginBottom:6,paddingLeft:2}}>
+            💡 Ketik nilai langsung di kolom nilai → tersimpan otomatis saat pindah kolom (Tab/Enter), atau klik <b>💾 Simpan Semua</b>. <span style={{color:'#f59e0b'}}>●</span> = belum tersimpan.
+          </div>
+
           {/* Tabel nilai siswa */}
           <div className="card" style={{padding:0,overflow:'hidden'}}>
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.82rem'}}>
@@ -8648,8 +8852,8 @@ function TabNilai({sesi, showToast}) {
                   <th style={{padding:'8px 12px',textAlign:'left',width:32}}>#</th>
                   <th style={{padding:'8px 12px',textAlign:'left'}}>Nama Siswa</th>
                   <th style={{padding:'8px 12px',textAlign:'center',width:60}}>L/P</th>
-                  <th style={{padding:'8px 12px',textAlign:'center',width:80}}>Nilai</th>
-                  <th style={{padding:'8px 12px',textAlign:'center',width:80}}>Status</th>
+                  <th style={{padding:'8px 12px',textAlign:'center',width:88}}>Nilai (0–100)</th>
+                  <th style={{padding:'8px 12px',textAlign:'center',width:90}}>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -8658,11 +8862,16 @@ function TabNilai({sesi, showToast}) {
                     Belum ada siswa di kelas ini.
                   </td></tr>
                 ) : siswaList.map((s,i)=>{
-                  const n = nilaiMap[s.id];
-                  const tuntas = n!==undefined && n>=kktp;
+                  const savedN = nilaiMap[s.id];
+                  const draftV = editMap[s.id];
+                  const displayN = draftV!==undefined ? (draftV===''?undefined:parseFloat(draftV)) : savedN;
+                  const isDirty = dirtySet.has(s.id);
+                  const isSaving= savingId===s.id;
+                  const tuntas  = displayN!==undefined && !isNaN(displayN) && displayN>=kktp;
+                  const inputVal= draftV!==undefined ? draftV : (savedN!==undefined?String(savedN):'');
                   return (
                     <tr key={s.id} style={{borderTop:'1px solid var(--border)',
-                      background:i%2===0?'#fff':'var(--surface2)'}}>
+                      background:isDirty?'#fffbeb':i%2===0?'#fff':'var(--surface2)'}}>
                       <td style={{padding:'7px 12px',color:'var(--text3)'}}>{i+1}</td>
                       <td style={{padding:'7px 12px',fontWeight:600}}>{s.nama}</td>
                       <td style={{padding:'7px 12px',textAlign:'center'}}>
@@ -8670,17 +8879,36 @@ function TabNilai({sesi, showToast}) {
                           {s.jenis_kelamin||'L'}
                         </span>
                       </td>
-                      <td style={{padding:'7px 12px',textAlign:'center',fontWeight:700,
-                        color:n===undefined?'var(--text3)':tuntas?'#16a34a':'#dc2626',fontSize:'.9rem'}}>
-                        {n!==undefined ? n : '—'}
+                      <td style={{padding:'4px 8px',textAlign:'center'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:4,justifyContent:'center'}}>
+                          <input
+                            type="number" min={0} max={100} step={1}
+                            value={inputVal}
+                            placeholder="—"
+                            onChange={e=>onNilaiChange(s.id, e.target.value)}
+                            onBlur={()=>isDirty && simpanSatu(s)}
+                            disabled={isSaving}
+                            style={{
+                              width:58, padding:'4px 6px', borderRadius:6, textAlign:'center',
+                              fontFamily:'inherit', fontWeight:700, fontSize:'.9rem',
+                              border:'1.5px solid '+(isDirty?'#f59e0b':displayN===undefined?'var(--border)':tuntas?'#86efac':'#fca5a5'),
+                              background:isSaving?'#f3f4f6':'#fff',
+                              color:displayN===undefined?'var(--text3)':tuntas?'#16a34a':'#dc2626',
+                              outline:'none',
+                            }}
+                          />
+                          {isSaving && <span style={{fontSize:'.7rem',color:'var(--text3)'}}>⏳</span>}
+                          {isDirty && !isSaving && <span style={{fontSize:'.7rem',color:'#f59e0b'}}>●</span>}
+                        </div>
                       </td>
                       <td style={{padding:'7px 12px',textAlign:'center'}}>
-                        {n===undefined ? (
+                        {displayN===undefined || isNaN(displayN) ? (
                           <span style={{fontSize:'.7rem',color:'var(--text3)'}}>Belum</span>
                         ) : (
                           <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
                             background:tuntas?'#dcfce7':'#fee2e2',
-                            color:tuntas?'#16a34a':'#dc2626'}}>
+                            color:tuntas?'#16a34a':'#dc2626',
+                            opacity:isDirty?.75:1}}>
                             {tuntas?'Tuntas':'Belum Tuntas'}
                           </span>
                         )}
