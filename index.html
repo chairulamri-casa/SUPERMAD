@@ -8500,7 +8500,11 @@ function TabNilai({sesi, showToast}) {
       setAllNilaiMap(m=>{ const nm={...m}; if(!nm[siswa.id]) nm[siswa.id]={}; nm[siswa.id][filterJenis]=nilai; return nm; });
       setDirtySet(s=>{ const ns=new Set(s); ns.delete(siswa.id); return ns; });
     } else {
-      showToast && showToast('❌ Gagal simpan: '+error.message, 'error');
+      // Tampilkan error lengkap — tidak hilang sampai user klik
+      const errMsg = error.message || error.details || error.hint || JSON.stringify(error);
+      console.error('Supabase error:', error);
+      setImportStatus('❌ ERROR: ' + errMsg + ' | code: ' + (error.code||'-') + ' | hint: ' + (error.hint||'-'));
+      showToast && showToast('❌ Gagal: '+errMsg, 'error');
     }
   }
 
