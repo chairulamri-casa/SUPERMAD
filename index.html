@@ -110,6 +110,77 @@ function NamaMadrasah({npsn}) {
   );
 }
 
+function GantiPasswordPertama({sesi, onDone, onLogout}) {
+  const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+  const [pass1, setPass1] = React.useState('');
+  const [pass2, setPass2] = React.useState('');
+  const [err, setErr]     = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [done, setDone]   = React.useState(false);
+
+  async function handleGanti(e) {
+    e.preventDefault();
+    setErr('');
+    if (pass1.length < 8) { setErr('Password minimal 8 karakter.'); return; }
+    if (pass1 !== pass2)  { setErr('Konfirmasi password tidak cocok.'); return; }
+    if (pass1 === 'Supermad@2026') { setErr('Password tidak boleh sama dengan password sementara.'); return; }
+    setLoading(true);
+    try {
+      const {error} = await sb.auth.updateUser({password: pass1});
+      if (error) { setErr('Gagal ganti password: '+error.message); return; }
+      setDone(true);
+      setTimeout(()=>onDone(), 2000);
+    } catch(e) {
+      setErr('Error: '+e.message);
+    } finally { setLoading(false); }
+  }
+
+  return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',
+      background:'linear-gradient(135deg,#063d35,#0e7c6e)',padding:16}}>
+      <div style={{background:'#fff',borderRadius:18,padding:'32px 28px',width:'100%',maxWidth:400,
+        boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
+        <div style={{textAlign:'center',marginBottom:24}}>
+          <div style={{fontSize:'2.5rem',marginBottom:8}}>🔑</div>
+          <div style={{fontWeight:900,fontSize:'1.2rem',color:'#1e40af'}}>Ganti Password</div>
+          <div style={{fontSize:'.8rem',color:'#64748b',marginTop:6}}>
+            Halo <b>{sesi?.pengguna?.nama}</b>! Anda login pertama kali.<br/>
+            Silakan ganti password sementara Anda.
+          </div>
+        </div>
+        {done ? (
+          <div style={{textAlign:'center',color:'#16a34a',fontWeight:700,padding:16}}>
+            ✅ Password berhasil diganti! Mengalihkan...
+          </div>
+        ) : (
+          <form onSubmit={handleGanti}>
+            <div className="form-group">
+              <label>Password Baru *</label>
+              <input type="password" value={pass1} onChange={e=>setPass1(e.target.value)}
+                placeholder="Minimal 8 karakter" required autoFocus/>
+            </div>
+            <div className="form-group">
+              <label>Konfirmasi Password *</label>
+              <input type="password" value={pass2} onChange={e=>setPass2(e.target.value)}
+                placeholder="Ulangi password baru" required/>
+            </div>
+            {err && <div style={{color:'#dc2626',fontSize:'.8rem',marginBottom:10}}>⚠️ {err}</div>}
+            <button className="btn btn-primary" type="submit" disabled={loading}
+              style={{width:'100%',justifyContent:'center'}}>
+              {loading ? '⏳ Menyimpan...' : '🔐 Simpan Password Baru'}
+            </button>
+            <button type="button" onClick={onLogout}
+              style={{width:'100%',marginTop:8,padding:'8px',border:'none',background:'none',
+                color:'#94a3b8',cursor:'pointer',fontSize:'.8rem'}}>
+              Keluar
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function HalamanLogin({onLogin}) {
   // Deteksi URL ?kanwil untuk akses tersembunyi
   const isKanwilMode = typeof window !== 'undefined' && 
@@ -226,18 +297,24 @@ function HalamanLogin({onLogin}) {
     e.preventDefault();
     setErr(''); setLoading(true);
     try {
-      const {data:uList, error:e1} = await sb.from('supermad_pengguna')
-        .select('*').eq('username', user.trim()).eq('role','admin_kanwil');
-      if (e1) { setErr('Error: '+e1.message); return; }
-      if (!uList || uList.length === 0) { setErr('Username tidak ditemukan.'); return; }
-      const u = uList[0];
-      // password_hash di DB = md5(password) yang dihasilkan PostgreSQL
-      // Kita verifikasi dengan query langsung ke DB
-      const {data:verified} = await sb.rpc('supermad_cek_password', {
-        p_id: u.id, p_pass: pass.trim()
+      // Login via Supabase Auth
+      const email = user.trim() + '@supermad.local';
+      const {data:authData, error:authErr} = await sb.auth.signInWithPassword({
+        email, password: pass.trim()
       });
-      if (!verified) { setErr('Password salah.'); return; }
-      onLogin({pengguna:u, mode:'kanwil'});
+      if (authErr) {
+        if (authErr.message.includes('Invalid login')) setErr('Username atau password salah.');
+        else setErr('Error: ' + authErr.message);
+        return;
+      }
+      // Ambil data pengguna dari supermad_pengguna
+      const {data:uList, error:e1} = await sb.from('supermad_pengguna')
+        .select('*').eq('auth_id', authData.user.id).eq('aktif', true);
+      if (e1 || !uList || !uList.length) { setErr('Data pengguna tidak ditemukan.'); return; }
+      const u = uList[0];
+      // Cek apakah masih pakai password default
+      const needsReset = pass.trim() === 'Supermad@2026';
+      onLogin({pengguna:u, mode:'kanwil', needsReset});
     } catch(err) {
       setErr('Koneksi gagal: '+err.message);
     } finally { setLoading(false); }
@@ -508,7 +585,10 @@ function App() {
   function handleLogin(data) {
     if (data.mode === 'kanwil') {
       const s = {pengguna: data.pengguna, mad: null, mode: 'admin_kanwil'};
-      setSesi(s); setStep('app');
+      setSesi(s);
+      // Cek perlu ganti password dulu
+      if (data.needsReset) { setStep('ganti_password'); }
+      else { setStep('app'); }
       try { localStorage.setItem('supermad_sesi', JSON.stringify(s)); } catch(e) {}
     } else if (data.mode === 'guru') {
       const s = {pengguna: {...data.guru, role:'guru', nama:data.guru.nama}, mad: data.mad, mode: 'guru'};
@@ -526,12 +606,23 @@ function App() {
     try { localStorage.setItem('supermad_sesi', JSON.stringify(s)); } catch(e) {}
   }
 
-  function logout() {
+  async function logout() {
+    // Sign out dari Supabase Auth jika ada session
+    try { await sb.auth.signOut(); } catch(e) {}
     setSesi(null); setLoginData(null); setStep('login');
     try { localStorage.removeItem('supermad_sesi'); } catch(e) {}
   }
 
   if (step === 'login') return <HalamanLogin onLogin={handleLogin} />;
+
+  if (step === 'ganti_password') return (
+    <GantiPasswordPertama
+      sesi={sesi}
+      onDone={()=>setStep('app')}
+      onLogout={logout}
+    />
+  );
+
   if (step === 'pilih_pengguna') return (
     <PilihPengguna
       mad={loginData.mad}
