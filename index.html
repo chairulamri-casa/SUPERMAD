@@ -7886,8 +7886,12 @@ function TabKelasSiswa({sesi, showToast}) {
       ws['!cols'] = [{wch:10},{wch:12},{wch:30},{wch:15},{wch:12}];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb,'Siswa',ws);
-      const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
-      const blob = new Blob([wbout], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      // Gunakan type:'binary' lalu convert ke Uint8Array — paling kompatibel
+      const wbout = XLSX.write(wb, {bookType:'xlsx', type:'binary'});
+      const buf = new ArrayBuffer(wbout.length);
+      const view = new Uint8Array(buf);
+      for (let i=0; i<wbout.length; i++) view[i] = wbout.charCodeAt(i) & 0xFF;
+      const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
