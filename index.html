@@ -8342,11 +8342,18 @@ function TabJurnal({sesi, showToast}) {
   const [kelasList,  setKelasList]  = React.useState([]);
   const [siswaList,  setSiswaList]  = React.useState([]);
   const [loading,    setLoading]    = React.useState(true);
-  const [view,       setView]       = React.useState('list'); // 'list' | 'form' | 'absensi' | 'rekap'
+  const [view,       setView]       = React.useState('list'); // 'list' | 'form-jurnal' | 'form-absensi' | 'absensi' | 'rekap'
   const [editJurnal, setEditJurnal] = React.useState(null);
   const [activeJurnal, setActiveJurnal] = React.useState(null);
-  const [absensiMap, setAbsensiMap] = React.useState({}); // siswa_id -> status
+  const [absensiMap, setAbsensiMap] = React.useState({});
   const [savingAbsensi, setSavingAbsensi] = React.useState(false);
+  // Form absensi mandiri (tanpa jurnal dulu)
+  const [formAbsensi, setFormAbsensi] = React.useState({
+    tanggal: new Date().toISOString().split('T')[0],
+    kelas: '',
+    jam_ke: '1',
+    mapel: sesi.pengguna.mapel||'',
+  });
   const [form, setForm] = React.useState({
     tanggal: new Date().toISOString().split('T')[0],
     kelas: '',
@@ -8359,7 +8366,7 @@ function TabJurnal({sesi, showToast}) {
     refleksi: '',
   });
   const [saving, setSaving] = React.useState(false);
-  const [rekapMode, setRekapMode] = React.useState(false); // true = tampilkan rekap
+  const [rekapMode, setRekapMode] = React.useState(false);
 
   React.useEffect(()=>{ loadData(filterTA, filterSmt); }, [filterTA, filterSmt]);
 
@@ -8409,6 +8416,36 @@ function TabJurnal({sesi, showToast}) {
     setView('absensi');
   }
 
+  // Absensi mandiri: buat jurnal kosong (tanpa materi) lalu buka absensi
+  async function mulaiAbsensiMandiri(e) {
+    e.preventDefault();
+    setSaving(true);
+    const payload = {
+      tanggal: formAbsensi.tanggal,
+      kelas:   formAbsensi.kelas,
+      jam_ke:  formAbsensi.jam_ke,
+      mapel:   formAbsensi.mapel||sesi.pengguna.mapel||'',
+      materi:  '(belum diisi)',
+      guru_id: sesi.pengguna.id,
+      madrasah_id: sesi.mad.id,
+      tahun_ajaran: filterTA,
+      semester: filterSmt,
+      updated_at: new Date().toISOString(),
+    };
+    const {data, error} = await sb.from('supermad_jurnal').insert(payload).select('id').single();
+    setSaving(false);
+    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    const newJurnal = {...payload, id: data.id};
+    loadData(filterTA, filterSmt);
+    // Langsung buka absensi
+    setActiveJurnal(newJurnal);
+    const siswas = await loadSiswa(formAbsensi.kelas);
+    const map = {};
+    siswas.forEach(s=>{ map[s.id]='hadir'; });
+    setAbsensiMap(map);
+    setView('absensi');
+  }
+
   async function simpanJurnal(e) {
     e.preventDefault();
     setSaving(true);
@@ -8420,13 +8457,11 @@ function TabJurnal({sesi, showToast}) {
       semester: filterSmt,
       updated_at: new Date().toISOString(),
     };
-    let error, insertedId;
+    let error;
     if (editJurnal) {
       ({error} = await sb.from('supermad_jurnal').update(payload).eq('id', editJurnal.id));
-      insertedId = editJurnal.id;
     } else {
-      const {data, error:e2} = await sb.from('supermad_jurnal').insert(payload).select('id').single();
-      error = e2; insertedId = data?.id;
+      ({error} = await sb.from('supermad_jurnal').insert(payload));
     }
     setSaving(false);
     if (error) { showToast('Gagal: '+error.message,'error'); return; }
@@ -8434,11 +8469,6 @@ function TabJurnal({sesi, showToast}) {
     setView('list');
     setEditJurnal(null);
     loadData(filterTA, filterSmt);
-    // Auto buka absensi kalau baru
-    if (!editJurnal && insertedId) {
-      const newJurnal = {...payload, id: insertedId};
-      setTimeout(()=>bukaAbsensi(newJurnal), 400);
-    }
   }
 
   async function simpanAbsensi() {
@@ -8565,8 +8595,60 @@ function TabJurnal({sesi, showToast}) {
     );
   }
 
+  // VIEW FORM ABSENSI MANDIRI
+  if (view==='form-absensi') {
+    return (
+      <div>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+          <button className="btn btn-outline btn-sm" onClick={()=>setView('list')}>← Kembali</button>
+          <div style={{fontWeight:900,color:'var(--p3)',flex:1}}>📋 Absensi Siswa</div>
+        </div>
+        <div className="card">
+          <div style={{fontSize:'.82rem',color:'var(--text2)',marginBottom:14}}>
+            Pilih kelas dan tanggal, lalu langsung absen siswa.
+          </div>
+          <form onSubmit={mulaiAbsensiMandiri}>
+            <div className="grid2">
+              <div className="form-group">
+                <label>Tanggal *</label>
+                <input type="date" value={formAbsensi.tanggal}
+                  onChange={e=>setFormAbsensi({...formAbsensi,tanggal:e.target.value})} required/>
+              </div>
+              <div className="form-group">
+                <label>Kelas *</label>
+                <select value={formAbsensi.kelas}
+                  onChange={e=>setFormAbsensi({...formAbsensi,kelas:e.target.value})} required>
+                  <option value="">-- Pilih Kelas --</option>
+                  {kelasList.map(k=><option key={k.id} value={k.nama_kelas}>{k.nama_kelas}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Jam Ke-</label>
+                <select value={formAbsensi.jam_ke}
+                  onChange={e=>setFormAbsensi({...formAbsensi,jam_ke:e.target.value})}>
+                  {['1','2','3','4','5','6','7','8','1-2','2-3','3-4','4-5','5-6','6-7','7-8'].map(j=>(
+                    <option key={j} value={j}>{j}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Mata Pelajaran</label>
+                <input value={formAbsensi.mapel}
+                  onChange={e=>setFormAbsensi({...formAbsensi,mapel:e.target.value})}
+                  placeholder="Opsional"/>
+              </div>
+            </div>
+            <button className="btn btn-primary" type="submit" disabled={saving||!formAbsensi.kelas}>
+              {saving?'⏳ Memuat...':'📋 Lanjut ke Absensi →'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   // VIEW FORM JURNAL
-  if (view==='form') {
+  if (view==='form-jurnal') {
     return (
       <div>
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
@@ -8738,17 +8820,21 @@ function TabJurnal({sesi, showToast}) {
           <option value="Genap">Genap</option>
         </select>
         <button className="btn btn-outline btn-sm" onClick={()=>setRekapMode(true)}>📊 Rekap</button>
+        <button className="btn btn-outline btn-sm" style={{borderColor:'#0891b2',color:'#0891b2'}} onClick={()=>{
+          setFormAbsensi({tanggal:new Date().toISOString().split('T')[0],kelas:'',jam_ke:'1',mapel:sesi.pengguna.mapel||''});
+          setView('form-absensi');
+        }}>📋 Absensi</button>
         <button className="btn btn-primary btn-sm" onClick={()=>{
-          setView('form'); setEditJurnal(null);
+          setView('form-jurnal'); setEditJurnal(null);
           setForm({tanggal:new Date().toISOString().split('T')[0],kelas:'',jam_ke:'1',
             mapel:sesi.pengguna.mapel||'',materi:'',tujuan_pembelajaran:'',kendala:'',tindak_lanjut:'',refleksi:''});
-        }}>+ Tambah Jurnal</button>
+        }}>📝 Jurnal</button>
       </div>
 
       {jurnalList.length===0 ? (
         <div className="card" style={{textAlign:'center',padding:32,color:'var(--text3)'}}>
           Belum ada jurnal untuk {filterSmt} {filterTA}.<br/>
-          <small>Klik "+ Tambah Jurnal" untuk mulai mencatat.</small>
+          <small>Klik <b>📋 Absensi</b> untuk absen siswa, atau <b>📝 Jurnal</b> untuk catat materi.</small>
         </div>
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
@@ -8760,7 +8846,14 @@ function TabJurnal({sesi, showToast}) {
                     {formatTgl(j.tanggal)} &nbsp;·&nbsp; Kelas <b>{j.kelas}</b> &nbsp;·&nbsp; Jam ke-{j.jam_ke}
                   </div>
                   <div style={{fontSize:'.8rem',color:'var(--p3)',fontWeight:600,marginBottom:4}}>{j.mapel||''}</div>
-                  <div style={{fontSize:'.82rem',color:'var(--text2)'}}>{j.materi}</div>
+                  {j.materi==='(belum diisi)' ? (
+                    <span style={{fontSize:'.78rem',padding:'2px 8px',borderRadius:20,
+                      background:'#fef3c7',color:'#92400e',fontWeight:700}}>
+                      ⚠️ Materi belum diisi — klik ✏️ untuk lengkapi jurnal
+                    </span>
+                  ) : (
+                    <div style={{fontSize:'.82rem',color:'var(--text2)'}}>{j.materi}</div>
+                  )}
                   {/* Rekap absensi */}
                   <div style={{marginTop:8,display:'flex',gap:6,flexWrap:'wrap'}}>
                     {[
@@ -8783,9 +8876,9 @@ function TabJurnal({sesi, showToast}) {
                   </button>
                   <button onClick={()=>{setEditJurnal(j);setForm({
                     tanggal:j.tanggal,kelas:j.kelas,jam_ke:j.jam_ke,mapel:j.mapel||'',
-                    materi:j.materi,tujuan_pembelajaran:j.tujuan_pembelajaran||'',
+                    materi:j.materi==='(belum diisi)'?'':j.materi,tujuan_pembelajaran:j.tujuan_pembelajaran||'',
                     kendala:j.kendala||'',tindak_lanjut:j.tindak_lanjut||'',refleksi:j.refleksi||''
-                  });setView('form');}}
+                  });setView('form-jurnal');}}
                     style={{padding:'4px 10px',borderRadius:7,border:'1px solid var(--border)',
                       background:'#fff',color:'var(--text2)',cursor:'pointer',fontSize:'.75rem'}}>
                     ✏️
