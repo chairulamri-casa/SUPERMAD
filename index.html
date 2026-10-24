@@ -302,9 +302,10 @@ function HalamanLogin({onLogin}) {
       const {data:authData, error:authErr} = await sb.auth.signInWithPassword({
         email, password: pass.trim()
       });
+      console.log('Auth result:', JSON.stringify({authData, authErr}));
       if (authErr) {
         if (authErr.message.includes('Invalid login')) setErr('Username atau password salah.');
-        else setErr('Error: ' + authErr.message);
+        else setErr('Error: ' + authErr.message + ' | status: ' + (authErr.status||'-') + ' | code: ' + (authErr.code||'-'));
         return;
       }
       // Ambil data pengguna dari supermad_pengguna
