@@ -3391,6 +3391,7 @@ function DashboardSupervisor({sesi, showToast}) {
           ['sudah',      '✅ Sudah Supervisi',     fiturAktif.supervisi !== false],
           ['grafik',     '📊 Grafik',              fiturAktif.grafik !== false],
           ['riwayat',    '📜 Riwayat',             fiturAktif.supervisi !== false],
+          ['dokumen',    '📁 Dok. Admin',           true],
           ['portofolio', '🗂️ Portofolio Guru',    fiturAktif.portofolio !== false],
         ].filter(([,,tampil])=>tampil).map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
@@ -3682,6 +3683,11 @@ function DashboardSupervisor({sesi, showToast}) {
             </div>
           )}
         </div>
+      )}
+
+      {/* TAB DOKUMEN ADMIN */}
+      {tab === 'dokumen' && (
+        <TabDokumenSupervisor sesi={sesi} guruList={guruList} showToast={showToast} />
       )}
 
       {/* TAB PORTOFOLIO GURU */}
@@ -5395,6 +5401,7 @@ function DashboardGuru({sesi, showToast}) {
         {[
           ['hasil',     '📊 Hasil Supervisi',      fiturAktif.supervisi !== false],
           ['rtl',       '📋 RTL Saya',              fiturAktif.rtl !== false],
+          ['dokumen',   '📁 Dok. Admin',             true],
           ['portofolio','🗂️ e-Portofolio',         fiturAktif.portofolio !== false],
           ['asesmen',   '📈 Analisis Asesmen',       fiturAktif.analisis_asesmen !== false],
           ['analisis',  '🔬 Analisis Instrumen',     fiturAktif.analisis_instrumen !== false],
@@ -5520,6 +5527,11 @@ function DashboardGuru({sesi, showToast}) {
             </div>
           )}
         </div>
+      )}
+
+      {/* TAB DOKUMEN ADMIN */}
+      {tab==='dokumen' && (
+        <TabDokumenGuru sesi={sesi} showToast={showToast} />
       )}
 
       {/* TAB PORTOFOLIO */}
@@ -7088,6 +7100,376 @@ function TabTindakLanjutKanwil({madrasahList, showToast}) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ── DOKUMEN ADMINISTRASI GURU ──────────────────────────────────
+const DAFTAR_DOKUMEN = [
+  // Perencanaan Pembelajaran
+  {kode:'kalender',   nama:'Kalender Pendidikan',          grup:'Perencanaan'},
+  {kode:'cp',         nama:'Capaian Pembelajaran (CP)',     grup:'Perencanaan'},
+  {kode:'prota',      nama:'Program Tahunan (Prota)',       grup:'Perencanaan'},
+  {kode:'analisis_cp',nama:'Analisis CP',                   grup:'Perencanaan'},
+  {kode:'atp',        nama:'Alur Tujuan Pembelajaran (ATP)',grup:'Perencanaan'},
+  {kode:'promes',     nama:'Program Semester (Promes)',     grup:'Perencanaan'},
+  {kode:'modul_ajar', nama:'RPP / Modul Ajar',             grup:'Perencanaan'},
+  {kode:'kokurikuler',nama:'Kokurikuler',                   grup:'Perencanaan'},
+  {kode:'jurnal7',    nama:'Jurnal 7 Kebiasaan Anak Indonesia Hebat', grup:'Perencanaan'},
+  {kode:'jadwal',     nama:'Jadwal Tatap Muka',             grup:'Perencanaan'},
+  {kode:'agenda',     nama:'Agenda Harian',                 grup:'Perencanaan'},
+  {kode:'absensi',    nama:'Absensi Siswa',                 grup:'Perencanaan'},
+  {kode:'rekap_absen',nama:'Rekapitulasi Absen',            grup:'Perencanaan'},
+  {kode:'buku_naik',  nama:'Buku Naik/Tinggal Kelas',      grup:'Perencanaan'},
+  {kode:'program_bk', nama:'Program BK',                    grup:'Perencanaan'},
+  {kode:'buku_bimbing',nama:'Buku Pembimbingan Siswa',      grup:'Perencanaan'},
+  // Penilaian
+  {kode:'daftar_nilai',    nama:'Daftar Nilai',              grup:'Penilaian'},
+  {kode:'asesmen_nonkog',  nama:'Asesmen Awal Non Kognitif', grup:'Penilaian'},
+  {kode:'asesmen_kog',     nama:'Asesmen Awal Kognitif',     grup:'Penilaian'},
+  {kode:'pemetaan_siswa',  nama:'Hasil Pemetaan Siswa',      grup:'Penilaian'},
+  {kode:'inst_formatif',   nama:'Instrumen Asesmen Formatif',grup:'Penilaian'},
+  {kode:'sumatif_tes',     nama:'Asesmen Sumatif Akhir TP (Tes)',grup:'Penilaian'},
+  {kode:'sumatif_nontes',  nama:'Asesmen Sumatif Akhir TP (Non Tes)',grup:'Penilaian'},
+  {kode:'soal_sassat',     nama:'Soal SAS/SAT',              grup:'Penilaian'},
+  {kode:'inst_sassat',     nama:'Instrumen Asesmen SAS/SAT', grup:'Penilaian'},
+  {kode:'remedial',        nama:'Remedial / Pengayaan',      grup:'Penilaian'},
+];
+
+function TabDokumenGuru({sesi, showToast}) {
+  const [dokList, setDokList]   = React.useState([]);
+  const [loading, setLoading]   = React.useState(true);
+  const [saving, setSaving]     = React.useState(false);
+  const [editDok, setEditDok]   = React.useState(null); // {kode, nama}
+  const [form, setForm]         = React.useState({status:'lengkap', file_url:'', catatan:''});
+  const [filterGrup, setFilterGrup] = React.useState('Perencanaan');
+  const TA = '2025/2026';
+
+  React.useEffect(()=>{ loadData(); }, []);
+
+  async function loadData() {
+    setLoading(true);
+    const {data} = await sb.from('supermad_dokumen')
+      .select('*')
+      .eq('guru_id', sesi.pengguna.id)
+      .eq('tahun_ajaran', TA);
+    setDokList(data||[]);
+    setLoading(false);
+  }
+
+  function getDok(kode) {
+    return dokList.find(d=>d.kode_dok===kode);
+  }
+
+  function bukaEdit(dok) {
+    const existing = getDok(dok.kode);
+    setEditDok(dok);
+    setForm({
+      status: existing?.status||'belum',
+      file_url: existing?.file_url||'',
+      catatan: existing?.catatan||'',
+    });
+  }
+
+  async function simpanDok(e) {
+    e.preventDefault();
+    setSaving(true);
+    const existing = getDok(editDok.kode);
+    const payload = {
+      guru_id: sesi.pengguna.id,
+      madrasah_id: sesi.mad.id,
+      tahun_ajaran: TA,
+      kode_dok: editDok.kode,
+      nama_dok: editDok.nama,
+      status: form.status,
+      file_url: form.file_url||null,
+      catatan: form.catatan||null,
+      updated_at: new Date().toISOString(),
+    };
+    let error;
+    if (existing) {
+      ({error} = await sb.from('supermad_dokumen').update(payload).eq('id', existing.id));
+    } else {
+      ({error} = await sb.from('supermad_dokumen').insert(payload));
+    }
+    setSaving(false);
+    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    showToast('✅ Status dokumen disimpan!');
+    setEditDok(null);
+    loadData();
+  }
+
+  const grups = [...new Set(DAFTAR_DOKUMEN.map(d=>d.grup))];
+  const statusInfo = {
+    lengkap:  {label:'✅ Lengkap',   color:'#16a34a', bg:'#d1fae5'},
+    sebagian: {label:'⚠️ Sebagian',  color:'#d97706', bg:'#fef3c7'},
+    belum:    {label:'❌ Belum Ada', color:'#dc2626', bg:'#fee2e2'},
+  };
+
+  // Hitung progress
+  const total = DAFTAR_DOKUMEN.length;
+  const lengkap = dokList.filter(d=>d.status==='lengkap').length;
+  const sebagian = dokList.filter(d=>d.status==='sebagian').length;
+  const pct = Math.round(((lengkap + sebagian*0.5)/total)*100);
+
+  if (loading) return <Loading text="Memuat dokumen..." />;
+
+  // Modal edit
+  if (editDok) return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
+        <button className="btn btn-outline btn-sm" onClick={()=>setEditDok(null)}>← Kembali</button>
+        <div style={{fontWeight:800,color:'var(--p3)'}}>📄 {editDok.nama}</div>
+      </div>
+      <div className="card">
+        <form onSubmit={simpanDok}>
+          <div className="form-group">
+            <label>Status Dokumen *</label>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:4}}>
+              {Object.entries(statusInfo).map(([val,info])=>(
+                <button type="button" key={val}
+                  onClick={()=>setForm({...form,status:val})}
+                  style={{padding:'8px 16px',borderRadius:20,cursor:'pointer',fontFamily:'inherit',
+                    border:'2px solid '+(form.status===val?info.color:'var(--border)'),
+                    background:form.status===val?info.bg:'#fff',
+                    color:form.status===val?info.color:'var(--text2)',
+                    fontWeight:700,fontSize:'.82rem'}}>
+                  {info.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Link File / Google Drive (opsional)</label>
+            <input type="url" value={form.file_url}
+              onChange={e=>setForm({...form,file_url:e.target.value})}
+              placeholder="https://drive.google.com/..."/>
+            <div style={{fontSize:'.7rem',color:'var(--text3)',marginTop:3}}>
+              Upload ke Google Drive lalu paste link-nya di sini
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Catatan (opsional)</label>
+            <textarea rows={3} value={form.catatan}
+              onChange={e=>setForm({...form,catatan:e.target.value})}
+              placeholder="Contoh: ATP sudah direvisi sesuai CP terbaru..."
+              style={{width:'100%',padding:'9px 12px',border:'1.5px solid var(--border)',
+                borderRadius:9,fontSize:'.85rem',fontFamily:'inherit',resize:'vertical',outline:'none'}}/>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button className="btn btn-primary" type="submit" disabled={saving}>
+              {saving?'⏳ Menyimpan...':'💾 Simpan'}
+            </button>
+            <button className="btn btn-outline" type="button" onClick={()=>setEditDok(null)}>Batal</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      {/* Progress bar */}
+      <div className="card" style={{marginBottom:14,padding:'14px 18px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+          <div style={{fontWeight:700,fontSize:'.85rem'}}>Kelengkapan Administrasi TA {TA}</div>
+          <div style={{fontWeight:900,fontSize:'1.1rem',color:pct>=80?'#16a34a':pct>=50?'#d97706':'#dc2626'}}>{pct}%</div>
+        </div>
+        <div style={{background:'#e5e7eb',borderRadius:99,height:10,overflow:'hidden'}}>
+          <div style={{width:pct+'%',height:'100%',borderRadius:99,
+            background:pct>=80?'#16a34a':pct>=50?'#d97706':'#dc2626',transition:'width .4s'}}/>
+        </div>
+        <div style={{display:'flex',gap:12,marginTop:8,fontSize:'.72rem',color:'var(--text2)'}}>
+          <span>✅ Lengkap: <b>{lengkap}</b></span>
+          <span>⚠️ Sebagian: <b>{sebagian}</b></span>
+          <span>❌ Belum: <b>{total-lengkap-sebagian}</b></span>
+          <span>Total: <b>{total}</b></span>
+        </div>
+      </div>
+
+      {/* Filter grup */}
+      <div style={{display:'flex',gap:6,marginBottom:12,flexWrap:'wrap'}}>
+        {grups.map(g=>(
+          <button key={g} onClick={()=>setFilterGrup(g)}
+            style={{padding:'6px 14px',borderRadius:20,border:'none',cursor:'pointer',
+              fontWeight:700,fontSize:'.78rem',fontFamily:'inherit',
+              background:filterGrup===g?'var(--p)':'var(--surface2)',
+              color:filterGrup===g?'#fff':'var(--text2)'}}>
+            {g==='Perencanaan'?'📚 Perencanaan':'📊 Penilaian'}
+          </button>
+        ))}
+      </div>
+
+      {/* Daftar dokumen */}
+      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        {DAFTAR_DOKUMEN.filter(d=>d.grup===filterGrup).map((dok,i)=>{
+          const existing = getDok(dok.kode);
+          const st = existing?.status||'belum';
+          const si = statusInfo[st];
+          return (
+            <div key={dok.kode} className="card" style={{padding:'12px 16px',
+              borderLeft:'4px solid '+(st==='lengkap'?'#16a34a':st==='sebagian'?'#d97706':'#e5e7eb')}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:'.85rem'}}>{i+1}. {dok.nama}</div>
+                  {existing?.catatan && (
+                    <div style={{fontSize:'.72rem',color:'var(--text2)',marginTop:2}}>
+                      💬 {existing.catatan}
+                    </div>
+                  )}
+                  {existing?.file_url && (
+                    <a href={existing.file_url} target="_blank" rel="noreferrer"
+                      style={{fontSize:'.72rem',color:'#2563eb',display:'inline-block',marginTop:2}}>
+                      🔗 Lihat File
+                    </a>
+                  )}
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:8'}}>
+                  <span style={{padding:'3px 10px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
+                    color:si.color,background:si.bg,whiteSpace:'nowrap'}}>
+                    {si.label}
+                  </span>
+                  <button onClick={()=>bukaEdit(dok)}
+                    className="btn btn-outline btn-sm" style={{whiteSpace:'nowrap'}}>
+                    ✏️ Update
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── DOKUMEN ADMINISTRASI — VIEW SUPERVISOR ─────────────────────
+function TabDokumenSupervisor({sesi, guruList, showToast}) {
+  const [dokList, setDokList]     = React.useState([]);
+  const [loading, setLoading]     = React.useState(true);
+  const [filterGuru, setFilterGuru] = React.useState('');
+  const [detailGuru, setDetailGuru] = React.useState(null);
+  const TA = '2025/2026';
+
+  React.useEffect(()=>{ loadData(); }, []);
+
+  async function loadData() {
+    setLoading(true);
+    const {data} = await sb.from('supermad_dokumen')
+      .select('*').eq('madrasah_id', sesi.mad.id).eq('tahun_ajaran', TA);
+    setDokList(data||[]);
+    setLoading(false);
+  }
+
+  const total = DAFTAR_DOKUMEN.length;
+  const statusInfo = {
+    lengkap:  {label:'✅ Lengkap',   color:'#16a34a', bg:'#d1fae5'},
+    sebagian: {label:'⚠️ Sebagian',  color:'#d97706', bg:'#fef3c7'},
+    belum:    {label:'❌ Belum',     color:'#dc2626', bg:'#fee2e2'},
+  };
+
+  function getProgress(guruId) {
+    const docs = dokList.filter(d=>d.guru_id===guruId);
+    const lengkap = docs.filter(d=>d.status==='lengkap').length;
+    const sebagian = docs.filter(d=>d.status==='sebagian').length;
+    return Math.round(((lengkap + sebagian*0.5)/total)*100);
+  }
+
+  const filtered = guruList.filter(g=>
+    !filterGuru || g.nama.toLowerCase().includes(filterGuru.toLowerCase())
+  );
+
+  if (loading) return <Loading text="Memuat data dokumen..." />;
+
+  // Detail per guru
+  if (detailGuru) {
+    const docs = dokList.filter(d=>d.guru_id===detailGuru.id);
+    const getDok = kode => docs.find(d=>d.kode_dok===kode);
+    const grups = [...new Set(DAFTAR_DOKUMEN.map(d=>d.grup))];
+    return (
+      <div>
+        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:16}}>
+          <button className="btn btn-outline btn-sm" onClick={()=>setDetailGuru(null)}>← Kembali</button>
+          <div>
+            <div style={{fontWeight:800,color:'var(--p3)'}}>{detailGuru.nama}</div>
+            <div style={{fontSize:'.75rem',color:'var(--text2)'}}>{detailGuru.mapel||'—'} · {detailGuru.status_kepeg||'—'}</div>
+          </div>
+        </div>
+        {grups.map(grup=>(
+          <div key={grup} style={{marginBottom:16}}>
+            <div style={{fontWeight:700,fontSize:'.8rem',color:'var(--text2)',
+              marginBottom:8,textTransform:'uppercase',letterSpacing:1}}>
+              {grup==='Perencanaan'?'📚 Perencanaan Pembelajaran':'📊 Penilaian Hasil Belajar'}
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {DAFTAR_DOKUMEN.filter(d=>d.grup===grup).map((dok,i)=>{
+                const existing = getDok(dok.kode);
+                const st = existing?.status||'belum';
+                const si = statusInfo[st];
+                return (
+                  <div key={dok.kode} style={{display:'flex',justifyContent:'space-between',
+                    alignItems:'center',padding:'8px 14px',borderRadius:9,
+                    background:'#fff',border:'1px solid var(--border)',
+                    borderLeft:'4px solid '+(st==='lengkap'?'#16a34a':st==='sebagian'?'#d97706':'#e5e7eb')}}>
+                    <div style={{fontSize:'.83rem',fontWeight:600}}>{i+1}. {dok.nama}</div>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      {existing?.file_url && (
+                        <a href={existing.file_url} target="_blank" rel="noreferrer"
+                          style={{fontSize:'.7rem',color:'#2563eb'}}>🔗</a>
+                      )}
+                      <span style={{padding:'2px 10px',borderRadius:20,fontSize:'.7rem',
+                        fontWeight:700,color:si.color,background:si.bg,whiteSpace:'nowrap'}}>
+                        {si.label}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{marginBottom:12}}>
+        <input value={filterGuru} onChange={e=>setFilterGuru(e.target.value)}
+          placeholder="🔍 Cari nama guru..." style={{maxWidth:280}}/>
+      </div>
+      {filtered.length === 0 ? (
+        <div className="card" style={{textAlign:'center',padding:32,color:'var(--text3)'}}>
+          Belum ada data guru.
+        </div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {filtered.map(g=>{
+            const pct = getProgress(g.id);
+            const warna = pct>=80?'#16a34a':pct>=50?'#d97706':'#dc2626';
+            return (
+              <div key={g.id} className="card" style={{padding:'12px 16px',cursor:'pointer'}}
+                onClick={()=>setDetailGuru(g)}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700}}>{g.nama}</div>
+                    <div style={{fontSize:'.75rem',color:'var(--text2)',marginTop:2}}>
+                      {g.mapel||'—'} · {g.status_kepeg||'—'}
+                    </div>
+                    <div style={{marginTop:8,background:'#e5e7eb',borderRadius:99,height:7,overflow:'hidden'}}>
+                      <div style={{width:pct+'%',height:'100%',background:warna,borderRadius:99,transition:'width .4s'}}/>
+                    </div>
+                  </div>
+                  <div style={{textAlign:'right',minWidth:52}}>
+                    <div style={{fontWeight:900,fontSize:'1.1rem',color:warna}}>{pct}%</div>
+                    <div style={{fontSize:'.68rem',color:'var(--text3)'}}>lengkap</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
