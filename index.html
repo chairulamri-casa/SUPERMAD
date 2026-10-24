@@ -7874,17 +7874,30 @@ function TabKelasSiswa({sesi, showToast}) {
     loadSiswa(activeKelas.nama_kelas, filterTA);
   }
 
-  async function downloadTemplateSiswa() {
-    const rows = [
-      ['Tingkat','Rombel','Nama Siswa','NISN','Gender (L/P)'],
-      ['VII','VII-A','NAMA SISWA CONTOH','3201234567','L'],
-      ['VII','VII-A','NAMA SISWA KEDUA','3201234568','P'],
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{wch:10},{wch:12},{wch:30},{wch:15},{wch:12}];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb,'Siswa',ws);
-    XLSX.writeFile(wb,'template_import_siswa.xlsx');
+  function downloadTemplateSiswa() {
+    try {
+      const rows = [
+        ['Tingkat','Rombel','Nama Siswa','NISN','Gender (L/P)'],
+        ['VII','VII-A','NAMA SISWA CONTOH','3201234567','L'],
+        ['VII','VII-A','NAMA SISWA KEDUA','3201234568','P'],
+        ['VIII','VIII-B','NAMA SISWA KETIGA','3201234569','P'],
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = [{wch:10},{wch:12},{wch:30},{wch:15},{wch:12}];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,'Siswa',ws);
+      const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+      const blob = new Blob([wbout], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'template_import_siswa.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+    } catch(err) {
+      alert('Gagal download template: ' + err.message);
+    }
   }
 
   // Import excel dari view kelas (auto-buat kelas + siswa)
