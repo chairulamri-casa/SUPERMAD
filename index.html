@@ -8422,19 +8422,13 @@ function TabNilai({sesi, showToast}) {
     {val:'proyek',   label:'Proyek / Praktik'},
   ];
 
+  // Simpan allNilaiMap di ref agar selalu fresh tanpa closure bug
+  const allNilaiRef = React.useRef({});
+
   React.useEffect(()=>{ loadKelas(); }, [filterTA]);
   React.useEffect(()=>{
     if(filterKelas) { setEditMap({}); setDirtySet(new Set()); loadSiswaData(); }
   }, [filterKelas, filterSmt, filterTA]);
-  // reload hanya nilaiMap saat ganti jenis (tanpa refetch semua)
-  React.useEffect(()=>{
-    if(filterKelas && Object.keys(allNilaiMap).length>0) {
-      const mp={};
-      Object.keys(allNilaiMap).forEach(sid=>{ mp[sid]=allNilaiMap[sid][filterJenis]; });
-      setNilaiMap(mp);
-      setEditMap({}); setDirtySet(new Set());
-    }
-  }, [filterJenis]);
 
   async function loadKelas() {
     const {data} = await sb.from('supermad_kelas').select('*')
@@ -8462,8 +8456,9 @@ function TabNilai({sesi, showToast}) {
       if(!allMp[n.siswa_id]) allMp[n.siswa_id]={};
       allMp[n.siswa_id][n.jenis_nilai] = n.nilai;
     });
+    allNilaiRef.current = allMp;
     setAllNilaiMap(allMp);
-    // nilaiMap untuk jenis aktif saat ini
+    // nilaiMap untuk jenis aktif saat ini — pakai allMp langsung (bukan state yg belum update)
     const mp={};
     Object.keys(allMp).forEach(sid=>{ if(allMp[sid][filterJenis]!==undefined) mp[sid]=allMp[sid][filterJenis]; });
     setNilaiMap(mp);
@@ -8560,16 +8555,16 @@ function TabNilai({sesi, showToast}) {
   // Helper: hitung SLM, Nilai Rapor per siswa
   function hitungRapor(siswaId) {
     const nd = allNilaiMap[siswaId]||{};
-    // SLM = rata-rata dari nilai yang ada (formatif, sts, proyek) — BUKAN sas
-    const komponenSLM = ['formatif','sts','proyek'];
-    const slmVals = komponenSLM.map(k=>nd[k]).filter(v=>v!==undefined&&v!==null);
+    // SLM = rata-rata hanya dari komponen yang dicentang guru
+    const aktifKeys = Object.keys(slmKomponen).filter(k=>slmKomponen[k]);
+    const slmVals = aktifKeys.map(k=>nd[k]).filter(v=>v!==undefined&&v!==null);
     const slm = slmVals.length ? slmVals.reduce((a,b)=>a+b,0)/slmVals.length : undefined;
     const sas = nd['sas'];
-    // Nilai Rapor = (SLM * bobotSLM + SAS * bobotSAS) / 100
     let rapor;
     if(slm!==undefined && sas!==undefined) rapor = (slm*(bobotSLM/100) + sas*(bobotSAS/100));
-    else if(slm!==undefined && sas===undefined) rapor = slm; // jika SAS belum ada
-    return { slm, sas, rapor, komponenCount: slmVals.length };
+    else if(slm!==undefined && sas===undefined) rapor = slm;
+    else if(slm===undefined && sas!==undefined) rapor = sas;
+    return { slm, sas, rapor, aktifKeys };
   }
 
   function cetakRapor() {
@@ -8901,7 +8896,16 @@ function TabNilai({sesi, showToast}) {
           {kelasList.map(k=><option key={k.id} value={k.nama_kelas}>{k.nama_kelas}</option>)}
         </select>
         {activeTab==='input' && (
-          <select value={filterJenis} onChange={e=>setFilterJenis(e.target.value)}
+          <select value={filterJenis} onChange={e=>{
+            const jenis = e.target.value;
+            setFilterJenis(jenis);
+            // Langsung update nilaiMap dari ref (fresh, bukan tunggu state)
+            const allMp = allNilaiRef.current;
+            const mp={};
+            Object.keys(allMp).forEach(sid=>{ if(allMp[sid][jenis]!==undefined) mp[sid]=allMp[sid][jenis]; });
+            setNilaiMap(mp);
+            setEditMap({}); setDirtySet(new Set());
+          }}
             style={{padding:'7px 12px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.85rem',fontFamily:'inherit'}}>
             {jenisOpt.map(j=><option key={j.val} value={j.val}>{j.label}</option>)}
           </select>
@@ -8924,33 +8928,56 @@ function TabNilai({sesi, showToast}) {
         <div>
           {/* Pengaturan bobot */}
           <div className="card" style={{padding:'12px 16px',marginBottom:12,background:'#eff6ff',border:'1.5px solid #93c5fd'}}>
-            <div style={{display:'flex',gap:16,flexWrap:'wrap',alignItems:'center'}}>
-              <div style={{fontWeight:700,color:'#1e40af',fontSize:'.85rem'}}>⚙️ Bobot Nilai Rapor</div>
-              <div style={{display:'flex',alignItems:'center',gap:6,fontSize:'.82rem'}}>
-                SLM (Formatif+STS+Proyek):
-                <input type="number" min={0} max={100} value={bobotSLM}
-                  onChange={e=>{ const v=Math.min(100,Number(e.target.value)); setBobotSLM(v); setBobotSAS(100-v); }}
-                  style={{width:52,padding:'4px 6px',borderRadius:6,border:'1.5px solid #93c5fd',textAlign:'center',fontFamily:'inherit',fontWeight:700}}/>
-                <span style={{color:'#64748b'}}>%</span>
-              </div>
-              <div style={{display:'flex',alignItems:'center',gap:6,fontSize:'.82rem'}}>
-                SAS:
-                <input type="number" min={0} max={100} value={bobotSAS}
-                  onChange={e=>{ const v=Math.min(100,Number(e.target.value)); setBobotSAS(v); setBobotSLM(100-v); }}
-                  style={{width:52,padding:'4px 6px',borderRadius:6,border:'1.5px solid #93c5fd',textAlign:'center',fontFamily:'inherit',fontWeight:700}}/>
-                <span style={{color:'#64748b'}}>%</span>
-              </div>
-              <div style={{fontSize:'.78rem',color:'#1e40af',flex:1}}>
-                Total: <b>{bobotSLM+bobotSAS}%</b>
-                {bobotSLM+bobotSAS!==100 && <span style={{color:'#dc2626'}}> ⚠️ Harus = 100%</span>}
+            <div style={{display:'flex',gap:12,flexWrap:'wrap',alignItems:'flex-start'}}>
+              <div style={{flex:1,minWidth:280}}>
+                <div style={{fontWeight:700,color:'#1e40af',fontSize:'.85rem',marginBottom:8}}>⚙️ Komponen SLM &amp; Bobot</div>
+                {/* Centang komponen SLM */}
+                <div style={{display:'flex',gap:12,marginBottom:8,flexWrap:'wrap'}}>
+                  {[['formatif','Formatif'],['sts','STS'],['proyek','Proyek']].map(([k,lbl])=>(
+                    <label key={k} style={{display:'flex',alignItems:'center',gap:5,cursor:'pointer',
+                      fontSize:'.82rem',fontWeight:slmKomponen[k]?700:400,
+                      color:slmKomponen[k]?'#1e40af':'var(--text2)',
+                      padding:'4px 10px',borderRadius:20,
+                      background:slmKomponen[k]?'#dbeafe':'var(--surface2)',
+                      border:'1.5px solid '+(slmKomponen[k]?'#93c5fd':'var(--border)')}}>
+                      <input type="checkbox" checked={!!slmKomponen[k]}
+                        onChange={e=>setSlmKomponen(s=>({...s,[k]:e.target.checked}))}
+                        style={{accentColor:'#1e40af'}}/>
+                      {lbl}
+                    </label>
+                  ))}
+                  <span style={{fontSize:'.78rem',color:'var(--text3)',alignSelf:'center'}}>→ masuk SLM</span>
+                </div>
+                {/* Bobot SLM vs SAS */}
+                <div style={{display:'flex',gap:16,alignItems:'center',flexWrap:'wrap'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:6,fontSize:'.82rem'}}>
+                    <span style={{fontWeight:600,color:'#1e40af'}}>Bobot SLM:</span>
+                    <input type="number" min={0} max={100} value={bobotSLM}
+                      onChange={e=>{ const v=Math.min(100,Math.max(0,Number(e.target.value))); setBobotSLM(v); setBobotSAS(100-v); }}
+                      style={{width:52,padding:'4px 6px',borderRadius:6,border:'1.5px solid #93c5fd',textAlign:'center',fontFamily:'inherit',fontWeight:700}}/>
+                    <span style={{color:'#64748b'}}>%</span>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:6,fontSize:'.82rem'}}>
+                    <span style={{fontWeight:600,color:'#0f766e'}}>Bobot SAS:</span>
+                    <input type="number" min={0} max={100} value={bobotSAS}
+                      onChange={e=>{ const v=Math.min(100,Math.max(0,Number(e.target.value))); setBobotSAS(v); setBobotSLM(100-v); }}
+                      style={{width:52,padding:'4px 6px',borderRadius:6,border:'1.5px solid #5eead4',textAlign:'center',fontFamily:'inherit',fontWeight:700}}/>
+                    <span style={{color:'#64748b'}}>%</span>
+                  </div>
+                  <div style={{fontSize:'.78rem',color:bobotSLM+bobotSAS!==100?'#dc2626':'#16a34a',fontWeight:700}}>
+                    Total: {bobotSLM+bobotSAS}%{bobotSLM+bobotSAS!==100?' ⚠️':' ✓'}
+                  </div>
+                </div>
               </div>
               <button className="btn btn-sm" onClick={cetakRapor}
-                style={{background:'#1e40af',color:'#fff',border:'none',fontWeight:700}}>
+                style={{background:'#1e40af',color:'#fff',border:'none',fontWeight:700,alignSelf:'flex-end'}}>
                 🖨️ Cetak Rekap Rapor
               </button>
             </div>
-            <div style={{fontSize:'.78rem',color:'#3b82f6',marginTop:6}}>
-              📐 <b>Nilai Rapor</b> = (rata-rata Formatif + STS + Proyek) × {bobotSLM}% + SAS × {bobotSAS}%
+            {/* Rumus live */}
+            <div style={{fontSize:'.78rem',color:'#3b82f6',marginTop:8,paddingTop:8,borderTop:'1px solid #bfdbfe'}}>
+              📐 <b>Nilai Rapor</b> = rata-rata({Object.keys(slmKomponen).filter(k=>slmKomponen[k]).map(k=>k.toUpperCase()).join(' + ')||'—'}) × {bobotSLM}% + SAS × {bobotSAS}%
+              {Object.keys(slmKomponen).filter(k=>slmKomponen[k]).length===0 && <span style={{color:'#dc2626'}}> — Pilih minimal 1 komponen SLM</span>}
             </div>
           </div>
 
