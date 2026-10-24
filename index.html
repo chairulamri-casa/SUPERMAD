@@ -7105,6 +7105,15 @@ function TabTindakLanjutKanwil({madrasahList, showToast}) {
 }
 
 // ── DOKUMEN ADMINISTRASI GURU ──────────────────────────────────
+// Hitung TA otomatis (Juli = awal TA baru)
+function getTASekarang() {
+  const now = new Date();
+  const bln = now.getMonth() + 1;
+  const thn = now.getFullYear();
+  const awal = bln >= 7 ? thn : thn - 1;
+  return awal + '/' + (awal + 1);
+}
+
 const DAFTAR_DOKUMEN = [
   // Perencanaan Pembelajaran
   {kode:'kalender',   nama:'Kalender Pendidikan',          grup:'Perencanaan'},
@@ -7143,7 +7152,7 @@ function TabDokumenGuru({sesi, showToast}) {
   const [editDok, setEditDok]   = React.useState(null); // {kode, nama}
   const [form, setForm]         = React.useState({status:'lengkap', file_url:'', catatan:''});
   const [filterGrup, setFilterGrup] = React.useState('Perencanaan');
-  const TA = '2025/2026';
+  const TA = getTASekarang();
 
   React.useEffect(()=>{ loadData(); }, []);
 
@@ -7352,7 +7361,7 @@ function TabDokumenSupervisor({sesi, guruList, showToast}) {
   const [loading, setLoading]     = React.useState(true);
   const [filterGuru, setFilterGuru] = React.useState('');
   const [detailGuru, setDetailGuru] = React.useState(null);
-  const TA = '2025/2026';
+  const TA = getTASekarang();
 
   React.useEffect(()=>{ loadData(); }, []);
 
