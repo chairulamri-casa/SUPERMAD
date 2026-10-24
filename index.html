@@ -7154,14 +7154,14 @@ function TabDokumenGuru({sesi, showToast}) {
   const [filterGrup, setFilterGrup] = React.useState('Perencanaan');
   const [filterTA, setFilterTA] = React.useState(getTASekarang());
 
-  React.useEffect(()=>{ loadData(); }, [filterTA]);
+  React.useEffect(()=>{ loadData(filterTA); }, [filterTA]);
 
-  async function loadData() {
+  async function loadData(ta) {
     setLoading(true);
     const {data} = await sb.from('supermad_dokumen')
       .select('*')
       .eq('guru_id', sesi.pengguna.id)
-      .eq('tahun_ajaran', filterTA);
+      .eq('tahun_ajaran', ta||filterTA);
     setDokList(data||[]);
     setLoading(false);
   }
@@ -7208,7 +7208,7 @@ function TabDokumenGuru({sesi, showToast}) {
     if (error) { showToast('Gagal: '+error.message,'error'); return; }
     showToast('✅ Status dokumen disimpan!');
     setEditDok(null);
-    loadData();
+    loadData(filterTA);
   }
 
   const grups = [...new Set(DAFTAR_DOKUMEN.map(d=>d.grup))];
@@ -7376,12 +7376,12 @@ function TabDokumenSupervisor({sesi, guruList, showToast}) {
   const [detailGuru, setDetailGuru] = React.useState(null);
   const [filterTA, setFilterTA]   = React.useState(getTASekarang());
 
-  React.useEffect(()=>{ loadData(); }, [filterTA]);
+  React.useEffect(()=>{ loadData(filterTA); }, [filterTA]);
 
-  async function loadData() {
+  async function loadData(ta) {
     setLoading(true);
     const {data} = await sb.from('supermad_dokumen')
-      .select('*').eq('madrasah_id', sesi.mad.id).eq('tahun_ajaran', filterTA);
+      .select('*').eq('madrasah_id', sesi.mad.id).eq('tahun_ajaran', ta||filterTA);
     setDokList(data||[]);
     setLoading(false);
   }
