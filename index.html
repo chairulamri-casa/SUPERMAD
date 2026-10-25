@@ -902,7 +902,7 @@ function DashboardOperator({sesi, showToast}) {
 
       {/* Tab */}
       <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
-        {[['guru','👨‍🏫 Daftar Guru'],['pengguna','👤 Pengguna'],['kelas','🏫 Kelas & Siswa'],['instrumen','📋 Instrumen'],['profil','⚙️ Profil']].map(([key,label])=>(
+        {[['guru','👨‍🏫 Daftar Guru'],['pengguna','👤 Pengguna'],['penugasan','📌 Penugasan'],['kelas','🏫 Kelas & Siswa'],['instrumen','📋 Instrumen'],['profil','⚙️ Profil']].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',
               fontWeight:700,fontSize:'.8rem',fontFamily:'inherit',
@@ -1217,6 +1217,11 @@ function DashboardOperator({sesi, showToast}) {
             </form>
           </div>
         </div>
+      )}
+
+      {/* TAB PENUGASAN */}
+      {tab==='penugasan' && (
+        <TabPenugasan sesi={sesi} showToast={showToast} />
       )}
 
       {/* TAB INSTRUMEN */}
@@ -8507,6 +8512,15 @@ function TabNilai({sesi, showToast}) {
   const [importStatus, setImportStatus] = React.useState('');
   const [kktp, setKktp] = React.useState(70);
 
+  // Multi-penugasan: guru bisa punya banyak mapel+kelas
+  const [penugasanList, setPenugasanList] = React.useState(null); // null = belum load
+  const [selectedMapel, setSelectedMapel] = React.useState('');   // mapel terpilih
+  const [selectedKelasId, setSelectedKelasId] = React.useState(''); // kelas_id terpilih
+  const [loadingPenugasan, setLoadingPenugasan] = React.useState(true);
+
+  // Mapel aktif: dari penugasan (jika ada) atau dari sesi.pengguna.mapel (lama)
+  const mapelAktif = selectedMapel || sesi.pengguna.mapel || '';
+
   const jenisOpt = [
     {val:'formatif', label:'Formatif (Harian/Kuis)'},
     {val:'sts',      label:'Sumatif Tengah Semester'},
@@ -8517,10 +8531,64 @@ function TabNilai({sesi, showToast}) {
   // Simpan allNilaiMap di ref agar selalu fresh tanpa closure bug
   const allNilaiRef = React.useRef({});
 
-  React.useEffect(()=>{ loadKelas(); }, [filterTA]);
+  // Load penugasan saat pertama kali
+  React.useEffect(()=>{ loadPenugasan(); }, [filterTA]);
+
+  async function loadPenugasan() {
+    setLoadingPenugasan(true);
+    const {data} = await sb.from('supermad_penugasan').select(`
+      id, mapel, kelas_id, aktif,
+      supermad_kelas!kelas_id(id, nama_kelas, tingkat)
+    `)
+      .eq('pengguna_id', sesi.pengguna.id)
+      .eq('tahun_ajaran', filterTA)
+      .eq('aktif', true)
+      .order('mapel');
+    const list = data||[];
+    setPenugasanList(list);
+
+    if (list.length > 0) {
+      // Auto-pilih penugasan pertama
+      if (!selectedMapel) setSelectedMapel(list[0].mapel);
+      if (!selectedKelasId) {
+        setSelectedKelasId(list[0].kelas_id);
+        setFilterKelas(list[0].supermad_kelas?.nama_kelas||'');
+      }
+    }
+    setLoadingPenugasan(false);
+  }
+
+  // Kelas yang tersedia untuk mapel terpilih (dari penugasan)
+  const kelasUntukMapel = React.useMemo(()=>{
+    if (!penugasanList) return [];
+    return penugasanList.filter(p=>p.mapel===selectedMapel);
+  }, [penugasanList, selectedMapel]);
+
+  // Saat mapel berubah, auto-pilih kelas pertama dari penugasan mapel itu
+  React.useEffect(()=>{
+    if (!penugasanList || penugasanList.length === 0) return;
+    const klsList = penugasanList.filter(p=>p.mapel===selectedMapel);
+    if (klsList.length > 0) {
+      setSelectedKelasId(klsList[0].kelas_id);
+      setFilterKelas(klsList[0].supermad_kelas?.nama_kelas||'');
+    }
+  }, [selectedMapel]);
+
+  // Saat kelas berubah dari dropdown penugasan
+  function onPenugasanKelasChange(kelas_id) {
+    setSelectedKelasId(kelas_id);
+    const pt = penugasanList.find(p=>p.kelas_id===kelas_id && p.mapel===selectedMapel);
+    if (pt) setFilterKelas(pt.supermad_kelas?.nama_kelas||'');
+  }
+
+  React.useEffect(()=>{
+    // Jika tidak ada penugasan → fallback load kelas biasa
+    if (penugasanList !== null && penugasanList.length === 0) loadKelas();
+  }, [penugasanList, filterTA]);
+
   React.useEffect(()=>{
     if(filterKelas) { setEditMap({}); setDirtySet(new Set()); loadSiswaData(); }
-  }, [filterKelas, filterSmt, filterTA]);
+  }, [filterKelas, filterSmt, filterTA, selectedMapel]);
 
   async function loadKelas() {
     const {data} = await sb.from('supermad_kelas').select('*')
@@ -8538,7 +8606,7 @@ function TabNilai({sesi, showToast}) {
       // Ambil SEMUA jenis nilai sekaligus untuk kelas ini
       sb.from('supermad_nilai').select('siswa_id,jenis_nilai,nilai')
         .eq('madrasah_id', sesi.mad.id).eq('kelas', filterKelas)
-        .eq('mapel', sesi.pengguna.mapel||'')
+        .eq('mapel', mapelAktif)
         .eq('semester', filterSmt).eq('tahun_ajaran', filterTA),
     ]);
     setSiswaList(sw||[]);
@@ -8568,7 +8636,7 @@ function TabNilai({sesi, showToast}) {
     if (valStr===undefined||valStr==='') {
       // hapus nilai jika dikosongkan
       const {error} = await sb.from('supermad_nilai').delete()
-        .eq('siswa_id', siswa.id).eq('mapel', sesi.pengguna.mapel||'')
+        .eq('siswa_id', siswa.id).eq('mapel', mapelAktif)
         .eq('jenis_nilai', filterJenis).eq('semester', filterSmt).eq('tahun_ajaran', filterTA);
       if (!error) {
         setNilaiMap(m=>{ const nm={...m}; delete nm[siswa.id]; return nm; });
@@ -8582,7 +8650,7 @@ function TabNilai({sesi, showToast}) {
     const {error} = await sb.from('supermad_nilai').upsert([{
       madrasah_id: sesi.mad.id, tahun_ajaran: filterTA, semester: filterSmt,
       siswa_id: siswa.id, kelas: filterKelas,
-      guru_id: sesi.pengguna.id, mapel: sesi.pengguna.mapel||'',
+      guru_id: sesi.pengguna.id, mapel: mapelAktif,
       jenis_nilai: filterJenis, nilai, kktp,
       updated_at: new Date().toISOString(),
     }], {onConflict:'siswa_id,mapel,jenis_nilai,semester,tahun_ajaran'});
@@ -8614,7 +8682,7 @@ function TabNilai({sesi, showToast}) {
       upserts.push({
         madrasah_id:sesi.mad.id, tahun_ajaran:filterTA, semester:filterSmt,
         siswa_id:sid, kelas:filterKelas,
-        guru_id:sesi.pengguna.id, mapel:sesi.pengguna.mapel||'',
+        guru_id:sesi.pengguna.id, mapel:mapelAktif,
         jenis_nilai:filterJenis, nilai, kktp,
         updated_at:new Date().toISOString(),
       });
@@ -8638,7 +8706,7 @@ function TabNilai({sesi, showToast}) {
     }
     for(const sid of hapus){
       await sb.from('supermad_nilai').delete()
-        .eq('siswa_id',sid).eq('mapel',sesi.pengguna.mapel||'')
+        .eq('siswa_id',sid).eq('mapel',mapelAktif)
         .eq('jenis_nilai',filterJenis).eq('semester',filterSmt).eq('tahun_ajaran',filterTA);
       setNilaiMap(m=>{ const nm={...m}; delete nm[sid]; return nm; });
     }
@@ -8918,7 +8986,7 @@ function TabNilai({sesi, showToast}) {
           siswa_id: siswa.id,
           kelas: filterKelas,
           guru_id: sesi.pengguna.id,
-          mapel: sesi.pengguna.mapel||'',
+          mapel: mapelAktif,
           jenis_nilai: filterJenis,
           nilai, kktp: ktpVal,
           updated_at: new Date().toISOString(),
@@ -8954,6 +9022,8 @@ function TabNilai({sesi, showToast}) {
   ].map(d=>({...d, jml: nilaiArr.filter(v=>v>=d.min&&v<=d.max).length}));
   const maxJml = Math.max(...distrib.map(d=>d.jml), 1);
 
+  if (loadingPenugasan) return <Loading text="Memuat data penugasan..." />;
+
   return (
     <div>
       {/* Tab switcher */}
@@ -8984,13 +9054,47 @@ function TabNilai({sesi, showToast}) {
         </select>
       </div>
 
-      {/* Pilih Kelas + Jenis */}
+      {/* Pilih Mapel (jika ada penugasan multi-mapel) */}
+      {penugasanList && penugasanList.length > 0 && (
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:8}}>
+          {/* Dropdown Mapel */}
+          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+            <label style={{fontSize:'.72rem',fontWeight:700,color:'var(--text2)'}}>Mata Pelajaran</label>
+            <select value={selectedMapel} onChange={e=>setSelectedMapel(e.target.value)}
+              style={{padding:'7px 12px',border:'1.5px solid var(--p)',borderRadius:8,fontSize:'.85rem',
+                fontFamily:'inherit',fontWeight:700,color:'var(--p)'}}>
+              {[...new Set(penugasanList.map(p=>p.mapel))].map(m=>(
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
+          {/* Dropdown Kelas dari penugasan */}
+          {kelasUntukMapel.length > 0 && (
+            <div style={{display:'flex',flexDirection:'column',gap:4}}>
+              <label style={{fontSize:'.72rem',fontWeight:700,color:'var(--text2)'}}>Kelas</label>
+              <select value={selectedKelasId} onChange={e=>onPenugasanKelasChange(e.target.value)}
+                style={{padding:'7px 12px',border:'1.5px solid var(--p)',borderRadius:8,fontSize:'.85rem',
+                  fontFamily:'inherit',fontWeight:700,color:'var(--p)'}}>
+                {kelasUntukMapel.map(p=>(
+                  <option key={p.kelas_id} value={p.kelas_id}>
+                    {p.supermad_kelas?.nama_kelas||p.kelas_id}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Pilih Kelas + Jenis (fallback jika tidak ada penugasan) */}
       <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
+        {(!penugasanList || penugasanList.length === 0) && (
         <select value={filterKelas} onChange={e=>setFilterKelas(e.target.value)}
           style={{padding:'7px 12px',border:'1.5px solid var(--p)',borderRadius:8,fontSize:'.85rem',fontFamily:'inherit',fontWeight:700,color:'var(--p)'}}>
           <option value="">— Pilih Kelas —</option>
           {kelasList.map(k=><option key={k.id} value={k.nama_kelas}>{k.nama_kelas}</option>)}
         </select>
+        )}
         {activeTab==='input' && (
           <select value={filterJenis} onChange={e=>{
             const jenis = e.target.value;
@@ -9197,7 +9301,7 @@ function TabNilai({sesi, showToast}) {
           <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap',alignItems:'center',
             padding:'10px 14px',background:'#f0fdf4',borderRadius:10,border:'1.5px solid #86efac'}}>
             <div style={{fontSize:'.8rem',color:'#166534',flex:1}}>
-              <b>📝 Mapel: {sesi.pengguna.mapel||'(belum diset)'}</b>
+              <b>📝 Mapel: {mapelAktif||'(belum diset)'}</b>
               {' · '}{jenisOpt.find(j=>j.val===filterJenis)?.label}
               {' · '}{filterKelas} · Smt {filterSmt}
             </div>
@@ -9882,6 +9986,218 @@ function TabJurnal({sesi, showToast}) {
                     🗑️
                   </button>
                 </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── TAB PENUGASAN (OPERATOR) ─────────────────────────────────
+function TabPenugasan({sesi, showToast}) {
+  const [penggunaList, setPenggunaList] = React.useState([]);
+  const [kelasList,    setKelasList]    = React.useState([]);
+  const [penugasanList,setPenugasanList]= React.useState([]);
+  const [loading,  setLoading]  = React.useState(true);
+  const [saving,   setSaving]   = React.useState(false);
+  const [showForm, setShowForm] = React.useState(false);
+  const [filterTA, setFilterTA] = React.useState(getTASekarang());
+  const [form, setForm] = React.useState({
+    pengguna_id:'', mapel:'', kelas_id:'', tahun_ajaran: getTASekarang()
+  });
+
+  const MAPEL_LIST = [
+    'Al-Qur\'an Hadis','Akidah Akhlak','Fikih','Sejarah Kebudayaan Islam',
+    'Bahasa Arab','Pendidikan Pancasila','Bahasa Indonesia','Matematika',
+    'Ilmu Pengetahuan Alam dan Sosial','Seni Budaya dan Prakarya',
+    'Pendidikan Jasmani Olahraga dan Kesehatan','Bahasa Inggris',
+    'Pendidikan Pancasila dan Kewarganegaraan','Ilmu Pengetahuan Sosial',
+    'Ilmu Pengetahuan Alam','Prakarya','Informatika','Lainnya'
+  ];
+
+  React.useEffect(()=>{ loadData(); }, [filterTA]);
+
+  async function loadData() {
+    setLoading(true);
+    const [pg, kl, pt] = await Promise.all([
+      sb.from('supermad_pengguna').select('id,nama,role,username')
+        .eq('madrasah_id', sesi.mad.id).eq('aktif', true).order('nama'),
+      sb.from('supermad_kelas').select('id,nama_kelas,tingkat')
+        .eq('madrasah_id', sesi.mad.id).eq('tahun_ajaran', filterTA).order('tingkat').order('nama_kelas'),
+      sb.from('supermad_penugasan').select(`
+        id, pengguna_id, mapel, kelas_id, tahun_ajaran, aktif,
+        supermad_pengguna!pengguna_id(nama,role),
+        supermad_kelas!kelas_id(nama_kelas,tingkat)
+      `).eq('madrasah_id', sesi.mad.id).eq('tahun_ajaran', filterTA).order('created_at', {ascending:false}),
+    ]);
+    setPenggunaList(pg.data||[]);
+    setKelasList(kl.data||[]);
+    setPenugasanList(pt.data||[]);
+    setLoading(false);
+  }
+
+  async function simpanPenugasan(e) {
+    e.preventDefault();
+    if (!form.pengguna_id||!form.mapel||!form.kelas_id) {
+      showToast('Lengkapi semua field!','error'); return;
+    }
+    setSaving(true);
+    const {error} = await sb.from('supermad_penugasan').insert({
+      madrasah_id:  sesi.mad.id,
+      pengguna_id:  form.pengguna_id,
+      mapel:        form.mapel,
+      kelas_id:     form.kelas_id,
+      tahun_ajaran: form.tahun_ajaran,
+      aktif: true,
+    });
+    setSaving(false);
+    if (error) {
+      if (error.code==='23505') showToast('Penugasan ini sudah ada!','warning');
+      else showToast('Gagal: '+error.message,'error');
+      return;
+    }
+    showToast('✅ Penugasan berhasil ditambahkan!');
+    setShowForm(false);
+    setForm({pengguna_id:'',mapel:'',kelas_id:'',tahun_ajaran:getTASekarang()});
+    loadData();
+  }
+
+  async function hapusPenugasan(pt) {
+    if (!confirm(`Hapus penugasan "${pt.supermad_pengguna?.nama} — ${pt.mapel} — ${pt.supermad_kelas?.nama_kelas}"?`)) return;
+    const {error} = await sb.from('supermad_penugasan').delete().eq('id', pt.id);
+    if (error) { showToast('Gagal hapus: '+error.message,'error'); return; }
+    showToast('🗑️ Penugasan dihapus.');
+    loadData();
+  }
+
+  async function toggleAktif(pt) {
+    const {error} = await sb.from('supermad_penugasan').update({aktif:!pt.aktif}).eq('id', pt.id);
+    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    loadData();
+  }
+
+  if (loading) return <Loading text="Memuat data penugasan..." />;
+
+  // Kelompokkan per guru
+  const byGuru = {};
+  penugasanList.forEach(pt=>{
+    const gId = pt.pengguna_id;
+    if (!byGuru[gId]) byGuru[gId] = {nama: pt.supermad_pengguna?.nama||'?', role: pt.supermad_pengguna?.role||'', list:[]};
+    byGuru[gId].list.push(pt);
+  });
+
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}}>
+        <div style={{fontWeight:700,color:'var(--text2)',fontSize:'.85rem'}}>
+          📌 Penugasan Mengajar — Siapa ngajar mapel apa di kelas mana
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <select value={filterTA} onChange={e=>setFilterTA(e.target.value)}
+            style={{padding:'6px 10px',borderRadius:8,border:'1.5px solid var(--border)',fontSize:'.8rem',width:'auto'}}>
+            {['2026/2027','2025/2026','2024/2025'].map(ta=>(
+              <option key={ta} value={ta}>{ta}</option>
+            ))}
+          </select>
+          <button className="btn btn-primary btn-sm" onClick={()=>setShowForm(!showForm)}>
+            {showForm?'✕ Batal':'+ Tambah Penugasan'}
+          </button>
+        </div>
+      </div>
+
+      {showForm && (
+        <div className="card" style={{marginBottom:14,background:'#f8fffe',border:'1.5px solid var(--p)'}}>
+          <div style={{fontWeight:800,color:'var(--p3)',marginBottom:12}}>📌 Tambah Penugasan</div>
+          <form onSubmit={simpanPenugasan}>
+            <div className="grid2">
+              <div className="form-group">
+                <label>Guru / Pengguna *</label>
+                <select value={form.pengguna_id} onChange={e=>setForm({...form,pengguna_id:e.target.value})} required>
+                  <option value="">— Pilih Pengguna —</option>
+                  {penggunaList.map(p=>(
+                    <option key={p.id} value={p.id}>{p.nama} ({p.role})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Mata Pelajaran *</label>
+                <select value={form.mapel} onChange={e=>setForm({...form,mapel:e.target.value})} required>
+                  <option value="">— Pilih Mapel —</option>
+                  {MAPEL_LIST.map(m=><option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Kelas *</label>
+                <select value={form.kelas_id} onChange={e=>setForm({...form,kelas_id:e.target.value})} required>
+                  <option value="">— Pilih Kelas —</option>
+                  {kelasList.map(k=>(
+                    <option key={k.id} value={k.id}>{k.nama_kelas} (Tingkat {k.tingkat})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Tahun Ajaran *</label>
+                <select value={form.tahun_ajaran} onChange={e=>setForm({...form,tahun_ajaran:e.target.value})}>
+                  {['2026/2027','2025/2026','2024/2025'].map(ta=>(
+                    <option key={ta} value={ta}>{ta}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <button className="btn btn-primary" type="submit" disabled={saving}>
+              {saving?'⏳ Menyimpan...':'💾 Simpan Penugasan'}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {penugasanList.length === 0 ? (
+        <div className="card" style={{textAlign:'center',padding:40,color:'var(--text3)'}}>
+          <div style={{fontSize:'2rem',marginBottom:8}}>📌</div>
+          <div>Belum ada penugasan. Klik "+ Tambah Penugasan" untuk memulai.</div>
+        </div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          {Object.entries(byGuru).map(([gId, guru])=>(
+            <div key={gId} className="card" style={{padding:14}}>
+              <div style={{fontWeight:800,color:'var(--p3)',marginBottom:10,fontSize:'.88rem'}}>
+                👤 {guru.nama}
+                <span style={{marginLeft:8,padding:'2px 8px',borderRadius:20,fontSize:'.68rem',fontWeight:700,
+                  background:guru.role==='guru'?'#fef3c7':'#dbeafe',
+                  color:guru.role==='guru'?'#92400e':'#1d4ed8'}}>
+                  {guru.role}
+                </span>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                {guru.list.map(pt=>(
+                  <div key={pt.id} style={{display:'flex',justifyContent:'space-between',
+                    alignItems:'center',padding:'8px 12px',borderRadius:8,
+                    background:pt.aktif?'#f0fdf4':'#f9fafb',
+                    border:'1px solid '+(pt.aktif?'#bbf7d0':'var(--border)')}}>
+                    <div style={{fontSize:'.82rem'}}>
+                      <span style={{fontWeight:700}}>{pt.mapel}</span>
+                      <span style={{color:'var(--text2)',marginLeft:8}}>
+                        — Kelas {pt.supermad_kelas?.nama_kelas||'?'}
+                      </span>
+                    </div>
+                    <div style={{display:'flex',gap:6}}>
+                      <button onClick={()=>toggleAktif(pt)}
+                        style={{padding:'3px 10px',borderRadius:6,border:'none',cursor:'pointer',
+                          fontSize:'.72rem',fontWeight:700,
+                          background:pt.aktif?'#d1fae5':'#f3f4f6',
+                          color:pt.aktif?'#065f46':'var(--text3)'}}>
+                        {pt.aktif?'✅ Aktif':'⏸ Nonaktif'}
+                      </button>
+                      <button onClick={()=>hapusPenugasan(pt)}
+                        style={{padding:'3px 8px',borderRadius:6,border:'1px solid #fca5a5',
+                          background:'#fef2f2',color:'#dc2626',cursor:'pointer',fontSize:'.72rem'}}>
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ))}
