@@ -11496,9 +11496,9 @@ function TabRekapNilai({sesi, showToast}) {
     // Nama kelas yang dipakai di supermad_siswa.kelas dan supermad_nilai.kelas
     const kelasStr = namaKelas;
 
-    // Load siswa di kelas ini — supermad_siswa.kelas menyimpan nama kelas (string), bukan UUID
+    // Load siswa di kelas ini (tidak ada kolom nisn, hanya nis)
     const {data:siswaData} = await sb.from('supermad_siswa')
-      .select('id,nama,nis,nisn')
+      .select('id,nama,nis')
       .eq('madrasah_id', sesi.mad.id)
       .eq('kelas', kelasStr)
       .eq('aktif', true)
@@ -11514,7 +11514,7 @@ function TabRekapNilai({sesi, showToast}) {
     // Load semua nilai untuk siswa-siswa ini, semester+TA yang dipilih
     // semester di DB disimpan sebagai angka (1=Ganjil, 2=Genap)
     const smtNum = smtToNum(filterSmt);
-    const {data:nilaiData} = await sb.from('supermad_nilai')
+    const {data:nilaiData, error:nilaiErr} = await sb.from('supermad_nilai')
       .select('siswa_id,mapel,jenis_nilai,nilai,kktp')
       .in('siswa_id', siswaIds)
       .eq('semester', smtNum)
