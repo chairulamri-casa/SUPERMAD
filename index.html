@@ -11450,6 +11450,7 @@ function TabRekapNilai({sesi, showToast}) {
   const [filterTA,  setFilterTA]  = React.useState(taAwalR+'/'+(taAwalR+1));
   const [filterSmt, setFilterSmt] = React.useState(smtDefaultR);
   const [kelasList, setKelasList] = React.useState([]);
+  const kelasListRef = React.useRef([]);
   const [filterKelas, setFilterKelas] = React.useState('');
   const [loading, setLoading] = React.useState(false);
 
@@ -11469,18 +11470,27 @@ function TabRekapNilai({sesi, showToast}) {
   async function loadKelas() {
     const {data} = await sb.from('supermad_kelas').select('id,nama_kelas,tingkat')
       .eq('madrasah_id', sesi.mad.id).order('tingkat').order('nama_kelas');
+    kelasListRef.current = data||[];
     setKelasList(data||[]);
-    if (!filterKelas && data && data.length>0) setFilterKelas(data[0].id);
+    if (data && data.length>0) {
+      setFilterKelas(data[0].id);
+      // Langsung load rekap dengan kelas pertama
+      await loadRekapWithKelas(data[0].id, data);
+    }
   }
 
   async function loadRekap() {
     if (!filterKelas) return;
+    await loadRekapWithKelas(filterKelas, kelasListRef.current);
+  }
+
+  async function loadRekapWithKelas(kelasId, klist) {
+    if (!kelasId) return;
     setLoading(true);
     setRekapData(null);
 
-    const kelas = kelasList.find(k=>k.id===filterKelas);
+    const kelas = (klist||[]).find(k=>k.id===kelasId);
     const namaKelas = kelas?.nama_kelas||'';
-    const tingkat  = kelas?.tingkat||'';
     // Nama kelas yang dipakai di supermad_siswa.kelas dan supermad_nilai.kelas
     const kelasStr = namaKelas;
 
