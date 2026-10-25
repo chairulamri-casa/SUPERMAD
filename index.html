@@ -902,7 +902,7 @@ function DashboardOperator({sesi, showToast}) {
 
       {/* Tab */}
       <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
-        {[['guru','👨‍🏫 Daftar Guru'],['pengguna','👤 Pengguna'],['penugasan','📌 Penugasan'],['kelas','🏫 Kelas & Siswa'],['instrumen','📋 Instrumen'],['profil','⚙️ Profil']].map(([key,label])=>(
+        {[['guru','👨‍🏫 Daftar Guru'],['pengguna','👤 Pengguna'],['penugasan','📌 Penugasan'],['kelas','🏫 Kelas & Siswa'],['rekap','📊 Rekap Nilai'],['instrumen','📋 Instrumen'],['profil','⚙️ Profil']].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',
               fontWeight:700,fontSize:'.8rem',fontFamily:'inherit',
@@ -1222,6 +1222,11 @@ function DashboardOperator({sesi, showToast}) {
       {/* TAB PENUGASAN */}
       {tab==='penugasan' && (
         <TabPenugasan sesi={sesi} showToast={showToast} />
+      )}
+
+      {/* TAB REKAP NILAI */}
+      {tab==='rekap' && (
+        <TabRekapNilai sesi={sesi} showToast={showToast} />
       )}
 
       {/* TAB INSTRUMEN */}
@@ -3492,6 +3497,7 @@ function DashboardSupervisor({sesi, showToast}) {
           ['daftar',     '📋 Belum Supervisi',    fiturAktif.supervisi !== false],
           ['sudah',      '✅ Sudah Supervisi',     fiturAktif.supervisi !== false],
           ['grafik',     '📊 Grafik',              fiturAktif.grafik !== false],
+          ['rekap',      '📊 Rekap Nilai',         true],
           ['riwayat',    '📜 Riwayat',             fiturAktif.supervisi !== false],
           ['dokumen',    '📁 Dok. Admin',           true],
           ['portofolio', '🗂️ Portofolio Guru',    fiturAktif.portofolio !== false],
@@ -3785,6 +3791,11 @@ function DashboardSupervisor({sesi, showToast}) {
             </div>
           )}
         </div>
+      )}
+
+      {/* TAB REKAP NILAI */}
+      {tab === 'rekap' && (
+        <TabRekapNilai sesi={sesi} showToast={showToast} />
       )}
 
       {/* TAB DOKUMEN ADMIN */}
@@ -8497,7 +8508,14 @@ function TabNilai({sesi, showToast}) {
   const [siswaList, setSiswaList] = React.useState([]);
   const [nilaiMap,    setNilaiMap]    = React.useState({}); // {siswa_id: nilai} — untuk jenis aktif
   const [allNilaiMap, setAllNilaiMap] = React.useState({}); // {siswa_id: {formatif,sts,sas,proyek}}
-  const [editMap,     setEditMap]     = React.useState({}); // {siswa_id: nilai_draft}
+  const [editMap,     setEditMap]     = React.useState({}); // {siswa_id: nilai_draft} — non-formatif
+  // Formatif per pertemuan: {siswa_id: {f1,f2,f3,f4,f5}} draft edit
+  const [fEditMap,    setFEditMap]    = React.useState({}); // {siswa_id: {f1:'',f2:'',…}}
+  const [fDirtySet,   setFDirtySet]   = React.useState(new Set()); // siswa_id yg ada perubahan formatif
+  // jumlah formatif yang diset guru untuk kelas+mapel ini (1–5)
+  const [jumlahF,     setJumlahF]     = React.useState(1);
+  // data formatif tersimpan: {siswa_id: {f1,f2,f3,f4,f5,jumlah_formatif,nilai}}
+  const [formatifMap, setFormatifMap] = React.useState({});
   const [dirtySet,    setDirtySet]    = React.useState(new Set());
   const [savingId,    setSavingId]    = React.useState(null);
   const [filterKelas, setFilterKelas] = React.useState('');
@@ -8603,8 +8621,8 @@ function TabNilai({sesi, showToast}) {
       sb.from('supermad_siswa').select('id,nama,nis,jenis_kelamin')
         .eq('madrasah_id', sesi.mad.id).eq('kelas', filterKelas)
         .eq('tahun_ajaran', filterTA).eq('aktif', true).order('nama'),
-      // Ambil SEMUA jenis nilai sekaligus untuk kelas ini
-      sb.from('supermad_nilai').select('siswa_id,jenis_nilai,nilai')
+      // Ambil SEMUA jenis nilai + kolom f1–f5 dan jumlah_formatif
+      sb.from('supermad_nilai').select('siswa_id,jenis_nilai,nilai,f1,f2,f3,f4,f5,jumlah_formatif')
         .eq('madrasah_id', sesi.mad.id).eq('kelas', filterKelas)
         .eq('mapel', mapelAktif)
         .eq('semester', filterSmt).eq('tahun_ajaran', filterTA),
@@ -8612,20 +8630,142 @@ function TabNilai({sesi, showToast}) {
     setSiswaList(sw||[]);
     // Build allNilaiMap: {siswa_id: {formatif, sts, sas, proyek}}
     const allMp = {};
+    const fMap  = {}; // {siswa_id: {f1,f2,f3,f4,f5,jumlah_formatif,nilai}}
+    let jumlahFDB = 1;
     (nl||[]).forEach(n=>{
       if(!allMp[n.siswa_id]) allMp[n.siswa_id]={};
       allMp[n.siswa_id][n.jenis_nilai] = n.nilai;
+      if (n.jenis_nilai === 'formatif') {
+        fMap[n.siswa_id] = {
+          f1: n.f1, f2: n.f2, f3: n.f3, f4: n.f4, f5: n.f5,
+          jumlah_formatif: n.jumlah_formatif||1,
+          nilai: n.nilai,
+        };
+        if (n.jumlah_formatif) jumlahFDB = n.jumlah_formatif;
+      }
     });
     allNilaiRef.current = allMp;
     setAllNilaiMap(allMp);
-    // nilaiMap untuk jenis aktif saat ini — pakai allMp langsung (bukan state yg belum update)
+    setFormatifMap(fMap);
+    // Ambil jumlah_formatif dari data DB (ambil nilai max yang ada)
+    setJumlahF(jumlahFDB);
+    // nilaiMap untuk jenis aktif saat ini
     const mp={};
     Object.keys(allMp).forEach(sid=>{ if(allMp[sid][filterJenis]!==undefined) mp[sid]=allMp[sid][filterJenis]; });
     setNilaiMap(mp);
+    // Reset draft formatif
+    setFEditMap({}); setFDirtySet(new Set());
     setLoading(false);
   }
 
-  // Inline edit helpers
+  // Hitung nilai formatif dari f1–f5 (hanya yang terisi, bagi jumlah yang ikut — bukan jumlahF)
+  function hitungNilaiFormatif(fData) {
+    if (!fData) return undefined;
+    const vals = [];
+    for(let i=1; i<=5; i++) {
+      const v = fData['f'+i];
+      if (v!=null && v!=='') vals.push(Number(v));
+    }
+    return vals.length > 0 ? vals.reduce((a,b)=>a+b,0)/vals.length : undefined;
+  }
+
+  // ── Formatif per pertemuan helpers ──
+  function onFChange(siswaId, fKey, val) {
+    setFEditMap(m=>({...m,[siswaId]:{...(m[siswaId]||{}), [fKey]:val}}));
+    setFDirtySet(s=>{ const ns=new Set(s); ns.add(siswaId); return ns; });
+  }
+
+  async function simpanFormatifSatu(siswa) {
+    // Gabung data tersimpan + draft
+    const saved = formatifMap[siswa.id]||{};
+    const draft = fEditMap[siswa.id]||{};
+    const fData = {};
+    for(let i=1;i<=5;i++) {
+      const key='f'+i;
+      const v = draft[key]!==undefined ? draft[key] : saved[key];
+      fData[key] = (v!==undefined&&v!==''&&v!==null) ? Number(v) : null;
+    }
+    // Hitung nilai rata
+    const vals=[]; for(let i=1;i<=5;i++){if(fData['f'+i]!=null)vals.push(fData['f'+i]);}
+    const nilaiF = vals.length>0 ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+
+    setSavingId(siswa.id);
+    const payload = {
+      madrasah_id: sesi.mad.id, tahun_ajaran: filterTA, semester: filterSmt,
+      siswa_id: siswa.id, kelas: filterKelas,
+      guru_id: sesi.pengguna.id, mapel: mapelAktif,
+      jenis_nilai: 'formatif',
+      f1:fData.f1, f2:fData.f2, f3:fData.f3, f4:fData.f4, f5:fData.f5,
+      jumlah_formatif: jumlahF,
+      nilai: nilaiF,
+      kktp,
+      updated_at: new Date().toISOString(),
+    };
+    const {error} = await sb.from('supermad_nilai')
+      .upsert([payload], {onConflict:'siswa_id,mapel,jenis_nilai,semester,tahun_ajaran'});
+    setSavingId(null);
+    if (!error) {
+      setFormatifMap(m=>({...m,[siswa.id]:{...fData,jumlah_formatif:jumlahF,nilai:nilaiF}}));
+      setAllNilaiMap(m=>{ const nm={...m}; if(!nm[siswa.id]) nm[siswa.id]={}; nm[siswa.id].formatif=nilaiF; return nm; });
+      allNilaiRef.current = {...allNilaiRef.current};
+      if(allNilaiRef.current[siswa.id]) allNilaiRef.current[siswa.id].formatif=nilaiF;
+      setFDirtySet(s=>{ const ns=new Set(s); ns.delete(siswa.id); return ns; });
+      setFEditMap(m=>{ const nm={...m}; delete nm[siswa.id]; return nm; });
+    } else {
+      showToast&&showToast('❌ Gagal: '+error.message,'error');
+    }
+  }
+
+  async function simpanFormatifSemua() {
+    if (!fDirtySet.size) return;
+    setSaving(true);
+    const upserts=[];
+    for(const sid of fDirtySet) {
+      const siswa = siswaList.find(s=>s.id===sid); if(!siswa) continue;
+      const saved = formatifMap[sid]||{};
+      const draft = fEditMap[sid]||{};
+      const fData={};
+      for(let i=1;i<=5;i++){
+        const key='f'+i;
+        const v=draft[key]!==undefined?draft[key]:saved[key];
+        fData[key]=(v!==undefined&&v!==''&&v!==null)?Number(v):null;
+      }
+      const vals=[]; for(let i=1;i<=5;i++){if(fData['f'+i]!=null)vals.push(fData['f'+i]);}
+      const nilaiF=vals.length>0?vals.reduce((a,b)=>a+b,0)/vals.length:null;
+      upserts.push({
+        madrasah_id:sesi.mad.id, tahun_ajaran:filterTA, semester:filterSmt,
+        siswa_id:sid, kelas:filterKelas,
+        guru_id:sesi.pengguna.id, mapel:mapelAktif,
+        jenis_nilai:'formatif',
+        f1:fData.f1,f2:fData.f2,f3:fData.f3,f4:fData.f4,f5:fData.f5,
+        jumlah_formatif:jumlahF, nilai:nilaiF, kktp,
+        updated_at:new Date().toISOString(),
+      });
+    }
+    if (upserts.length) {
+      const {error}=await sb.from('supermad_nilai')
+        .upsert(upserts,{onConflict:'siswa_id,mapel,jenis_nilai,semester,tahun_ajaran'});
+      if (!error) {
+        const newFMap={...formatifMap};
+        const newAllMap={...allNilaiMap};
+        upserts.forEach(u=>{
+          newFMap[u.siswa_id]={f1:u.f1,f2:u.f2,f3:u.f3,f4:u.f4,f5:u.f5,
+            jumlah_formatif:u.jumlah_formatif,nilai:u.nilai};
+          if(!newAllMap[u.siswa_id]) newAllMap[u.siswa_id]={};
+          newAllMap[u.siswa_id].formatif=u.nilai;
+        });
+        setFormatifMap(newFMap); setAllNilaiMap(newAllMap);
+        allNilaiRef.current=newAllMap;
+        setFDirtySet(new Set()); setFEditMap({});
+        setImportStatus(`✅ ${upserts.length} nilai formatif berhasil disimpan.`);
+      } else {
+        setImportStatus('❌ '+error.message);
+      }
+    }
+    setSaving(false);
+  }
+
+  // ── Non-formatif inline edit helpers ──
   function onNilaiChange(siswaId, val) {
     setEditMap(m=>({...m,[siswaId]:val}));
     setDirtySet(s=>{ const ns=new Set(s); ns.add(siswaId); return ns; });
@@ -8719,11 +8859,22 @@ function TabNilai({sesi, showToast}) {
   // Helper: hitung SLM, Nilai Rapor per siswa
   function hitungRapor(siswaId) {
     const nd = allNilaiMap[siswaId]||{};
+    // Untuk formatif, gunakan hitungan F1–F5 jika tersedia
+    const nilaiFormatif = (() => {
+      const fm = formatifMap[siswaId];
+      if (fm) {
+        const computed = hitungNilaiFormatif(fm);
+        if (computed !== undefined) return computed;
+      }
+      return nd['formatif']; // fallback ke nilai tersimpan
+    })();
+    // Gabungkan nilaiFormatif ke nd copy
+    const ndEff = {...nd, formatif: nilaiFormatif};
     // SLM = rata-rata hanya dari komponen yang dicentang guru
     const aktifKeys = Object.keys(slmKomponen).filter(k=>slmKomponen[k]);
-    const slmVals = aktifKeys.map(k=>nd[k]).filter(v=>v!==undefined&&v!==null);
+    const slmVals = aktifKeys.map(k=>ndEff[k]).filter(v=>v!==undefined&&v!==null);
     const slm = slmVals.length ? slmVals.reduce((a,b)=>a+b,0)/slmVals.length : undefined;
-    const sas = nd['sas'];
+    const sas = ndEff['sas'];
     let rapor;
     if(slm!==undefined && sas!==undefined) rapor = (slm*(bobotSLM/100) + sas*(bobotSAS/100));
     else if(slm!==undefined && sas===undefined) rapor = slm;
@@ -8743,7 +8894,7 @@ function TabNilai({sesi, showToast}) {
         <td>${i+1}</td>
         <td style="text-align:left">${s.nama}</td>
         <td style="text-align:center">${s.nis||'—'}</td>
-        <td style="text-align:center">${nd.formatif!==undefined?nd.formatif:'—'}</td>
+        <td style="text-align:center">${(()=>{const fm=formatifMap[s.id];const cv=hitungNilaiFormatif(fm);return cv!==undefined?cv.toFixed(1):(nd.formatif!==undefined?nd.formatif:'—');})()}</td>
         <td style="text-align:center">${nd.sts!==undefined?nd.sts:'—'}</td>
         <td style="text-align:center">${nd.proyek!==undefined?nd.proyek:'—'}</td>
         <td style="text-align:center;font-weight:bold;color:#1e3a8a">${slm!==undefined?slm.toFixed(1):'—'}</td>
@@ -9305,7 +9456,7 @@ function TabNilai({sesi, showToast}) {
               {' · '}{jenisOpt.find(j=>j.val===filterJenis)?.label}
               {' · '}{filterKelas} · Smt {filterSmt}
             </div>
-            {dirtySet.size > 0 && (
+            {filterJenis!=='formatif' && dirtySet.size > 0 && (
               <button className="btn btn-sm" onClick={simpanSemua} disabled={saving}
                 style={{background:'#16a34a',color:'#fff',border:'none',fontWeight:700}}>
                 {saving ? '⏳ Menyimpan...' : `💾 Simpan Semua (${dirtySet.size})`}
@@ -9333,29 +9484,143 @@ function TabNilai({sesi, showToast}) {
             </div>
           )}
 
+          {/* Panel jumlah pertemuan — hanya muncul saat mode formatif */}
+          {filterJenis === 'formatif' && (
+            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:10,padding:'10px 14px',
+              background:'#eff6ff',borderRadius:10,border:'1.5px solid #93c5fd',flexWrap:'wrap'}}>
+              <span style={{fontWeight:700,fontSize:'.85rem',color:'#1e40af'}}>📅 Jumlah Pertemuan Formatif:</span>
+              <select value={jumlahF} onChange={e=>setJumlahF(Number(e.target.value))}
+                style={{padding:'4px 10px',borderRadius:6,border:'1.5px solid #93c5fd',
+                  fontWeight:700,fontSize:'.9rem',color:'#1e40af',background:'#fff',cursor:'pointer'}}>
+                {[1,2,3,4,5].map(n=><option key={n} value={n}>{n}x</option>)}
+              </select>
+              <span style={{fontSize:'.78rem',color:'#3b82f6'}}>
+                Siswa yang tidak hadir di suatu pertemuan dibiarkan kosong — rata-rata dihitung dari yang terisi saja.
+              </span>
+              {fDirtySet.size > 0 && (
+                <button className="btn btn-sm" onClick={simpanFormatifSemua} disabled={saving}
+                  style={{background:'#2563eb',color:'#fff',border:'none',fontWeight:700,marginLeft:'auto'}}>
+                  {saving ? '⏳ Menyimpan...' : `💾 Simpan F1–F${jumlahF} (${fDirtySet.size})`}
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Petunjuk input */}
           <div style={{fontSize:'.77rem',color:'var(--text3)',marginBottom:6,paddingLeft:2}}>
-            💡 Ketik nilai langsung di kolom nilai → tersimpan otomatis saat pindah kolom (Tab/Enter), atau klik <b>💾 Simpan Semua</b>. <span style={{color:'#f59e0b'}}>●</span> = belum tersimpan.
+            {filterJenis==='formatif'
+              ? <>💡 Isi nilai tiap pertemuan (F1–F{jumlahF}) per siswa. Rata-rata dihitung otomatis. <span style={{color:'#f59e0b'}}>●</span> = belum tersimpan.</>
+              : <>💡 Ketik nilai langsung di kolom nilai → tersimpan otomatis saat pindah kolom (Tab/Enter), atau klik <b>💾 Simpan Semua</b>. <span style={{color:'#f59e0b'}}>●</span> = belum tersimpan.</>
+            }
           </div>
 
           {/* Tabel nilai siswa */}
-          <div className="card" style={{padding:0,overflow:'hidden'}}>
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.82rem'}}>
+          <div className="card" style={{padding:0,overflow:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.82rem',minWidth: filterJenis==='formatif'?600:0}}>
               <thead>
-                <tr style={{background:'var(--p)',color:'#fff'}}>
-                  <th style={{padding:'8px 12px',textAlign:'left',width:32}}>#</th>
-                  <th style={{padding:'8px 12px',textAlign:'left'}}>Nama Siswa</th>
-                  <th style={{padding:'8px 12px',textAlign:'center',width:60}}>L/P</th>
-                  <th style={{padding:'8px 12px',textAlign:'center',width:88}}>Nilai (0–100)</th>
-                  <th style={{padding:'8px 12px',textAlign:'center',width:90}}>Status</th>
-                </tr>
+                {filterJenis === 'formatif' ? (
+                  <tr style={{background:'var(--p)',color:'#fff'}}>
+                    <th style={{padding:'8px 12px',textAlign:'left',width:32}}>#</th>
+                    <th style={{padding:'8px 12px',textAlign:'left'}}>Nama Siswa</th>
+                    <th style={{padding:'8px 12px',textAlign:'center',width:44}}>L/P</th>
+                    {Array.from({length:jumlahF},(_,i)=>(
+                      <th key={i} style={{padding:'8px 10px',textAlign:'center',width:72}}>F{i+1}</th>
+                    ))}
+                    <th style={{padding:'8px 10px',textAlign:'center',width:72,background:'#1e3a8a'}}>Rata</th>
+                    <th style={{padding:'8px 12px',textAlign:'center',width:90}}>Status</th>
+                  </tr>
+                ) : (
+                  <tr style={{background:'var(--p)',color:'#fff'}}>
+                    <th style={{padding:'8px 12px',textAlign:'left',width:32}}>#</th>
+                    <th style={{padding:'8px 12px',textAlign:'left'}}>Nama Siswa</th>
+                    <th style={{padding:'8px 12px',textAlign:'center',width:60}}>L/P</th>
+                    <th style={{padding:'8px 12px',textAlign:'center',width:88}}>Nilai (0–100)</th>
+                    <th style={{padding:'8px 12px',textAlign:'center',width:90}}>Status</th>
+                  </tr>
+                )}
               </thead>
               <tbody>
                 {siswaList.length === 0 ? (
-                  <tr><td colSpan={5} style={{padding:24,textAlign:'center',color:'var(--text3)'}}>
+                  <tr><td colSpan={filterJenis==='formatif'?jumlahF+4:5} style={{padding:24,textAlign:'center',color:'var(--text3)'}}>
                     Belum ada siswa di kelas ini.
                   </td></tr>
                 ) : siswaList.map((s,i)=>{
+                  if (filterJenis === 'formatif') {
+                    // ── Mode Formatif F1–F5 ──
+                    const savedF  = formatifMap[s.id]||{};
+                    const draftF  = fEditMap[s.id]||{};
+                    const isDirty = fDirtySet.has(s.id);
+                    const isSaving= savingId===s.id;
+                    // Merge draft over saved for display
+                    const fVals = {};
+                    for(let k=1;k<=jumlahF;k++){
+                      const key='f'+k;
+                      fVals[key] = draftF[key]!==undefined ? draftF[key] : (savedF[key]!=null?String(savedF[key]):'');
+                    }
+                    // Compute preview rata
+                    const rataVals=[];
+                    for(let k=1;k<=jumlahF;k++){const v=fVals['f'+k]; if(v!==''&&v!=null&&!isNaN(Number(v))) rataVals.push(Number(v));}
+                    const rataPreview = rataVals.length>0 ? (rataVals.reduce((a,b)=>a+b,0)/rataVals.length) : undefined;
+                    const tuntas = rataPreview!==undefined && rataPreview>=kktp;
+                    return (
+                      <tr key={s.id} style={{borderTop:'1px solid var(--border)',
+                        background:isDirty?'#fffbeb':i%2===0?'#fff':'var(--surface2)'}}>
+                        <td style={{padding:'6px 12px',color:'var(--text3)'}}>{i+1}</td>
+                        <td style={{padding:'6px 12px',fontWeight:600}}>
+                          {s.nama}
+                          {isDirty && <span style={{color:'#f59e0b',marginLeft:4,fontSize:'.7rem'}}>●</span>}
+                        </td>
+                        <td style={{padding:'6px 12px',textAlign:'center'}}>
+                          <span style={{fontWeight:700,color:s.jenis_kelamin==='P'?'#db2777':'#0891b2'}}>
+                            {s.jenis_kelamin||'L'}
+                          </span>
+                        </td>
+                        {Array.from({length:jumlahF},(_,k)=>{
+                          const key='f'+(k+1);
+                          const val=fVals[key];
+                          const numV=val!==''&&val!=null?Number(val):undefined;
+                          return (
+                            <td key={key} style={{padding:'3px 5px',textAlign:'center'}}>
+                              <input
+                                type="number" min={0} max={100} step={1}
+                                value={val}
+                                placeholder="—"
+                                onChange={e=>onFChange(s.id,key,e.target.value)}
+                                onBlur={()=>fDirtySet.has(s.id) && simpanFormatifSatu(s)}
+                                disabled={isSaving}
+                                style={{
+                                  width:58,padding:'4px 6px',borderRadius:6,textAlign:'center',
+                                  fontFamily:'inherit',fontWeight:700,fontSize:'.88rem',
+                                  border:'1.5px solid '+(draftF[key]!==undefined?'#f59e0b':val===''?'var(--border)':numV>=kktp?'#86efac':'#fca5a5'),
+                                  background:isSaving?'#f3f4f6':'#fff',
+                                  color:val===''?'var(--text3)':numV>=kktp?'#16a34a':'#dc2626',
+                                  outline:'none',
+                                }}
+                              />
+                            </td>
+                          );
+                        })}
+                        <td style={{padding:'6px 10px',textAlign:'center',background:rataPreview===undefined?'transparent':tuntas?'#dcfce7':'#fee2e2'}}>
+                          <span style={{fontWeight:900,fontSize:'.9rem',
+                            color:rataPreview===undefined?'var(--text3)':tuntas?'#16a34a':'#dc2626'}}>
+                            {rataPreview!==undefined?rataPreview.toFixed(1):'—'}
+                          </span>
+                          {isSaving && <span style={{fontSize:'.7rem',color:'var(--text3)',display:'block'}}>⏳</span>}
+                        </td>
+                        <td style={{padding:'6px 12px',textAlign:'center'}}>
+                          {rataPreview===undefined ? (
+                            <span style={{fontSize:'.7rem',color:'var(--text3)'}}>Belum</span>
+                          ) : (
+                            <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
+                              background:tuntas?'#dcfce7':'#fee2e2',color:tuntas?'#16a34a':'#dc2626'}}>
+                              {tuntas?'Tuntas':'Belum Tuntas'}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  }
+                  // ── Mode Non-Formatif (nilai tunggal) ──
                   const savedN = nilaiMap[s.id];
                   const draftV = editMap[s.id];
                   const displayN = draftV!==undefined ? (draftV===''?undefined:parseFloat(draftV)) : savedN;
@@ -9411,7 +9676,33 @@ function TabNilai({sesi, showToast}) {
                   );
                 })}
               </tbody>
-              {nilaiArr.length > 0 && (
+              {filterJenis === 'formatif' ? (() => {
+                // Hitung rata kelas dari formatifMap (nilai rata per siswa)
+                const fRataArr = siswaList.map(s=>{
+                  const fm = formatifMap[s.id];
+                  if (!fm) return null;
+                  const vals=[];
+                  for(let k=1;k<=5;k++){const v=fm['f'+k];if(v!=null)vals.push(Number(v));}
+                  return vals.length>0?vals.reduce((a,b)=>a+b,0)/vals.length:null;
+                }).filter(v=>v!=null);
+                if (!fRataArr.length) return null;
+                const fRataKelas = fRataArr.reduce((a,b)=>a+b,0)/fRataArr.length;
+                const fLulus = fRataArr.filter(v=>v>=kktp).length;
+                return (
+                  <tfoot>
+                    <tr style={{background:'var(--surface2)',fontWeight:700,borderTop:'2px solid var(--border)'}}>
+                      <td colSpan={3} style={{padding:'8px 12px',color:'var(--text2)'}}>Rata-rata Kelas</td>
+                      {Array.from({length:jumlahF},(_,k)=>(
+                        <td key={k} style={{padding:'8px 10px',textAlign:'center',fontSize:'.8rem',color:'var(--text2)'}}>—</td>
+                      ))}
+                      <td style={{padding:'8px 10px',textAlign:'center',color:'var(--p)',fontSize:'1rem'}}>{fRataKelas.toFixed(1)}</td>
+                      <td style={{padding:'8px 12px',textAlign:'center',fontSize:'.75rem',color:'var(--text2)'}}>
+                        {fLulus}/{fRataArr.length} tuntas
+                      </td>
+                    </tr>
+                  </tfoot>
+                );
+              })() : nilaiArr.length > 0 && (
                 <tfoot>
                   <tr style={{background:'var(--surface2)',fontWeight:700,borderTop:'2px solid var(--border)'}}>
                     <td colSpan={3} style={{padding:'8px 12px',color:'var(--text2)'}}>Rata-rata Kelas</td>
@@ -11129,6 +11420,421 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
     </div>
   );
 }
+
+// ── TAB REKAP NILAI (Operator & Supervisor — view only) ────────
+function TabRekapNilai({sesi, showToast}) {
+  const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+
+  const jenisOpt = [
+    {val:'formatif', label:'Formatif'},
+    {val:'sts',      label:'Sumatif Tengah Semester'},
+    {val:'sas',      label:'Sumatif Akhir Semester'},
+    {val:'proyek',   label:'Proyek / Praktik'},
+  ];
+
+  // Hitung TA default
+  const nowR = new Date();
+  const blnR = nowR.getMonth()+1;
+  const thnR = nowR.getFullYear();
+  const taAwalR = blnR>=7?thnR:thnR-1;
+  const smtDefaultR = blnR>=7?'Ganjil':'Genap';
+
+  const [filterTA,  setFilterTA]  = React.useState(taAwalR+'/'+(taAwalR+1));
+  const [filterSmt, setFilterSmt] = React.useState(smtDefaultR);
+  const [kelasList, setKelasList] = React.useState([]);
+  const [filterKelas, setFilterKelas] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+
+  // Data hasil rekap
+  const [rekapData, setRekapData] = React.useState(null);
+  // null = belum load, {} = sudah load (bisa kosong)
+
+  React.useEffect(()=>{
+    loadKelas();
+  }, [filterTA]);
+
+  React.useEffect(()=>{
+    if (filterKelas) loadRekap();
+    else setRekapData(null);
+  }, [filterKelas, filterSmt, filterTA]);
+
+  async function loadKelas() {
+    const {data} = await sb.from('supermad_kelas').select('id,nama_kelas,tingkat')
+      .eq('madrasah_id', sesi.mad.id).order('tingkat').order('nama_kelas');
+    setKelasList(data||[]);
+    if (!filterKelas && data && data.length>0) setFilterKelas(data[0].id);
+  }
+
+  async function loadRekap() {
+    if (!filterKelas) return;
+    setLoading(true);
+    setRekapData(null);
+
+    const kelas = kelasList.find(k=>k.id===filterKelas);
+    const namaKelas = kelas?.nama_kelas||'';
+
+    // Load siswa di kelas ini
+    const {data:siswaData} = await sb.from('supermad_siswa')
+      .select('id,nama,nis,nisn')
+      .eq('madrasah_id', sesi.mad.id)
+      .eq('kelas_id', filterKelas)
+      .eq('aktif', true)
+      .order('nama');
+
+    if (!siswaData || siswaData.length===0) {
+      setRekapData({ siswa:[], nilai:{}, mapelList:[], jenisOpt });
+      setLoading(false); return;
+    }
+
+    const siswaIds = siswaData.map(s=>s.id);
+
+    // Load semua nilai untuk siswa-siswa ini, semester+TA yang dipilih
+    const {data:nilaiData} = await sb.from('supermad_nilai')
+      .select('siswa_id,mapel,jenis_nilai,nilai,kktp')
+      .in('siswa_id', siswaIds)
+      .eq('semester', filterSmt)
+      .eq('tahun_ajaran', filterTA)
+      .eq('madrasah_id', sesi.mad.id);
+
+    // Struktur: nilaiMap[siswa_id][mapel][jenis_nilai] = nilai
+    const nilaiMap = {};
+    const mapelSet = new Set();
+    (nilaiData||[]).forEach(n=>{
+      if (!nilaiMap[n.siswa_id]) nilaiMap[n.siswa_id]={};
+      if (!nilaiMap[n.siswa_id][n.mapel]) nilaiMap[n.siswa_id][n.mapel]={};
+      nilaiMap[n.siswa_id][n.mapel][n.jenis_nilai] = n.nilai;
+      mapelSet.add(n.mapel);
+    });
+
+    const mapelList = Array.from(mapelSet).sort();
+
+    // Hitung rata-rata per siswa (rata-rata dari semua mapel, rata-rata dari semua jenis)
+    const siswaWithAvg = siswaData.map((s,idx)=>{
+      const nm = nilaiMap[s.id]||{};
+      let totalNilai=0, countNilai=0;
+      mapelList.forEach(mp=>{
+        const jenisMp = nm[mp]||{};
+        jenisOpt.forEach(j=>{
+          if (jenisMp[j.val]!=null) { totalNilai+=Number(jenisMp[j.val]); countNilai++; }
+        });
+      });
+      const rataRata = countNilai>0 ? totalNilai/countNilai : null;
+      return {...s, rataRata, nomor: idx+1};
+    });
+
+    // Hitung peringkat berdasarkan rata-rata keseluruhan (null paling bawah)
+    const sorted = [...siswaWithAvg].sort((a,b)=>{
+      if (a.rataRata==null && b.rataRata==null) return 0;
+      if (a.rataRata==null) return 1;
+      if (b.rataRata==null) return -1;
+      return b.rataRata - a.rataRata;
+    });
+    const peringkatMap = {};
+    sorted.forEach((s,i)=>{ peringkatMap[s.id] = s.rataRata!=null ? i+1 : '-'; });
+
+    setRekapData({ siswa:siswaWithAvg, nilai:nilaiMap, mapelList, jenisOpt,
+      namaKelas, peringkatMap });
+    setLoading(false);
+  }
+
+  // ── Export Excel ──
+  function exportExcel() {
+    if (!rekapData || !rekapData.siswa.length) return;
+    const {siswa, nilai, mapelList, jenisOpt: jO, namaKelas, peringkatMap} = rekapData;
+
+    // Header baris 1: No, Nama, Mapel-1 colspan jenis, ..., Rata-rata, Peringkat
+    // Baris 2: jenis-jenis nilai untuk tiap mapel
+    const header1 = ['No','Nama','NIS'];
+    const header2 = ['','',''];
+    mapelList.forEach(mp=>{
+      jO.forEach(j=>{ header1.push(mp); header2.push(j.label); });
+      header1.push(mp+' (Rata)'); header2.push('Rata-rata');
+    });
+    header1.push('Rata-rata Akhir','Peringkat');
+    header2.push('','');
+
+    const rows = [header1, header2];
+    siswa.forEach((s,idx)=>{
+      const nm = nilai[s.id]||{};
+      const row = [idx+1, s.nama, s.nis||''];
+      mapelList.forEach(mp=>{
+        const jMp = nm[mp]||{};
+        let tot=0,cnt=0;
+        jO.forEach(j=>{
+          const v = jMp[j.val];
+          row.push(v!=null?Number(v):'');
+          if (v!=null){tot+=Number(v);cnt++;}
+        });
+        row.push(cnt>0?(tot/cnt).toFixed(1):'');
+      });
+      row.push(s.rataRata!=null?s.rataRata.toFixed(1):'');
+      row.push(peringkatMap[s.id]||'-');
+      rows.push(row);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    // Merge header row 1 per mapel (4 kolom jenis + 1 rata = 5 per mapel)
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Rekap Nilai');
+    const fn = `Rekap_Nilai_${namaKelas}_Smt${filterSmt}_${filterTA.replace('/','_')}.xlsx`;
+    XLSX.writeFile(wb, fn);
+    showToast('✅ Excel berhasil diunduh!');
+  }
+
+  // ── Export PDF (print) ──
+  function exportPDF() {
+    if (!rekapData || !rekapData.siswa.length) return;
+    const {siswa, nilai, mapelList, jenisOpt: jO, namaKelas, peringkatMap} = rekapData;
+    const madNama = sesi.mad.nama||'';
+
+    // Build HTML table
+    let html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Rekap Nilai</title>
+<style>
+  body{font-family:Arial,sans-serif;font-size:10px;margin:10mm;}
+  h2{text-align:center;font-size:13px;margin:0 0 2px;}
+  p{text-align:center;margin:0 0 8px;font-size:10px;color:#555;}
+  table{border-collapse:collapse;width:100%;}
+  th,td{border:1px solid #999;padding:3px 5px;text-align:center;}
+  th{background:#e5e7eb;font-weight:700;}
+  td:nth-child(2){text-align:left;}
+  .mapel-head{background:#dbeafe;}
+  tr:nth-child(even){background:#f9fafb;}
+  @media print{body{margin:5mm;} @page{size:landscape;}}
+</style></head><body>
+<h2>REKAP NILAI — ${namaKelas}</h2>
+<p>${madNama} · Semester ${filterSmt} ${filterTA}</p>
+<table><thead><tr>
+<th rowspan="2">No</th>
+<th rowspan="2">Nama Siswa</th>
+<th rowspan="2">NIS</th>`;
+
+    mapelList.forEach(mp=>{
+      html += `<th colspan="${jO.length+1}" class="mapel-head">${mp}</th>`;
+    });
+    html += `<th rowspan="2">Rata-rata</th><th rowspan="2">Peringkat</th></tr><tr>`;
+    mapelList.forEach(()=>{
+      jO.forEach(j=>{ html+=`<th>${j.label}</th>`; });
+      html+=`<th>Rata</th>`;
+    });
+    html += `</tr></thead><tbody>`;
+
+    siswa.forEach((s,idx)=>{
+      const nm = nilai[s.id]||{};
+      html += `<tr><td>${idx+1}</td><td>${s.nama}</td><td>${s.nis||''}</td>`;
+      mapelList.forEach(mp=>{
+        const jMp = nm[mp]||{};
+        let tot=0,cnt=0;
+        jO.forEach(j=>{
+          const v = jMp[j.val];
+          html += `<td>${v!=null?Number(v).toFixed(0):'-'}</td>`;
+          if(v!=null){tot+=Number(v);cnt++;}
+        });
+        html += `<td><b>${cnt>0?(tot/cnt).toFixed(1):'-'}</b></td>`;
+      });
+      const rataAkhir = s.rataRata!=null?s.rataRata.toFixed(1):'-';
+      html += `<td><b>${rataAkhir}</b></td><td><b>${peringkatMap[s.id]||'-'}</b></td></tr>`;
+    });
+
+    html += `</tbody></table>
+<p style="margin-top:8px;font-size:9px;color:#888;">Dicetak: ${new Date().toLocaleDateString('id-ID',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>
+</body></html>`;
+
+    const w = window.open('','_blank');
+    w.document.write(html);
+    w.document.close();
+    setTimeout(()=>{ w.focus(); w.print(); }, 400);
+  }
+
+  // ── RENDER ──
+  const {siswa=[],nilai={},mapelList=[],peringkatMap={}} = rekapData||{};
+
+  return (
+    <div>
+      <div style={{fontWeight:800,fontSize:'1rem',marginBottom:14,color:'var(--p3)'}}>
+        📊 Rekap Nilai Siswa
+      </div>
+
+      {/* Filter bar */}
+      <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',
+        background:'var(--surface2)',borderRadius:10,padding:'10px 14px',alignItems:'center'}}>
+        <span style={{fontSize:'.78rem',fontWeight:700,color:'var(--text2)'}}>📅 Filter:</span>
+        <select value={filterTA} onChange={e=>setFilterTA(e.target.value)}
+          style={{padding:'5px 10px',borderRadius:7,border:'1.5px solid var(--border)',
+            fontSize:'.8rem',fontFamily:'inherit',fontWeight:700,outline:'none',cursor:'pointer'}}>
+          {(()=>{const yr=new Date().getFullYear(),tas=[];
+            for(let y=yr-2;y<=yr+1;y++) tas.push(y+'/'+(y+1));
+            return tas.map(ta=><option key={ta} value={ta}>{ta}</option>);})()}
+        </select>
+        <select value={filterSmt} onChange={e=>setFilterSmt(e.target.value)}
+          style={{padding:'5px 10px',borderRadius:7,border:'1.5px solid var(--border)',
+            fontSize:'.8rem',fontFamily:'inherit',fontWeight:700,outline:'none',cursor:'pointer'}}>
+          <option value="Ganjil">Semester Ganjil</option>
+          <option value="Genap">Semester Genap</option>
+        </select>
+        <select value={filterKelas} onChange={e=>setFilterKelas(e.target.value)}
+          style={{padding:'5px 10px',borderRadius:7,border:'1.5px solid var(--border)',
+            fontSize:'.8rem',fontFamily:'inherit',fontWeight:700,outline:'none',cursor:'pointer',minWidth:130}}>
+          <option value="">-- Pilih Kelas --</option>
+          {kelasList.map(k=><option key={k.id} value={k.id}>{k.nama_kelas}</option>)}
+        </select>
+        <div style={{marginLeft:'auto',display:'flex',gap:6}}>
+          <button className="btn btn-outline btn-sm" onClick={exportExcel}
+            disabled={!rekapData||!siswa.length}
+            title="Export ke Excel">
+            📥 Excel
+          </button>
+          <button className="btn btn-outline btn-sm" onClick={exportPDF}
+            disabled={!rekapData||!siswa.length}
+            title="Cetak / Export PDF">
+            🖨️ PDF
+          </button>
+        </div>
+      </div>
+
+      {/* Tabel Rekap */}
+      {loading ? (
+        <div style={{textAlign:'center',padding:40,color:'var(--text2)'}}>
+          <div style={{fontSize:'2rem',marginBottom:8}}>⏳</div>
+          Memuat data nilai...
+        </div>
+      ) : !filterKelas ? (
+        <div style={{textAlign:'center',padding:40,color:'var(--text3)',background:'var(--surface2)',borderRadius:12}}>
+          <div style={{fontSize:'2rem',marginBottom:8}}>📊</div>
+          Pilih kelas untuk melihat rekap nilai
+        </div>
+      ) : !rekapData ? null
+      : siswa.length===0 ? (
+        <div style={{textAlign:'center',padding:40,color:'var(--text3)',background:'var(--surface2)',borderRadius:12}}>
+          <div style={{fontSize:'2rem',marginBottom:8}}>😕</div>
+          Belum ada siswa di kelas ini atau belum ada nilai
+        </div>
+      ) : mapelList.length===0 ? (
+        <div style={{textAlign:'center',padding:40,color:'var(--text3)',background:'var(--surface2)',borderRadius:12}}>
+          <div style={{fontSize:'2rem',marginBottom:8}}>📭</div>
+          Belum ada nilai yang diinput untuk kelas ini pada semester {filterSmt} {filterTA}
+        </div>
+      ) : (
+        <div>
+          {/* Info header */}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+            <div style={{fontSize:'.82rem',color:'var(--text2)'}}>
+              <b style={{color:'var(--text)'}}>
+                {kelasList.find(k=>k.id===filterKelas)?.nama_kelas}
+              </b>
+              {' · '}Semester {filterSmt} {filterTA}
+              {' · '}<b>{siswa.length}</b> siswa
+              {' · '}<b>{mapelList.length}</b> mapel
+            </div>
+          </div>
+
+          {/* Scroll wrapper */}
+          <div style={{overflowX:'auto',borderRadius:10,border:'1px solid var(--border)'}}>
+            <table style={{borderCollapse:'collapse',width:'100%',fontSize:'.76rem',minWidth:600}}>
+              <thead>
+                {/* Baris 1: No, Nama, NIS, lalu mapel (colspan), Rata-rata, Peringkat */}
+                <tr style={{background:'var(--p)',color:'#fff'}}>
+                  <th style={{...thSt,width:32}} rowSpan={2}>No</th>
+                  <th style={{...thSt,textAlign:'left',minWidth:130}} rowSpan={2}>Nama Siswa</th>
+                  <th style={{...thSt,width:60}} rowSpan={2}>NIS</th>
+                  {mapelList.map(mp=>(
+                    <th key={mp} style={{...thSt,background:'#2563eb'}}
+                      colSpan={jenisOpt.length+1}>{mp}</th>
+                  ))}
+                  <th style={{...thSt,background:'#16a34a'}} rowSpan={2}>Rata-rata</th>
+                  <th style={{...thSt,background:'#9333ea'}} rowSpan={2}>Peringkat</th>
+                </tr>
+                {/* Baris 2: jenis nilai untuk tiap mapel */}
+                <tr style={{background:'var(--surface2)'}}>
+                  {mapelList.map(mp=>(
+                    <React.Fragment key={mp}>
+                      {jenisOpt.map(j=>(
+                        <th key={j.val} style={{...thSt,background:'var(--surface2)',
+                          color:'var(--text2)',fontWeight:600,fontSize:'.7rem',minWidth:52}}>
+                          {j.label.length>12?j.label.substring(0,11)+'…':j.label}
+                        </th>
+                      ))}
+                      <th style={{...thSt,background:'var(--surface2)',color:'var(--text2)',
+                        fontWeight:700,fontSize:'.7rem',minWidth:48}}>Rata</th>
+                    </React.Fragment>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {siswa.map((s,idx)=>{
+                  const nm = nilai[s.id]||{};
+                  const peringkat = peringkatMap[s.id]||'-';
+                  const topTiga = typeof peringkat==='number' && peringkat<=3;
+                  return (
+                    <tr key={s.id}
+                      style={{background:idx%2===0?'var(--bg)':'var(--surface2)'}}>
+                      <td style={tdSt}>{idx+1}</td>
+                      <td style={{...tdSt,textAlign:'left',fontWeight:600,
+                        color:topTiga?'#d97706':'var(--text)'}}>
+                        {topTiga && ['🥇','🥈','🥉'][peringkat-1]+' '}
+                        {s.nama}
+                      </td>
+                      <td style={{...tdSt,color:'var(--text2)'}}>{s.nis||'-'}</td>
+                      {mapelList.map(mp=>{
+                        const jMp = nm[mp]||{};
+                        let tot=0,cnt=0;
+                        const cells = jenisOpt.map(j=>{
+                          const v = jMp[j.val];
+                          if (v!=null){tot+=Number(v);cnt++;}
+                          return (
+                            <td key={j.val} style={{...tdSt,
+                              color:v==null?'var(--text3)':'var(--text)'}}>
+                              {v!=null?Number(v).toFixed(0):'-'}
+                            </td>
+                          );
+                        });
+                        const rataMp = cnt>0?(tot/cnt):null;
+                        return (
+                          <React.Fragment key={mp}>
+                            {cells}
+                            <td style={{...tdSt,fontWeight:700,
+                              color:rataMp==null?'var(--text3)':
+                                rataMp>=75?'#16a34a':rataMp>=60?'#d97706':'#dc2626'}}>
+                              {rataMp!=null?rataMp.toFixed(1):'-'}
+                            </td>
+                          </React.Fragment>
+                        );
+                      })}
+                      <td style={{...tdSt,fontWeight:800,
+                        color:s.rataRata==null?'var(--text3)':
+                          s.rataRata>=75?'#16a34a':s.rataRata>=60?'#d97706':'#dc2626'}}>
+                        {s.rataRata!=null?s.rataRata.toFixed(1):'-'}
+                      </td>
+                      <td style={{...tdSt,fontWeight:800,
+                        color:topTiga?'#d97706':'var(--text)',
+                        background:topTiga?'#fef9c3':'inherit'}}>
+                        {peringkat}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Legenda warna */}
+          <div style={{marginTop:10,display:'flex',gap:14,flexWrap:'wrap',fontSize:'.72rem',color:'var(--text2)'}}>
+            <span>Warna rata-rata:</span>
+            <span style={{color:'#16a34a',fontWeight:700}}>● ≥75 (Tuntas)</span>
+            <span style={{color:'#d97706',fontWeight:700}}>● 60–74 (Perlu Perhatian)</span>
+            <span style={{color:'#dc2626',fontWeight:700}}>● &lt;60 (Belum Tuntas)</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Style helper untuk tabel rekap
+const thSt = {padding:'7px 8px',textAlign:'center',borderBottom:'1px solid rgba(0,0,0,.1)',
+  borderRight:'1px solid rgba(0,0,0,.1)',fontWeight:700,whiteSpace:'nowrap'};
+const tdSt = {padding:'6px 8px',textAlign:'center',borderBottom:'1px solid var(--border)',
+  borderRight:'1px solid var(--border)',fontSize:'.76rem'};
 
 // ── RENDER ─────────────────────────────────────────────────────
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
