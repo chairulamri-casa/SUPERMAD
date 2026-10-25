@@ -3136,11 +3136,20 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
   const [showForm, setShowForm]     = useState(false);
   const [editJadwal, setEditJadwal] = useState(null);
   const [saving, setSaving]         = useState(false);
+  const [daftarKelas, setDaftarKelas] = useState([]);
   const today = new Date().toISOString().split('T')[0];
   const blankForm = {guru_id:'',tanggal:today,jam_mulai:'07:30',jam_selesai:'08:30',kelas:'',mapel:'',jumlah_jam:'',nama_supervisor:'',jabatan_supervisor:'',catatan:''};
   const [form, setForm] = useState(blankForm);
 
-  useEffect(()=>{ loadJadwal(); }, [filterSmt, filterTA]);
+  useEffect(()=>{
+    loadJadwal();
+    // Load daftar kelas dari supermad_kelas
+    sb.from('supermad_kelas').select('nama_kelas')
+      .eq('madrasah_id', sesi.mad.id)
+      .eq('tahun_ajaran', filterTA)
+      .order('nama_kelas')
+      .then(({data})=>{ if(data&&data.length) setDaftarKelas(data.map(k=>k.nama_kelas)); });
+  }, [filterSmt, filterTA]);
 
   async function loadJadwal() {
     setLoading(true);
@@ -3198,7 +3207,117 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
 
   const sColor = {terjadwal:'#2563eb',selesai:'#16a34a',dibatalkan:'#9ca3af'};
   const sBg    = {terjadwal:'#dbeafe',selesai:'#d1fae5',dibatalkan:'#f3f4f6'};
-  const sLabel = {terjadwal:'🗓️ Terjadwal',selesai:'✅ Selesai',dibatalkan:'❌ Dibatalkan'};
+  const sLabel = {terjadwal:'Terjadwal',selesai:'Selesai',dibatalkan:'Dibatalkan'};
+
+  function cetakJadwal() {
+    const mad = sesi.mad;
+    const tglCetak = new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
+    const tglCetakFull = new Date().toLocaleString('id-ID',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+
+    // Kelompokkan per tanggal, sort
+    const grouped2 = {};
+    [...jadwalList].sort((a,b)=>a.tanggal>b.tanggal?1:-1).forEach(j=>{
+      if(!grouped2[j.tanggal]) grouped2[j.tanggal]=[];
+      grouped2[j.tanggal].push(j);
+    });
+
+    let no = 0;
+    const rows = Object.keys(grouped2).sort().map(tgl=>{
+      const tglStr = new Date(tgl+'T00:00:00').toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+      const rowsTgl = grouped2[tgl].map(j=>{
+        const guru = guruList.find(g=>g.id===j.guru_id)||{};
+        no++;
+        const stCol = j.status==='selesai'?'#16a34a':j.status==='dibatalkan'?'#9ca3af':'#2563eb';
+        const stBg  = j.status==='selesai'?'#d1fae5':j.status==='dibatalkan'?'#f3f4f6':'#dbeafe';
+        const stLbl = j.status==='selesai'?'Selesai':j.status==='dibatalkan'?'Dibatalkan':'Terjadwal';
+        return `<tr style="border-bottom:1px solid #e5e7eb">
+          <td style="padding:6px 8px;text-align:center">${no}</td>
+          <td style="padding:6px 8px">${tglStr}</td>
+          <td style="padding:6px 8px">${j.jam_mulai?j.jam_mulai.slice(0,5):''} ${j.jam_selesai?'– '+j.jam_selesai.slice(0,5):''}</td>
+          <td style="padding:6px 8px"><b>${guru.nama||'—'}</b></td>
+          <td style="padding:6px 8px">${j.mapel||'—'}</td>
+          <td style="padding:6px 8px;text-align:center">${j.kelas||'—'}</td>
+          <td style="padding:6px 8px;text-align:center">${j.jumlah_jam||'—'}</td>
+          <td style="padding:6px 8px">${j.nama_supervisor||'—'}${j.jabatan_supervisor?'<br><span style="font-size:8pt;color:#666">('+j.jabatan_supervisor+')</span>':''}</td>
+          <td style="padding:6px 8px;text-align:center"><span style="padding:2px 8px;border-radius:12px;font-size:8pt;font-weight:700;background:${stBg};color:${stCol}">${stLbl}</span></td>
+          <td style="padding:6px 8px;font-size:8.5pt;color:#555">${j.catatan||''}</td>
+        </tr>`;
+      }).join('');
+      return rowsTgl;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Jadwal Supervisi — ${mad.nama||''}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:'Times New Roman',serif;font-size:10pt;padding:15mm;color:#000;background:#fff}
+      .no-print{display:flex;gap:10px;margin-bottom:14px}
+      @media print{.no-print{display:none!important}body{padding:12mm}}
+      .kop{display:flex;align-items:center;gap:12px;border-bottom:3px double #000;padding-bottom:8px;margin-bottom:12px}
+      .kop-text .nama{font-size:13pt;font-weight:900;text-transform:uppercase}
+      .kop-text .sub{font-size:8.5pt;margin-top:2px}
+      h2{text-align:center;font-size:12pt;text-transform:uppercase;margin:10px 0 2px;font-weight:900}
+      .sub-judul{text-align:center;font-size:8.5pt;margin-bottom:12px;border-bottom:2px solid #000;padding-bottom:6px}
+      table{width:100%;border-collapse:collapse;font-size:8.5pt}
+      th{background:#0f4238;color:#fff;padding:6px 8px;font-weight:700;text-align:center}
+      .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+      .stat-box{border:1.5px solid #0f4238;border-radius:5px;padding:8px;text-align:center}
+      .stat-num{font-size:16pt;font-weight:900;color:#0f4238}
+      .stat-lbl{font-size:8pt;color:#555;margin-top:2px}
+      .ttd{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:24px;text-align:center;font-size:10pt}
+      .ttd-line{border-top:1.5px solid #000;margin-top:60px;padding-top:5px}
+      .footer{text-align:center;font-size:7.5pt;color:#666;margin-top:16px;border-top:1px solid #ccc;padding-top:6px}
+    </style></head><body>
+    <div class="no-print">
+      <button onclick="window.print()" style="padding:8px 20px;background:#0f4238;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">🖨️ Cetak / PDF</button>
+      <button onclick="window.close()" style="padding:8px 14px;background:#eee;border:none;border-radius:6px;cursor:pointer">✕ Tutup</button>
+    </div>
+
+    <div class="kop">
+      <div class="kop-text" style="flex:1">
+        <div style="font-size:8.5pt">KEMENTERIAN AGAMA REPUBLIK INDONESIA</div>
+        <div class="nama">${mad.nama||''}</div>
+        <div class="sub">${[mad.naungan,mad.alamat,[mad.kota_kab,mad.provinsi].filter(Boolean).join(', ')].filter(Boolean).join(' | ')}</div>
+      </div>
+    </div>
+
+    <h2>Jadwal Supervisi Pembelajaran</h2>
+    <div class="sub-judul">Semester ${filterSmt} · Tahun Ajaran ${filterTA} · PM-KBC / KMA 1503/2025<br>
+    Dicetak: ${tglCetakFull}</div>
+
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-num">${total}</div><div class="stat-lbl">Total Jadwal</div></div>
+      <div class="stat-box" style="border-color:#16a34a"><div class="stat-num" style="color:#16a34a">${selesai}</div><div class="stat-lbl">Terlaksana</div></div>
+      <div class="stat-box" style="border-color:#2563eb"><div class="stat-num" style="color:#2563eb">${total-selesai}</div><div class="stat-lbl">Belum / Mendatang</div></div>
+    </div>
+
+    <table>
+      <tr>
+        <th width="4%">No</th><th width="14%">Hari / Tanggal</th><th width="9%">Jam</th>
+        <th width="14%">Nama Guru</th><th width="10%">Mapel</th><th width="7%">Kelas</th>
+        <th width="6%">JTM</th><th width="13%">Supervisor</th><th width="8%">Status</th><th>Catatan</th>
+      </tr>
+      ${rows || '<tr><td colspan="10" style="padding:10px;text-align:center">Belum ada jadwal</td></tr>'}
+    </table>
+
+    <div class="ttd">
+      <div></div>
+      <div>
+        <div>${mad.kota_kab||'...............'}, ${tglCetak}</div>
+        <div style="margin-top:5px">Kepala ${mad.nama||'Madrasah'},</div>
+        <div class="ttd-line">
+          <b>${mad.nama_kepala||'.............................'}</b><br>
+          NIP. ${mad.nip_kepala||'—'}
+        </div>
+      </div>
+    </div>
+    <div class="footer">SUPERMAD — Supervisi Pembelajaran Madrasah · PM-KBC / KMA 1503/2025 · ${mad.nama||''} · Dicetak: ${tglCetakFull}</div>
+    </body></html>`;
+
+    const win = window.open('','_blank');
+    win.document.write(html);
+    win.document.close();
+  }
 
   const grouped = {};
   jadwalList.forEach(j=>{ if(!grouped[j.tanggal])grouped[j.tanggal]=[]; grouped[j.tanggal].push(j); });
@@ -3217,12 +3336,21 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
       </div>
 
       {/* Header + Tombol */}
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,gap:8,flexWrap:'wrap'}}>
         <div style={{fontWeight:800,color:'var(--p3)'}}>🗓️ Jadwal Supervisi — {filterSmt} {filterTA}</div>
-        <button onClick={()=>{setShowForm(!showForm);setEditJadwal(null);setForm({...blankForm,tanggal:today});}}
-          className="btn btn-primary btn-sm">
-          {showForm?'✕ Batal':'+ Jadwal Baru'}
-        </button>
+        <div style={{display:'flex',gap:8}}>
+          {jadwalList.length > 0 && (
+            <button onClick={cetakJadwal}
+              style={{padding:'6px 12px',borderRadius:8,border:'none',cursor:'pointer',
+                fontWeight:700,fontSize:'.78rem',background:'#0f4238',color:'#fff'}}>
+              🖨️ Cetak Jadwal
+            </button>
+          )}
+          <button onClick={()=>{setShowForm(!showForm);setEditJadwal(null);setForm({...blankForm,tanggal:today});}}
+            className="btn btn-primary btn-sm">
+            {showForm?'✕ Batal':'+ Jadwal Baru'}
+          </button>
+        </div>
       </div>
 
       {/* Form */}
@@ -3255,7 +3383,14 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
               </div>
               <div className="form-group">
                 <label>Kelas</label>
-                <input value={form.kelas} placeholder="cth: VII A" onChange={e=>setForm({...form,kelas:e.target.value})}/>
+                {daftarKelas.length > 0 ? (
+                  <select value={form.kelas} onChange={e=>setForm({...form,kelas:e.target.value})}>
+                    <option value="">-- Pilih Kelas --</option>
+                    {daftarKelas.map(k=><option key={k} value={k}>{k}</option>)}
+                  </select>
+                ) : (
+                  <input value={form.kelas} placeholder="cth: VII A" onChange={e=>setForm({...form,kelas:e.target.value})}/>
+                )}
               </div>
               <div className="form-group">
                 <label>Mata Pelajaran</label>
@@ -3436,6 +3571,267 @@ function DashboardSupervisor({sesi, showToast}) {
   const guruBelum = guruList.filter(g => !guruSudah.has(g.id));
   const guruSelesai = guruList.filter(g => guruSudah.has(g.id));
 
+  // ── CETAK LAPORAN EKSEKUTIF ────────────────────────────────────
+  function cetakLaporanEksekutif() {
+    const mad = sesi.mad;
+    const selesai = supListFilter.filter(s=>s.status==='selesai');
+    const tglCetak = new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
+    const tglCetakFull = new Date().toLocaleString('id-ID',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+
+    // Statistik umum
+    const totalGuru = guruList.length;
+    const totalSelesai = selesai.length;
+    const totalBelum = guruBelum.length;
+    const pctSelesai = totalGuru ? (totalSelesai/totalGuru*100).toFixed(1) : '0.0';
+
+    // Rata-rata capaian
+    const avgP  = selesai.length ? (selesai.reduce((a,s)=>a+(+s.capaian_perencanaan||0),0)/selesai.length).toFixed(1) : '—';
+    const avgL  = selesai.length ? (selesai.reduce((a,s)=>a+(+s.capaian_pelaksanaan||0),0)/selesai.length).toFixed(1) : '—';
+    const avgA  = selesai.length ? (selesai.reduce((a,s)=>a+(+s.capaian_asesmen||0),0)/selesai.length).toFixed(1) : '—';
+    const avgR  = selesai.length ? (selesai.reduce((a,s)=>a+(+s.capaian_rata||0),0)/selesai.length).toFixed(1) : '—';
+
+    // Distribusi predikat
+    const dist = {
+      'Sangat Baik': selesai.filter(s=>(+s.capaian_rata||0)>=91).length,
+      'Baik':        selesai.filter(s=>(+s.capaian_rata||0)>=81&&(+s.capaian_rata||0)<91).length,
+      'Cukup':       selesai.filter(s=>(+s.capaian_rata||0)>=71&&(+s.capaian_rata||0)<81).length,
+      'Kurang':      selesai.filter(s=>(+s.capaian_rata||0)<71).length,
+    };
+
+    // Tabel per guru
+    function rowsGuru() {
+      return selesai.map((s,i) => {
+        const g = guruList.find(x=>x.id===s.guru_id)||{};
+        const tgl = s.tanggal_supervisi ? new Date(s.tanggal_supervisi).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}) : '—';
+        const cap = (+s.capaian_rata||0).toFixed(1);
+        const col = (+s.capaian_rata||0)>=91?'#16a34a':(+s.capaian_rata||0)>=81?'#1d4ed8':(+s.capaian_rata||0)>=71?'#b45309':'#dc2626';
+        return `<tr style="border-bottom:1px solid #e5e7eb">
+          <td style="padding:6px 8px;text-align:center">${i+1}</td>
+          <td style="padding:6px 8px"><b>${g.nama||'—'}</b><br><span style="font-size:8.5pt;color:#555">${g.mapel||'—'} · ${g.status_kepeg||'—'}</span></td>
+          <td style="padding:6px 8px;text-align:center">${tgl}</td>
+          <td style="padding:6px 8px;text-align:center">${(+s.capaian_perencanaan||0).toFixed(1)}%</td>
+          <td style="padding:6px 8px;text-align:center">${(+s.capaian_pelaksanaan||0).toFixed(1)}%</td>
+          <td style="padding:6px 8px;text-align:center">${(+s.capaian_asesmen||0).toFixed(1)}%</td>
+          <td style="padding:6px 8px;text-align:center;font-weight:800;color:${col}">${cap}%</td>
+          <td style="padding:6px 8px;text-align:center"><span style="padding:2px 8px;border-radius:12px;font-size:8pt;font-weight:700;
+            background:${(+s.capaian_rata||0)>=91?'#d1fae5':(+s.capaian_rata||0)>=81?'#dbeafe':(+s.capaian_rata||0)>=71?'#fef3c7':'#fee2e2'};
+            color:${col}">${s.predikat||PREDIKAT(+s.capaian_rata||0)}</span></td>
+          <td style="padding:6px 8px;font-size:8.5pt;color:#444">${s.nama_supervisor||'—'}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Guru belum disupervisi
+    function rowsBelum() {
+      if(!guruBelum.length) return '<tr><td colspan="4" style="padding:8px;text-align:center;color:#16a34a">✅ Seluruh guru telah disupervisi</td></tr>';
+      return guruBelum.map((g,i)=>`<tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:6px 8px;text-align:center">${i+1}</td>
+        <td style="padding:6px 8px">${g.nama}</td>
+        <td style="padding:6px 8px">${g.mapel||'—'}</td>
+        <td style="padding:6px 8px">${g.status_kepeg||'—'}</td>
+      </tr>`).join('');
+    }
+
+    // Analisis kekuatan & kelemahan dari skor per aspek
+    const freqP = Array(9).fill(0);
+    const freqL = Array(14).fill(0);
+    const freqA = Array(6).fill(0);
+    selesai.forEach(s=>{
+      (s.skor_perencanaan||[]).forEach((sk,i)=>{if(i<freqP.length)(freqP[i]+=(+sk||0));});
+      (s.skor_pelaksanaan||[]).forEach((sk,i)=>{if(i<freqL.length)(freqL[i]+=(+sk||0));});
+      (s.skor_asesmen||[]).forEach((sk,i)=>{if(i<freqA.length)(freqA[i]+=(+sk||0));});
+    });
+    const n = selesai.length||1;
+    const LP_SHORT=['Identifikasi Murid','Dimensi Profil Lulusan','Integrasi Panca Cinta','Tujuan Pembelajaran','Prinsip BBM','Kemitraan Pembelajaran','Lingkungan Inklusif','Teknologi/Digital','Langkah Pembelajaran'];
+    const LL_SHORT=['Menyampaikan Tujuan','Apersepsi & Motivasi','Pertanyaan Terbuka','Penggalian Pengetahuan','Prinsip BBM (Memahami)','Media Interaktif','Pengalaman Nyata','Kolaborasi Siswa','Berpikir Kritis','Prinsip BBM (Mengaplikasi)','Refleksi Belajar','Umpan Balik & RTL','Integrasi Panca Cinta','Prinsip BBM (Merefleksi)'];
+    const LA_SHORT=['Instrumen sesuai Tujuan','Penilaian Proses & Hasil','Orientasi Profil Lulusan','Teknik Beragam','Umpan Balik Membangun','Asesmen untuk Perbaikan'];
+
+    function aspekRows(labels, freqs) {
+      return labels.map((l,i)=>{
+        const avg = (freqs[i]/(n*3)*100).toFixed(1);
+        const col = (+avg>=91?'#16a34a':+avg>=81?'#1d4ed8':+avg>=71?'#b45309':'#dc2626');
+        const bar = `<div style="background:#e5e7eb;border-radius:3px;height:10px;overflow:hidden;min-width:80px"><div style="width:${avg}%;height:100%;background:${col}"></div></div>`;
+        return `<tr style="border-bottom:1px solid #f0f0f0">
+          <td style="padding:5px 8px;font-size:9pt">${l}</td>
+          <td style="padding:5px 8px;text-align:center;font-weight:700;color:${col};font-size:9pt">${avg}%</td>
+          <td style="padding:5px 8px">${bar}</td>
+          <td style="padding:5px 8px;text-align:center;font-size:9pt"><span style="padding:1px 7px;border-radius:10px;font-weight:700;
+            background:${+avg>=91?'#d1fae5':+avg>=81?'#dbeafe':+avg>=71?'#fef3c7':'#fee2e2'};color:${col}">${PREDIKAT(+avg)}</span></td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Simpulan otomatis
+    const kat = +avgR>=91?'Sangat Baik':+avgR>=81?'Baik':+avgR>=71?'Cukup':'Kurang';
+    const simpulan = selesai.length===0
+      ? 'Belum ada data supervisi yang selesai pada periode ini.'
+      : `Berdasarkan hasil supervisi pembelajaran terhadap ${totalSelesai} guru pada Semester ${filterSmt} Tahun Ajaran ${filterTA}, `+
+        `rata-rata capaian pembelajaran di ${mad.nama||'madrasah ini'} adalah <b>${avgR}%</b> dengan predikat <b>${kat}</b>. `+
+        `Komponen Perencanaan mencapai ${avgP}%, Pelaksanaan ${avgL}%, dan Asesmen ${avgA}%. `+
+        (dist['Sangat Baik']>0?`Sebanyak ${dist['Sangat Baik']} guru meraih predikat Sangat Baik. `:'') +
+        (dist['Kurang']>0?`Terdapat ${dist['Kurang']} guru yang masih perlu pembinaan intensif (predikat Kurang). `:'') +
+        `Tingkat keterlaksanaan supervisi mencapai <b>${pctSelesai}%</b> dari total ${totalGuru} guru.`;
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Laporan Eksekutif Supervisi — ${mad.nama||''}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:'Times New Roman',serif;font-size:11pt;padding:20mm;color:#000;background:#fff}
+      .no-print{display:flex;gap:10px;margin-bottom:16px}
+      @media print{.no-print{display:none!important}body{padding:15mm}}
+      .kop{display:flex;align-items:center;gap:14px;border-bottom:3px double #000;padding-bottom:10px;margin-bottom:14px}
+      .kop-text .nama{font-size:13pt;font-weight:900;text-transform:uppercase}
+      .kop-text .sub{font-size:9pt;margin-top:2px}
+      h2{text-align:center;font-size:12pt;text-transform:uppercase;margin:12px 0 2px;font-weight:900}
+      .sub-judul{text-align:center;font-size:9pt;margin-bottom:14px;border-bottom:2px solid #000;padding-bottom:8px}
+      h3{font-size:10.5pt;font-weight:900;text-transform:uppercase;margin:18px 0 8px;
+        background:#0f4238;color:#fff;padding:5px 10px;border-radius:3px}
+      table{width:100%;border-collapse:collapse;margin-bottom:14px;font-size:10pt}
+      th{background:#0f4238;color:#fff;padding:6px 8px;font-weight:700;text-align:center}
+      td{vertical-align:middle}
+      .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+      .stat-box{border:2px solid #0f4238;border-radius:6px;padding:10px;text-align:center}
+      .stat-num{font-size:18pt;font-weight:900;color:#0f4238}
+      .stat-lbl{font-size:8.5pt;color:#555;margin-top:2px}
+      .simpulan{background:#f0fdf4;border:1.5px solid #86efac;border-radius:6px;
+        padding:12px 16px;font-size:10pt;line-height:1.7;margin-bottom:16px}
+      .ttd{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:30px;text-align:center;font-size:10pt}
+      .ttd-line{border-top:1.5px solid #000;margin-top:60px;padding-top:5px}
+      .pb{page-break-before:always;padding-top:10px}
+      .footer{text-align:center;font-size:8pt;color:#666;margin-top:20px;border-top:1px solid #ccc;padding-top:8px}
+      .dist-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+      .dist-box{border-radius:6px;padding:10px;text-align:center}
+      .dist-num{font-size:16pt;font-weight:900}
+      .dist-lbl{font-size:8.5pt;margin-top:2px}
+    </style></head><body>
+    <div class="no-print">
+      <button onclick="window.print()" style="padding:8px 20px;background:#0f4238;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">🖨️ Cetak / PDF</button>
+      <button onclick="window.close()" style="padding:8px 14px;background:#eee;border:none;border-radius:6px;cursor:pointer">✕ Tutup</button>
+    </div>
+
+    <div class="kop">
+      <div class="kop-text" style="flex:1">
+        <div style="font-size:9pt">KEMENTERIAN AGAMA REPUBLIK INDONESIA</div>
+        <div class="nama">${mad.nama||''}</div>
+        <div class="sub">${[mad.naungan,mad.alamat,[mad.kota_kab,mad.provinsi].filter(Boolean).join(', ')].filter(Boolean).join(' | ')}</div>
+      </div>
+    </div>
+
+    <h2>Laporan Eksekutif Supervisi Pembelajaran</h2>
+    <div class="sub-judul">Semester ${filterSmt} · Tahun Ajaran ${filterTA} · PM-KBC / KMA 1503/2025<br>
+    Dicetak: ${tglCetakFull}</div>
+
+    <h3>A. Identitas Madrasah</h3>
+    <table>
+      <tr><td width="30%"><b>Nama Madrasah</b></td><td>${mad.nama||'—'}</td><td width="30%"><b>Jenjang</b></td><td>${mad.jenjang||'—'}</td></tr>
+      <tr><td><b>NSM / NPSN</b></td><td>${mad.nsm||'—'}</td><td><b>Status</b></td><td>${mad.naungan||'—'}</td></tr>
+      <tr><td><b>Kabupaten/Kota</b></td><td>${mad.kota_kab||'—'}</td><td><b>Provinsi</b></td><td>${mad.provinsi||'—'}</td></tr>
+      <tr><td><b>Kepala Madrasah</b></td><td>${mad.nama_kepala||'—'}</td><td><b>NIP</b></td><td>${mad.nip_kepala||'—'}</td></tr>
+      <tr><td><b>Periode</b></td><td>Semester ${filterSmt}, ${filterTA}</td><td><b>Tanggal Laporan</b></td><td>${tglCetak}</td></tr>
+    </table>
+
+    <h3>B. Ringkasan Pelaksanaan Supervisi</h3>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-num">${totalGuru}</div><div class="stat-lbl">Total Guru</div></div>
+      <div class="stat-box" style="border-color:#16a34a"><div class="stat-num" style="color:#16a34a">${totalSelesai}</div><div class="stat-lbl">Sudah Disupervisi</div></div>
+      <div class="stat-box" style="border-color:#dc2626"><div class="stat-num" style="color:#dc2626">${totalBelum}</div><div class="stat-lbl">Belum Disupervisi</div></div>
+      <div class="stat-box" style="border-color:#d97706"><div class="stat-num" style="color:#d97706">${pctSelesai}%</div><div class="stat-lbl">Keterlaksanaan</div></div>
+    </div>
+
+    <h3>C. Capaian Rata-rata Per Komponen</h3>
+    <table>
+      <tr><th>Komponen</th><th>Rata-rata Capaian</th><th width="30%">Grafik</th><th>Predikat</th></tr>
+      ${['Perencanaan','Pelaksanaan','Asesmen'].map((k,i)=>{
+        const v = [avgP,avgL,avgA][i];
+        const col = +v>=91?'#16a34a':+v>=81?'#1d4ed8':+v>=71?'#b45309':'#dc2626';
+        return `<tr><td style="padding:7px 8px"><b>${k}</b></td>
+          <td style="padding:7px 8px;text-align:center;font-weight:900;font-size:12pt;color:${col}">${v}%</td>
+          <td style="padding:7px 8px"><div style="background:#e5e7eb;border-radius:4px;height:14px;overflow:hidden">
+            <div style="width:${v}%;height:100%;background:${col}"></div></div></td>
+          <td style="padding:7px 8px;text-align:center"><span style="padding:2px 10px;border-radius:12px;font-weight:700;font-size:9pt;
+            background:${+v>=91?'#d1fae5':+v>=81?'#dbeafe':+v>=71?'#fef3c7':'#fee2e2'};color:${col}">${PREDIKAT(+v)}</span></td>
+        </tr>`;
+      }).join('')}
+      <tr style="background:#f0fdf4;border-top:2px solid #0f4238">
+        <td style="padding:8px;font-weight:900">RATA-RATA KESELURUHAN</td>
+        <td style="padding:8px;text-align:center;font-weight:900;font-size:13pt;color:${+avgR>=91?'#16a34a':+avgR>=81?'#1d4ed8':+avgR>=71?'#b45309':'#dc2626'}">${avgR}%</td>
+        <td style="padding:8px"><div style="background:#e5e7eb;border-radius:4px;height:14px;overflow:hidden">
+          <div style="width:${avgR}%;height:100%;background:${+avgR>=91?'#16a34a':+avgR>=81?'#1d4ed8':+avgR>=71?'#b45309':'#dc2626'}"></div></div></td>
+        <td style="padding:8px;text-align:center"><b>${PREDIKAT(+avgR)}</b></td>
+      </tr>
+    </table>
+
+    <h3>D. Distribusi Predikat Guru</h3>
+    <div class="dist-grid">
+      <div class="dist-box" style="background:#d1fae5"><div class="dist-num" style="color:#065f46">${dist['Sangat Baik']}</div><div class="dist-lbl" style="color:#065f46">Sangat Baik (≥91%)</div></div>
+      <div class="dist-box" style="background:#dbeafe"><div class="dist-num" style="color:#1d4ed8">${dist['Baik']}</div><div class="dist-lbl" style="color:#1d4ed8">Baik (81–90%)</div></div>
+      <div class="dist-box" style="background:#fef3c7"><div class="dist-num" style="color:#b45309">${dist['Cukup']}</div><div class="dist-lbl" style="color:#b45309">Cukup (71–80%)</div></div>
+      <div class="dist-box" style="background:#fee2e2"><div class="dist-num" style="color:#dc2626">${dist['Kurang']}</div><div class="dist-lbl" style="color:#dc2626">Kurang (&lt;71%)</div></div>
+    </div>
+
+    <h3>E. Simpulan</h3>
+    <div class="simpulan">${simpulan}</div>
+
+    <div class="ttd">
+      <div></div>
+      <div>
+        <div>${mad.kota_kab||'...............'}, ${tglCetak}</div>
+        <div style="margin-top:6px">Kepala ${mad.nama||'Madrasah'},</div>
+        <div class="ttd-line">
+          <b>${mad.nama_kepala||'.............................'}</b><br>
+          NIP. ${mad.nip_kepala||'—'}
+        </div>
+      </div>
+    </div>
+
+    <div class="pb">
+    <h3>F. Rekapitulasi Hasil Supervisi Per Guru</h3>
+    <table>
+      <tr>
+        <th width="4%">No</th><th width="22%">Nama Guru</th><th width="12%">Tanggal</th>
+        <th width="9%">Rencan.</th><th width="9%">Pelaks.</th><th width="9%">Asesmen</th>
+        <th width="9%">Rata-rata</th><th width="10%">Predikat</th><th>Supervisor</th>
+      </tr>
+      ${selesai.length ? rowsGuru() : '<tr><td colspan="9" style="padding:10px;text-align:center">Belum ada data supervisi selesai</td></tr>'}
+    </table>
+    </div>
+
+    <div class="pb">
+    <h3>G. Guru yang Belum Disupervisi</h3>
+    <table>
+      <tr><th width="5%">No</th><th>Nama Guru</th><th>Mata Pelajaran</th><th>Status Kepegawaian</th></tr>
+      ${rowsBelum()}
+    </table>
+    </div>
+
+    <div class="pb">
+    <h3>H. Analisis Per Aspek — Komponen Perencanaan</h3>
+    <table>
+      <tr><th>Aspek</th><th width="12%">Rata-rata</th><th width="25%">Grafik</th><th width="15%">Predikat</th></tr>
+      ${selesai.length ? aspekRows(LP_SHORT,freqP) : '<tr><td colspan="4" style="padding:8px;text-align:center">Belum ada data</td></tr>'}
+    </table>
+
+    <h3>I. Analisis Per Aspek — Komponen Pelaksanaan</h3>
+    <table>
+      <tr><th>Aspek</th><th width="12%">Rata-rata</th><th width="25%">Grafik</th><th width="15%">Predikat</th></tr>
+      ${selesai.length ? aspekRows(LL_SHORT,freqL) : '<tr><td colspan="4" style="padding:8px;text-align:center">Belum ada data</td></tr>'}
+    </table>
+
+    <h3>J. Analisis Per Aspek — Komponen Asesmen</h3>
+    <table>
+      <tr><th>Aspek</th><th width="12%">Rata-rata</th><th width="25%">Grafik</th><th width="15%">Predikat</th></tr>
+      ${selesai.length ? aspekRows(LA_SHORT,freqA) : '<tr><td colspan="4" style="padding:8px;text-align:center">Belum ada data</td></tr>'}
+    </table>
+    </div>
+
+    <div class="footer">SUPERMAD — Supervisi Pembelajaran Madrasah &middot; PM-KBC / KMA 1503/2025 &middot; ${mad.nama||''} &middot; Dicetak: ${tglCetakFull}</div>
+    </body></html>`;
+
+    const win = window.open('','_blank');
+    win.document.write(html);
+    win.document.close();
+  }
+
   return (
     <div>
       <h2 style={{fontWeight:900,color:'var(--p3)',marginBottom:16,fontSize:'1.1rem'}}>
@@ -3501,11 +3897,16 @@ function DashboardSupervisor({sesi, showToast}) {
             return tas.map(ta=><option key={ta} value={ta}>{ta}</option>);
           })()}
         </select>
-        <span style={{fontSize:'.75rem',color:'var(--text3)',marginLeft:'auto'}}>
+        <span style={{fontSize:'.75rem',color:'var(--text3)'}}>
           {supListFilter.length} supervisi periode ini
           {supListFilter.filter(s=>s.status==='selesai').length > 0 &&
             ` (${supListFilter.filter(s=>s.status==='selesai').length} selesai)`}
         </span>
+        <button onClick={cetakLaporanEksekutif}
+          style={{marginLeft:'auto',padding:'6px 14px',borderRadius:8,border:'none',cursor:'pointer',
+            fontWeight:700,fontSize:'.8rem',background:'#0f4238',color:'#fff',display:'flex',alignItems:'center',gap:5}}>
+          📄 Laporan Eksekutif
+        </button>
       </div>
 
       {/* Tab */}
@@ -10980,6 +11381,17 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
   const [skorL, setSkorL] = useState(Array(itemsL.length).fill(0));
   const [skorA, setSkorA] = useState(Array(itemsA.length).fill(0));
 
+  // Daftar kelas dari DB
+  const [daftarKelas, setDaftarKelas] = useState([]);
+  useEffect(()=>{
+    sb.from('supermad_kelas')
+      .select('nama_kelas')
+      .eq('madrasah_id', sesi.mad.id)
+      .eq('tahun_ajaran', filterTA)
+      .order('nama_kelas')
+      .then(({data})=>{ if(data&&data.length) setDaftarKelas(data.map(k=>k.nama_kelas)); });
+  },[]);
+
   // Catatan
   const [catP, setCatP] = useState({c:'',r:''});
   const [catL, setCatL] = useState({c:'',r:''});
@@ -11353,7 +11765,14 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
             </div>
             <div className="form-group">
               <label>Kelas *</label>
-              <input value={kelas} onChange={e=>setKelas(e.target.value)} placeholder="Contoh: IV A"/>
+              {daftarKelas.length > 0 ? (
+                <select value={kelas} onChange={e=>setKelas(e.target.value)}>
+                  <option value="">-- Pilih Kelas --</option>
+                  {daftarKelas.map(k=><option key={k} value={k}>{k}</option>)}
+                </select>
+              ) : (
+                <input value={kelas} onChange={e=>setKelas(e.target.value)} placeholder="Contoh: IV A"/>
+              )}
             </div>
             <div className="form-group">
               <label>JTM (Jam Tatap Muka)</label>
