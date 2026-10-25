@@ -11480,12 +11480,15 @@ function TabRekapNilai({sesi, showToast}) {
 
     const kelas = kelasList.find(k=>k.id===filterKelas);
     const namaKelas = kelas?.nama_kelas||'';
+    const tingkat  = kelas?.tingkat||'';
+    // Nama kelas yang dipakai di supermad_siswa.kelas dan supermad_nilai.kelas
+    const kelasStr = namaKelas;
 
-    // Load siswa di kelas ini
+    // Load siswa di kelas ini — supermad_siswa.kelas menyimpan nama kelas (string), bukan UUID
     const {data:siswaData} = await sb.from('supermad_siswa')
       .select('id,nama,nis,nisn')
       .eq('madrasah_id', sesi.mad.id)
-      .eq('kelas_id', filterKelas)
+      .eq('kelas', kelasStr)
       .eq('aktif', true)
       .order('nama');
 
@@ -11502,7 +11505,8 @@ function TabRekapNilai({sesi, showToast}) {
       .in('siswa_id', siswaIds)
       .eq('semester', filterSmt)
       .eq('tahun_ajaran', filterTA)
-      .eq('madrasah_id', sesi.mad.id);
+      .eq('madrasah_id', sesi.mad.id)
+      .eq('kelas', kelasStr);
 
     // Struktur: nilaiMap[siswa_id][mapel][jenis_nilai] = nilai
     const nilaiMap = {};
