@@ -8636,10 +8636,18 @@ function TabNilai({sesi, showToast}) {
       if(!allMp[n.siswa_id]) allMp[n.siswa_id]={};
       allMp[n.siswa_id][n.jenis_nilai] = n.nilai;
       if (n.jenis_nilai === 'formatif') {
+        // Cek apakah ada data f1–f5 atau hanya nilai lama (migrasi)
+        const adaFData = n.f1!=null||n.f2!=null||n.f3!=null||n.f4!=null||n.f5!=null;
         fMap[n.siswa_id] = {
-          f1: n.f1, f2: n.f2, f3: n.f3, f4: n.f4, f5: n.f5,
+          // Kalau data lama (f1-f5 kosong), masukkan nilai lama ke f1 sebagai tampilan
+          f1: adaFData ? n.f1 : n.nilai,
+          f2: adaFData ? n.f2 : null,
+          f3: adaFData ? n.f3 : null,
+          f4: adaFData ? n.f4 : null,
+          f5: adaFData ? n.f5 : null,
           jumlah_formatif: n.jumlah_formatif||1,
           nilai: n.nilai,
+          _legacy: !adaFData, // tandai data lama
         };
         if (n.jumlah_formatif) jumlahFDB = n.jumlah_formatif;
       }
