@@ -9439,21 +9439,35 @@ function TabJurnal({sesi, showToast}) {
   const [kelasList,  setKelasList]  = React.useState([]);
   const [siswaList,  setSiswaList]  = React.useState([]);
   const [loading,    setLoading]    = React.useState(true);
-  const [view,       setView]       = React.useState('list'); // 'list' | 'form-jurnal' | 'form-absensi' | 'absensi' | 'rekap'
+  const [view,       setView]       = React.useState('list');
   const [editJurnal, setEditJurnal] = React.useState(null);
   const [activeJurnal, setActiveJurnal] = React.useState(null);
   const [absensiMap, setAbsensiMap] = React.useState({});
   const [savingAbsensi, setSavingAbsensi] = React.useState(false);
-  // Form absensi mandiri (tanpa jurnal dulu)
+  // Penugasan
+  const [penugasanList, setPenugasanList] = React.useState(null);
+  const [selectedMapel, setSelectedMapel] = React.useState('');
+
+  // Mapel & kelas dari penugasan (atau fallback lama)
+  const mapelAktif = selectedMapel || sesi.pengguna.mapel || '';
+  const kelasUntukMapel = React.useMemo(()=>{
+    if (!penugasanList) return kelasList;
+    return penugasanList.filter(p=>p.mapel===selectedMapel);
+  }, [penugasanList, selectedMapel, kelasList]);
+  const mapelList = React.useMemo(()=>{
+    if (!penugasanList || penugasanList.length===0) return [];
+    return [...new Set(penugasanList.map(p=>p.mapel))];
+  }, [penugasanList]);
+
   const [formAbsensi, setFormAbsensi] = React.useState({
     tanggal: new Date().toISOString().split('T')[0],
-    kelas: '',
+    kelas: '', kelas_id: '',
     jam_ke: '1',
     mapel: sesi.pengguna.mapel||'',
   });
   const [form, setForm] = React.useState({
     tanggal: new Date().toISOString().split('T')[0],
-    kelas: '',
+    kelas: '', kelas_id: '',
     jam_ke: '1',
     mapel: sesi.pengguna.mapel||'',
     materi: '',
@@ -9465,7 +9479,30 @@ function TabJurnal({sesi, showToast}) {
   const [saving, setSaving] = React.useState(false);
   const [rekapMode, setRekapMode] = React.useState(false);
 
+  React.useEffect(()=>{ loadPenugasan(); }, [filterTA]);
   React.useEffect(()=>{ loadData(filterTA, filterSmt); }, [filterTA, filterSmt]);
+
+  async function loadPenugasan() {
+    const {data} = await sb.from('supermad_penugasan').select(`
+      id, mapel, kelas_id, aktif,
+      supermad_kelas!kelas_id(id, nama_kelas, tingkat)
+    `)
+      .eq('guru_id', sesi.pengguna.id)
+      .eq('tahun_ajaran', filterTA)
+      .eq('aktif', true)
+      .order('mapel');
+    const list = data||[];
+    setPenugasanList(list);
+    if (list.length > 0 && !selectedMapel) {
+      setSelectedMapel(list[0].mapel);
+      setForm(f=>({...f, mapel:list[0].mapel,
+        kelas: list[0].supermad_kelas?.nama_kelas||'',
+        kelas_id: list[0].kelas_id||''}));
+      setFormAbsensi(f=>({...f, mapel:list[0].mapel,
+        kelas: list[0].supermad_kelas?.nama_kelas||'',
+        kelas_id: list[0].kelas_id||''}));
+    }
+  }
 
   async function loadData(ta, smt) {
     setLoading(true);
@@ -9478,7 +9515,6 @@ function TabJurnal({sesi, showToast}) {
         .order('tanggal', {ascending:false}),
       sb.from('supermad_kelas').select('*')
         .eq('madrasah_id', sesi.mad.id)
-        .eq('tahun_ajaran', ta||filterTA)
         .eq('aktif', true)
         .order('tingkat').order('nama_kelas'),
     ]);
@@ -9712,12 +9748,45 @@ function TabJurnal({sesi, showToast}) {
                   onChange={e=>setFormAbsensi({...formAbsensi,tanggal:e.target.value})} required/>
               </div>
               <div className="form-group">
+                <label>Mata Pelajaran *</label>
+                {mapelList.length > 0 ? (
+                  <select value={formAbsensi.mapel} onChange={e=>{
+                    const mp = e.target.value;
+                    const firstKelas = penugasanList.find(p=>p.mapel===mp);
+                    setFormAbsensi({...formAbsensi, mapel:mp,
+                      kelas: firstKelas?.supermad_kelas?.nama_kelas||'',
+                      kelas_id: firstKelas?.kelas_id||''});
+                  }} required>
+                    {mapelList.map(m=><option key={m} value={m}>{m}</option>)}
+                  </select>
+                ) : (
+                  <input value={formAbsensi.mapel}
+                    onChange={e=>setFormAbsensi({...formAbsensi,mapel:e.target.value})}
+                    placeholder="Mata pelajaran"/>
+                )}
+              </div>
+              <div className="form-group">
                 <label>Kelas *</label>
-                <select value={formAbsensi.kelas}
-                  onChange={e=>setFormAbsensi({...formAbsensi,kelas:e.target.value})} required>
-                  <option value="">-- Pilih Kelas --</option>
-                  {kelasList.map(k=><option key={k.id} value={k.nama_kelas}>{k.nama_kelas}</option>)}
-                </select>
+                {mapelList.length > 0 ? (
+                  <select value={formAbsensi.kelas_id} onChange={e=>{
+                    const p = penugasanList.find(x=>x.kelas_id===e.target.value && x.mapel===formAbsensi.mapel);
+                    setFormAbsensi({...formAbsensi, kelas_id:e.target.value,
+                      kelas: p?.supermad_kelas?.nama_kelas||''});
+                  }} required>
+                    <option value="">-- Pilih Kelas --</option>
+                    {penugasanList.filter(p=>p.mapel===formAbsensi.mapel).map(p=>(
+                      <option key={p.kelas_id} value={p.kelas_id}>
+                        {p.supermad_kelas?.nama_kelas||p.kelas_id}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select value={formAbsensi.kelas}
+                    onChange={e=>setFormAbsensi({...formAbsensi,kelas:e.target.value})} required>
+                    <option value="">-- Pilih Kelas --</option>
+                    {kelasList.map(k=><option key={k.id} value={k.nama_kelas}>{k.nama_kelas}</option>)}
+                  </select>
+                )}
               </div>
               <div className="form-group">
                 <label>Jam Ke-</label>
@@ -9727,12 +9796,6 @@ function TabJurnal({sesi, showToast}) {
                     <option key={j} value={j}>{j}</option>
                   ))}
                 </select>
-              </div>
-              <div className="form-group">
-                <label>Mata Pelajaran</label>
-                <input value={formAbsensi.mapel}
-                  onChange={e=>setFormAbsensi({...formAbsensi,mapel:e.target.value})}
-                  placeholder="Opsional"/>
               </div>
             </div>
             <button className="btn btn-primary" type="submit" disabled={saving||!formAbsensi.kelas}>
@@ -9762,11 +9825,43 @@ function TabJurnal({sesi, showToast}) {
                 <input type="date" value={form.tanggal} onChange={e=>setForm({...form,tanggal:e.target.value})} required/>
               </div>
               <div className="form-group">
+                <label>Mata Pelajaran *</label>
+                {mapelList.length > 0 ? (
+                  <select value={form.mapel} onChange={e=>{
+                    const mp = e.target.value;
+                    const firstKelas = penugasanList.find(p=>p.mapel===mp);
+                    setForm({...form, mapel:mp,
+                      kelas: firstKelas?.supermad_kelas?.nama_kelas||'',
+                      kelas_id: firstKelas?.kelas_id||''});
+                  }} required>
+                    {mapelList.map(m=><option key={m} value={m}>{m}</option>)}
+                  </select>
+                ) : (
+                  <input value={form.mapel} onChange={e=>setForm({...form,mapel:e.target.value})}
+                    placeholder="Mapel yang diajarkan"/>
+                )}
+              </div>
+              <div className="form-group">
                 <label>Kelas *</label>
-                <select value={form.kelas} onChange={e=>setForm({...form,kelas:e.target.value})} required>
-                  <option value="">-- Pilih Kelas --</option>
-                  {kelasList.map(k=><option key={k.id} value={k.nama_kelas}>{k.nama_kelas}</option>)}
-                </select>
+                {mapelList.length > 0 ? (
+                  <select value={form.kelas_id} onChange={e=>{
+                    const p = penugasanList.find(x=>x.kelas_id===e.target.value && x.mapel===form.mapel);
+                    setForm({...form, kelas_id:e.target.value,
+                      kelas: p?.supermad_kelas?.nama_kelas||''});
+                  }} required>
+                    <option value="">-- Pilih Kelas --</option>
+                    {penugasanList.filter(p=>p.mapel===form.mapel).map(p=>(
+                      <option key={p.kelas_id} value={p.kelas_id}>
+                        {p.supermad_kelas?.nama_kelas||p.kelas_id}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select value={form.kelas} onChange={e=>setForm({...form,kelas:e.target.value})} required>
+                    <option value="">-- Pilih Kelas --</option>
+                    {kelasList.map(k=><option key={k.id} value={k.nama_kelas}>{k.nama_kelas}</option>)}
+                  </select>
+                )}
               </div>
               <div className="form-group">
                 <label>Jam Ke- *</label>
@@ -9775,11 +9870,6 @@ function TabJurnal({sesi, showToast}) {
                     <option key={j} value={j}>{j}</option>
                   ))}
                 </select>
-              </div>
-              <div className="form-group">
-                <label>Mata Pelajaran</label>
-                <input value={form.mapel} onChange={e=>setForm({...form,mapel:e.target.value})}
-                  placeholder="Mapel yang diajarkan"/>
               </div>
             </div>
             <div className="form-group">
