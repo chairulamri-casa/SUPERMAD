@@ -1602,9 +1602,9 @@ function DashboardKanwil({showToast}) {
     (gurus||[]).forEach(g => guruMap[g.id] = g);
 
     // Hitung frekuensi item skor rendah per aspek
-    const LP=['Merumuskan tujuan KBC','Menyusun indikator kompetensi','Merancang materi kontekstual','Memilih metode tepat','Menyiapkan media relevan','Merancang aktivitas KBC','Menyusun instrumen formatif','Mengintegrasikan nilai Islam','Merancang diferensiasi'];
-    const LL=['Apersepsi bermakna','Menyampaikan tujuan','Konteks kehidupan nyata','Aktivitas MENGETAHUI','Aktivitas MEMAHAMI','Aktivitas MENGAPLIKASI','Aktivitas MEREFLEKSI','Interaksi aktif','Umpan balik konstruktif','Nilai Islam dalam KBM','Media/teknologi efektif','Pengelolaan waktu','Menyesuaikan pendekatan','Penutup bermakna'];
-    const LA=['Penilaian formatif','Instrumen beragam','Umpan balik hasil','Penilaian diri PD','Asesmen untuk perbaikan','Mencatat perkembangan','Penilaian karakter'];
+    const LP=['Identifikasi Murid','Dimensi Profil Lulusan','Integrasi Panca Cinta','Tujuan Pembelajaran','Prinsip BBM','Kemitraan Pembelajaran','Lingkungan Inklusif','Teknologi/Digital','Langkah Pembelajaran'];
+    const LL=['Menyampaikan Tujuan','Apersepsi & Motivasi','Pertanyaan Terbuka','Penggalian Pengetahuan Awal','Prinsip BBM (Memahami)','Media Interaktif','Pengalaman Nyata','Kolaborasi Siswa','Berpikir Kritis & Kreatif','Prinsip BBM (Mengaplikasi)','Refleksi Proses Belajar','Umpan Balik & RTL','Integrasi Panca Cinta','Prinsip BBM (Merefleksi)'];
+    const LA=['Instrumen sesuai Tujuan','Penilaian Proses & Hasil','Orientasi Profil Lulusan','Teknik Penilaian Beragam','Umpan Balik Membangun','Asesmen untuk Perbaikan'];
 
     const freqP = Array(LP.length).fill(0);
     const freqL = Array(LL.length).fill(0);
@@ -3137,7 +3137,7 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
   const [editJadwal, setEditJadwal] = useState(null);
   const [saving, setSaving]         = useState(false);
   const today = new Date().toISOString().split('T')[0];
-  const blankForm = {guru_id:'',tanggal:today,jam_mulai:'07:30',jam_selesai:'08:30',kelas:'',mapel:'',catatan:''};
+  const blankForm = {guru_id:'',tanggal:today,jam_mulai:'07:30',jam_selesai:'08:30',kelas:'',mapel:'',jumlah_jam:'',nama_supervisor:'',jabatan_supervisor:'',catatan:''};
   const [form, setForm] = useState(blankForm);
 
   useEffect(()=>{ loadJadwal(); }, [filterSmt, filterTA]);
@@ -3161,7 +3161,11 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
       madrasah_id:sesi.mad.id, guru_id:form.guru_id,
       tanggal:form.tanggal, jam_mulai:form.jam_mulai||null,
       jam_selesai:form.jam_selesai||null, kelas:form.kelas,
-      mapel:form.mapel||(guru?guru.mapel:''), semester:filterSmt,
+      mapel:form.mapel||(guru?guru.mapel:''),
+      jumlah_jam: form.jumlah_jam ? parseInt(form.jumlah_jam) : null,
+      nama_supervisor: form.nama_supervisor||null,
+      jabatan_supervisor: form.jabatan_supervisor||null,
+      semester:filterSmt,
       tahun_ajaran:filterTA, catatan:form.catatan,
       status:'terjadwal', dibuat_oleh:sesi.pengguna.id,
       updated_at:new Date().toISOString(),
@@ -3257,6 +3261,18 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
                 <label>Mata Pelajaran</label>
                 <input value={form.mapel} placeholder="otomatis dari guru" onChange={e=>setForm({...form,mapel:e.target.value})}/>
               </div>
+              <div className="form-group">
+                <label>Jumlah Jam (JTM)</label>
+                <input type="number" min="1" max="99" value={form.jumlah_jam} placeholder="cth: 12" onChange={e=>setForm({...form,jumlah_jam:e.target.value})}/>
+              </div>
+              <div className="form-group">
+                <label>Nama Supervisor</label>
+                <input value={form.nama_supervisor||''} placeholder="Nama supervisor..." onChange={e=>setForm({...form,nama_supervisor:e.target.value})}/>
+              </div>
+              <div className="form-group" style={{gridColumn:'1/-1'}}>
+                <label>Jabatan Supervisor</label>
+                <input value={form.jabatan_supervisor||''} placeholder="cth: Kepala Madrasah" onChange={e=>setForm({...form,jabatan_supervisor:e.target.value})}/>
+              </div>
               <div className="form-group" style={{gridColumn:'1/-1'}}>
                 <label>Catatan</label>
                 <input value={form.catatan} placeholder="opsional..." onChange={e=>setForm({...form,catatan:e.target.value})}/>
@@ -3300,8 +3316,10 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
                           <div style={{fontWeight:700}}>{guru?guru.nama:'—'}</div>
                           <div style={{fontSize:'.75rem',color:'var(--text2)',marginTop:2}}>
                             {j.mapel||'—'} · Kelas {j.kelas||'—'}
+                            {j.jumlah_jam?' · '+j.jumlah_jam+' JTM':''}
                             {j.jam_mulai?' · '+j.jam_mulai.slice(0,5)+(j.jam_selesai?' – '+j.jam_selesai.slice(0,5):''):''}
                           </div>
+                          {j.nama_supervisor&&<div style={{fontSize:'.72rem',color:'var(--text2)',marginTop:2}}>👤 {j.nama_supervisor}{j.jabatan_supervisor?' ('+j.jabatan_supervisor+')':''}</div>}
                           {j.catatan&&<div style={{fontSize:'.72rem',color:'var(--text3)',marginTop:2}}>📝 {j.catatan}</div>}
                         </div>
                         <div style={{display:'flex',gap:5,alignItems:'center',flexWrap:'wrap'}}>
@@ -4431,7 +4449,7 @@ function cetakDariRiwayat(sup, guru) {
     : '—';
   const skorP   = Array.isArray(sup.skor_perencanaan) ? sup.skor_perencanaan : Array(9).fill(0);
   const skorL   = Array.isArray(sup.skor_pelaksanaan) ? sup.skor_pelaksanaan : Array(14).fill(0);
-  const skorA   = Array.isArray(sup.skor_asesmen)     ? sup.skor_asesmen     : Array(7).fill(0);
+  const skorA   = Array.isArray(sup.skor_asesmen)     ? sup.skor_asesmen     : Array(6).fill(0);
   const capP    = parseFloat(sup.capaian_perencanaan)||0;
   const capL    = parseFloat(sup.capaian_pelaksanaan)||0;
   const capA    = parseFloat(sup.capaian_asesmen)||0;
@@ -4567,131 +4585,130 @@ ${(function(){
 // DATABASE REKOMENDASI OTOMATIS PER ITEM
 // ═══════════════════════════════════════════════════════════════
 const RTL_DB = {
-  p: [ // Perencanaan
-    {aspek:'Merumuskan tujuan pembelajaran berbasis KBC',
-     masalah:'Tujuan pembelajaran belum mencerminkan pendekatan KBC secara utuh.',
-     rekomendasi:'Ikuti workshop penyusunan tujuan pembelajaran berbasis KBC. Gunakan format A-B-C-D dalam merumuskan tujuan.',
-     target:'Tujuan pembelajaran memenuhi standar KBC',waktu:'1 bulan'},
-    {aspek:'Menyusun indikator capaian berbasis kompetensi',
-     masalah:'Indikator capaian belum terukur dan berbasis kompetensi.',
-     rekomendasi:'Studi referensi CP/TP/ATP terbaru. Konsultasi dengan pengawas dalam menyusun indikator yang terukur.',
-     target:'Indikator capaian terukur dan operasional',waktu:'1 bulan'},
-    {aspek:'Merancang materi ajar kontekstual dan bermakna',
-     masalah:'Materi ajar masih kurang kontekstual dengan kehidupan peserta didik.',
-     rekomendasi:'Kembangkan materi berbasis konteks lokal Aceh. Integrasikan nilai-nilai Islam dalam setiap materi.',
-     target:'Materi ajar kontekstual dan bermakna',waktu:'2 bulan'},
-    {aspek:'Memilih metode pembelajaran yang tepat',
-     masalah:'Metode pembelajaran belum bervariasi dan belum sesuai karakteristik materi.',
-     rekomendasi:'Pelajari berbagai metode aktif learning. Sesuaikan metode dengan tujuan dan karakteristik peserta didik.',
-     target:'Variasi metode pembelajaran meningkat',waktu:'2 bulan'},
-    {aspek:'Menyiapkan media/sumber belajar yang relevan',
-     masalah:'Media pembelajaran masih terbatas dan kurang relevan.',
-     rekomendasi:'Manfaatkan teknologi digital untuk membuat media interaktif. Ikuti pelatihan pembuatan media pembelajaran.',
-     target:'Media pembelajaran beragam dan relevan',waktu:'2 bulan'},
-    {aspek:'Merancang aktivitas KBC (mengetahui, memahami, mengaplikasi, merefleksi)',
-     masalah:'Aktivitas pembelajaran belum mencakup 4 tahap KBC secara lengkap.',
-     rekomendasi:'Rancang aktivitas yang mencakup 4M: Mengetahui, Memahami, Mengaplikasi, Merefleksi secara sistematis.',
-     target:'Aktivitas 4M KBC terlaksana lengkap',waktu:'1 bulan'},
-    {aspek:'Menyusun instrumen penilaian formatif',
-     masalah:'Instrumen penilaian formatif belum tersedia atau belum lengkap.',
-     rekomendasi:'Susun instrumen penilaian formatif untuk setiap pertemuan. Gunakan format observasi, jurnal, dan refleksi.',
-     target:'Instrumen penilaian formatif tersedia',waktu:'2 bulan'},
-    {aspek:'Mengintegrasikan nilai karakter Islam dalam pembelajaran',
-     masalah:'Integrasi nilai karakter Islam dalam RPP belum optimal.',
-     rekomendasi:'Identifikasi nilai-nilai Islam yang relevan pada setiap KD. Cantumkan secara eksplisit dalam RPP dan pelaksanaan.',
-     target:'Nilai Islam terintegrasi dalam setiap pembelajaran',waktu:'1 bulan'},
-    {aspek:'Merancang diferensiasi untuk keberagaman peserta didik',
-     masalah:'Diferensiasi pembelajaran belum dirancang untuk keberagaman peserta didik.',
-     rekomendasi:'Lakukan asesmen awal untuk mengetahui profil belajar. Rancang diferensiasi konten, proses, dan produk.',
-     target:'Pembelajaran berdiferensiasi terlaksana',waktu:'3 bulan'},
+  p: [ // Perencanaan — 9 item sesuai lampiran
+    {aspek:'Identifikasi Murid: Sesuai kondisi obyektifitas dan menunjukkan kebiasaan belajar',
+     masalah:'Rencana pembelajaran belum mempertimbangkan kondisi dan kebiasaan belajar murid secara objektif.',
+     rekomendasi:'Lakukan asesmen diagnostik awal (non-kognitif & kognitif). Gunakan hasilnya sebagai dasar perencanaan pembelajaran.',
+     target:'Perencanaan berbasis profil murid',waktu:'2 minggu'},
+    {aspek:'Dimensi profil lulusan yang dipilih sesuai dengan materi pembelajaran',
+     masalah:'Dimensi profil lulusan yang dipilih belum selaras dengan materi atau belum dicantumkan secara eksplisit.',
+     rekomendasi:'Pelajari 6 dimensi Profil Pelajar Pancasila. Pilih dimensi yang relevan dan cantumkan eksplisit dalam perencanaan.',
+     target:'Dimensi profil lulusan selaras dengan materi',waktu:'1 bulan'},
+    {aspek:'Mengintegrasikan Topik Panca Cinta dalam Pembelajaran',
+     masalah:'Topik Panca Cinta belum diintegrasikan secara bermakna dalam perencanaan pembelajaran.',
+     rekomendasi:'Identifikasi keterkaitan Panca Cinta (Cinta Agama, Tanah Air, Keluarga, Ilmu, Sesama) dengan materi. Cantumkan dalam rencana.',
+     target:'Panca Cinta terintegrasi dalam rencana',waktu:'1 bulan'},
+    {aspek:'Tujuan pembelajaran jelas, terukur, relevan serta mengandung kompetensi minimal yakni kompetensi dan materi',
+     masalah:'Tujuan pembelajaran belum jelas, terukur, atau tidak mengandung komponen kompetensi dan materi yang lengkap.',
+     rekomendasi:'Rumuskan tujuan pembelajaran menggunakan format: Melalui [aktivitas], murid dapat [kompetensi] tentang [materi] dengan [kriteria].',
+     target:'Tujuan pembelajaran SMART terpenuhi',waktu:'2 minggu'},
+    {aspek:'Praktik pedagogis sesuai prinsip pembelajaran berdasarkan, bermakna, menggembirakan (mendukung pembelajaran siswa aktif)',
+     masalah:'Praktik pedagogis yang direncanakan belum sepenuhnya menerapkan prinsip BBM (Berdasarkan, Bermakna, Menggembirakan).',
+     rekomendasi:'Rancang setiap aktivitas dengan memastikan: berbasis pengetahuan awal (B), bermakna kontekstual (B), dan menyenangkan (M).',
+     target:'Prinsip BBM terwujud dalam rencana',waktu:'1 bulan'},
+    {aspek:'Kemitraan pembelajaran melibatkan stakeholder yang mendukung tercapainya tujuan pembelajaran',
+     masalah:'Rencana pembelajaran belum melibatkan stakeholder atau mitra belajar di luar kelas.',
+     rekomendasi:'Identifikasi potensi kemitraan: orang tua, komunitas, atau narasumber ahli. Integrasikan dalam rencana sebagai sumber belajar.',
+     target:'Ekosistem kemitraan pembelajaran terbentuk',waktu:'2 bulan'},
+    {aspek:'Lingkungan pembelajaran mendukung suasana aman, inklusif',
+     masalah:'Perencanaan belum mempertimbangkan penciptaan lingkungan belajar yang aman dan inklusif bagi semua murid.',
+     rekomendasi:'Rancang aturan kelas bersama murid. Siapkan strategi untuk mengakomodasi keberagaman dan memastikan keterlibatan semua murid.',
+     target:'Lingkungan belajar aman dan inklusif',waktu:'2 minggu'},
+    {aspek:'Pemanfaatan teknologi/digital mendukung pembelajaran interaktif',
+     masalah:'Pemanfaatan teknologi/digital dalam rencana pembelajaran belum optimal atau belum interaktif.',
+     rekomendasi:'Eksplorasi platform dan aplikasi digital yang sesuai usia dan materi. Integrasikan media digital yang mendorong interaksi aktif.',
+     target:'Teknologi digital mendukung pembelajaran',waktu:'1 bulan'},
+    {aspek:'Langkah-langkah pembelajaran runtut, sesuai waktu dan sesuai dengan tahapan pengalaman belajar (Memahami, Mengaplikasikan, dan Merefleksi)',
+     masalah:'Langkah-langkah pembelajaran belum runtut atau belum mencakup tiga tahap: Memahami, Mengaplikasikan, dan Merefleksi secara proporsional.',
+     rekomendasi:'Susun langkah pembelajaran dengan alokasi waktu yang jelas per tahap. Pastikan ada aktivitas Memahami, Mengaplikasikan, dan Merefleksi.',
+     target:'Langkah pembelajaran 3 tahap terpenuhi',waktu:'2 minggu'},
   ],
-  l: [ // Pelaksanaan
-    {aspek:'Membuka pembelajaran dengan apersepsi bermakna',
-     masalah:'Apersepsi belum menghubungkan materi dengan pengalaman peserta didik.',
-     rekomendasi:'Gunakan pertanyaan pemantik yang kontekstual. Kaitkan materi dengan kehidupan sehari-hari peserta didik.',
-     target:'Apersepsi efektif dalam setiap pembelajaran',waktu:'1 bulan'},
-    {aspek:'Menyampaikan tujuan dan manfaat pembelajaran',
-     masalah:'Tujuan dan manfaat pembelajaran belum disampaikan dengan jelas.',
-     rekomendasi:'Sampaikan tujuan di awal pembelajaran dengan bahasa yang mudah dipahami peserta didik.',
-     target:'Peserta didik memahami tujuan pembelajaran',waktu:'2 minggu'},
-    {aspek:'Mengaitkan materi dengan konteks kehidupan nyata',
-     masalah:'Materi belum dikaitkan dengan konteks kehidupan nyata peserta didik.',
-     rekomendasi:'Gunakan contoh-contoh dari kehidupan sehari-hari di Aceh. Buat keterkaitan yang bermakna dan relevan.',
-     target:'Materi terhubung dengan konteks kehidupan',waktu:'1 bulan'},
-    {aspek:'Memfasilitasi aktivitas MENGETAHUI (penguatan konsep)',
-     masalah:'Aktivitas mengetahui belum optimal dalam membangun pemahaman konsep.',
-     rekomendasi:'Gunakan teknik brainstorming, mind mapping, atau quiz cepat untuk membangun pengetahuan awal.',
-     target:'Konsep dasar terbangun kuat',waktu:'1 bulan'},
-    {aspek:'Memfasilitasi aktivitas MEMAHAMI (pendalaman makna)',
-     masalah:'Aktivitas memahami belum mendalam dan bermakna.',
-     rekomendasi:'Gunakan diskusi kelompok, studi kasus, atau analisis teks untuk pendalaman makna.',
-     target:'Peserta didik memahami makna materi',waktu:'1 bulan'},
-    {aspek:'Memfasilitasi aktivitas MENGAPLIKASI (penerapan)',
-     masalah:'Aktivitas penerapan konsep dalam situasi nyata masih kurang.',
-     rekomendasi:'Rancang tugas proyek atau simulasi yang menuntut penerapan konsep dalam konteks nyata.',
-     target:'Peserta didik mampu mengaplikasi konsep',waktu:'2 bulan'},
-    {aspek:'Memfasilitasi aktivitas MEREFLEKSI (evaluasi diri)',
-     masalah:'Aktivitas refleksi diri peserta didik belum terlaksana secara sistematis.',
-     rekomendasi:'Sediakan waktu refleksi di akhir setiap sesi. Gunakan jurnal belajar atau kartu refleksi.',
-     target:'Peserta didik terbiasa merefleksi pembelajaran',waktu:'1 bulan'},
-    {aspek:'Mendorong interaksi aktif antar peserta didik',
-     masalah:'Interaksi antar peserta didik masih didominasi guru.',
-     rekomendasi:'Terapkan pembelajaran kooperatif (diskusi, think-pair-share, jigsaw). Kurangi dominasi ceramah.',
-     target:'Interaksi multi-arah terlaksana aktif',waktu:'1 bulan'},
-    {aspek:'Memberikan umpan balik konstruktif',
-     masalah:'Umpan balik yang diberikan belum konstruktif dan spesifik.',
-     rekomendasi:'Berikan umpan balik segera, spesifik, dan berorientasi solusi. Hindari kritik tanpa panduan perbaikan.',
-     target:'Umpan balik konstruktif dan bermakna',waktu:'2 minggu'},
-    {aspek:'Mengintegrasikan nilai-nilai Islam (akhlak, adab)',
-     masalah:'Nilai-nilai Islam belum terintegrasi secara natural dalam pembelajaran.',
-     rekomendasi:'Sisipkan nilai akhlak/adab secara kontekstual. Jadikan teladan dalam berperilaku di kelas.',
-     target:'Nilai Islam terintegrasi natural',waktu:'1 bulan'},
-    {aspek:'Menggunakan media/teknologi secara efektif',
-     masalah:'Penggunaan media dan teknologi belum optimal dalam mendukung pembelajaran.',
-     rekomendasi:'Ikuti pelatihan pemanfaatan teknologi. Integrasikan media digital secara bertahap dan terencana.',
-     target:'Media teknologi dimanfaatkan efektif',waktu:'2 bulan'},
-    {aspek:'Mengelola waktu pembelajaran dengan baik',
-     masalah:'Pengelolaan waktu pembelajaran kurang efisien.',
-     rekomendasi:'Buat alokasi waktu detail per aktivitas dalam RPP. Gunakan timer dan transisi antar aktivitas yang terencana.',
-     target:'Pembelajaran selesai sesuai alokasi waktu',waktu:'1 bulan'},
-    {aspek:'Menyesuaikan pendekatan dengan kebutuhan peserta didik',
-     masalah:'Pendekatan pembelajaran belum disesuaikan dengan keberagaman kebutuhan peserta didik.',
-     rekomendasi:'Lakukan pemetaan kebutuhan belajar peserta didik. Terapkan diferensiasi proses dalam pembelajaran.',
-     target:'Pendekatan pembelajaran diferensiasi',waktu:'2 bulan'},
-    {aspek:'Menutup pembelajaran dengan refleksi dan penguatan',
-     masalah:'Penutupan pembelajaran belum mencakup refleksi dan penguatan yang bermakna.',
-     rekomendasi:'Alokasikan 5-10 menit untuk penutup. Gunakan teknik exit ticket, 3-2-1, atau one sentence summary.',
-     target:'Penutup pembelajaran bermakna dan reflektif',waktu:'2 minggu'},
+  l: [ // Pelaksanaan — 14 item (3 tahap) sesuai lampiran
+    // Tahap Memahami
+    {aspek:'Guru menyampaikan tujuan pembelajaran',
+     masalah:'Tujuan pembelajaran tidak disampaikan di awal sehingga murid tidak memiliki arah belajar yang jelas.',
+     rekomendasi:'Sampaikan tujuan pembelajaran di awal dengan bahasa yang mudah dipahami murid. Pastikan murid memahami "untuk apa" mereka belajar.',
+     target:'Tujuan tersampaikan di awal setiap sesi',waktu:'2 minggu'},
+    {aspek:'Guru membuka pembelajaran dengan apersepsi dan motivasi',
+     masalah:'Pembukaan pembelajaran kurang menarik dan belum mengaktifkan pengetahuan awal murid.',
+     rekomendasi:'Rancang apersepsi dengan pertanyaan pemantik kontekstual. Hubungkan materi baru dengan pengalaman murid sehari-hari.',
+     target:'Apersepsi efektif mengaktifkan pengetahuan awal',waktu:'1 bulan'},
+    {aspek:'Mengajukan pertanyaan terbuka, narasikan',
+     masalah:'Pertanyaan yang diajukan masih didominasi pertanyaan tertutup (ya/tidak) yang tidak mendorong berpikir kritis.',
+     rekomendasi:'Latih penggunaan pertanyaan dengan kata tanya mengapa, bagaimana, apa yang akan terjadi jika. Beri waktu tunggu setelah bertanya.',
+     target:'Pertanyaan terbuka mendominasi sesi',waktu:'1 bulan'},
+    {aspek:'Memfasilitasi pertanyaan dan penggalian pengetahuan awal',
+     masalah:'Pengetahuan awal murid belum digali secara sistematis sebelum masuk materi baru.',
+     rekomendasi:'Gunakan teknik brainstorming, word web, atau KWL chart untuk menggali pengetahuan awal murid secara terstruktur.',
+     target:'Pengetahuan awal murid terpetakan',waktu:'2 minggu'},
+    {aspek:'Mengimplementasikan Prinsip Pembelajaran (Berdasarkan, Bermakna, Menggembirakan)',
+     masalah:'Prinsip BBM belum diimplementasikan secara konsisten dalam tahap memahami.',
+     rekomendasi:'Pastikan setiap aktivitas pada tahap ini berbasis pengetahuan/konteks murid, bermakna, dan menghadirkan pengalaman yang menyenangkan.',
+     target:'Prinsip BBM terwujud dalam tahap Memahami',waktu:'1 bulan'},
+    // Tahap Mengaplikasi
+    {aspek:'Menggunakan media pembelajaran yang relevan dan interaktif',
+     masalah:'Media yang digunakan kurang relevan dengan tujuan atau tidak mendorong interaksi aktif murid.',
+     rekomendasi:'Pilih media yang sesuai karakteristik materi dan gaya belajar murid. Prioritaskan media yang mendorong partisipasi aktif.',
+     target:'Media relevan dan mendorong interaksi',waktu:'1 bulan'},
+    {aspek:'Memberikan pengalaman nyata (Kontekstualisasi) melalui kegiatan praktik, proyek, simulasi dan sejenisnya',
+     masalah:'Pembelajaran masih abstrak dan kurang memberikan pengalaman nyata kepada murid.',
+     rekomendasi:'Rancang kegiatan berbasis pengalaman nyata: praktik langsung, proyek mini, simulasi peran, atau kunjungan belajar.',
+     target:'Murid mendapat pengalaman belajar nyata',waktu:'2 bulan'},
+    {aspek:'Melibatkan siswa aktif dalam kolaborasi dan diskusi',
+     masalah:'Pembelajaran masih berpusat pada guru, murid kurang terlibat dalam kolaborasi dan diskusi.',
+     rekomendasi:'Terapkan struktur pembelajaran kooperatif: think-pair-share, diskusi kelompok, atau jigsaw. Pastikan semua murid berkontribusi.',
+     target:'Murid terlibat aktif dalam kolaborasi',waktu:'1 bulan'},
+    {aspek:'Mengembangkan berpikir kritis dan kreatif',
+     masalah:'Aktivitas pembelajaran belum mendorong murid untuk berpikir kritis dan berkreasi.',
+     rekomendasi:'Rancang tugas dan pertanyaan dengan level HOTS. Berikan kebebasan murid untuk memilih cara/produk dalam menunjukkan pemahaman.',
+     target:'Berpikir kritis dan kreatif murid berkembang',waktu:'2 bulan'},
+    {aspek:'Mengimplementasikan Prinsip Pembelajaran (Berdasarkan, Bermakna, Menggembirakan)',
+     masalah:'Prinsip BBM belum diimplementasikan secara konsisten dalam tahap mengaplikasi.',
+     rekomendasi:'Pastikan aplikasi konteks nyata, bermakna bagi kehidupan murid, dan menghadirkan tantangan yang menyenangkan.',
+     target:'Prinsip BBM terwujud dalam tahap Mengaplikasi',waktu:'1 bulan'},
+    // Tahap Merefleksi
+    {aspek:'Mengajak murid merefleksikan proses dan hasil belajar',
+     masalah:'Waktu refleksi tidak dialokasikan atau dilaksanakan terlalu singkat sehingga tidak bermakna.',
+     rekomendasi:'Alokasikan minimal 5-10 menit untuk refleksi. Gunakan jurnal belajar, exit ticket, atau diskusi 3-2-1.',
+     target:'Refleksi terlaksana bermakna di setiap sesi',waktu:'2 minggu'},
+    {aspek:'Memberikan umpan balik dan rencana tindak lanjut',
+     masalah:'Umpan balik tidak spesifik atau tidak disertai rencana tindak lanjut yang jelas bagi murid.',
+     rekomendasi:'Berikan umpan balik segera dan spesifik. Susun rencana tindak lanjut: remedial bagi yang belum dan pengayaan bagi yang sudah.',
+     target:'Umpan balik bermakna dan RTL tersusun',waktu:'2 minggu'},
+    {aspek:'Mengintegrasikan Topik Panca Cinta dalam materi/kegiatan pembelajaran',
+     masalah:'Integrasi Topik Panca Cinta dalam pelaksanaan pembelajaran masih bersifat artifisial atau tidak ada.',
+     rekomendasi:'Hubungkan nilai Panca Cinta dengan konteks materi secara alami. Ajak murid merefleksikan nilai yang mereka pelajari dari aktivitas.',
+     target:'Panca Cinta terintegrasi natural dalam KBM',waktu:'1 bulan'},
+    {aspek:'Mengimplementasikan Prinsip Pembelajaran (Berdasarkan, Bermakna, Menggembirakan)',
+     masalah:'Prinsip BBM belum diimplementasikan secara konsisten dalam tahap merefleksi.',
+     rekomendasi:'Pastikan refleksi didasarkan pada pengalaman nyata murid, bermakna untuk pertumbuhan diri, dan dilakukan dengan suasana positif.',
+     target:'Prinsip BBM terwujud dalam tahap Merefleksi',waktu:'1 bulan'},
   ],
-  a: [ // Asesmen
-    {aspek:'Melaksanakan penilaian formatif selama pembelajaran',
-     masalah:'Penilaian formatif belum dilaksanakan secara konsisten selama pembelajaran.',
-     rekomendasi:'Gunakan teknik penilaian formatif: observasi, pertanyaan lisan, kartu respons. Laksanakan di setiap sesi.',
-     target:'Penilaian formatif terlaksana konsisten',waktu:'1 bulan'},
-    {aspek:'Menggunakan instrumen penilaian yang beragam',
-     masalah:'Instrumen penilaian masih monoton dan belum beragam.',
-     rekomendasi:'Kembangkan berbagai instrumen: rubrik kinerja, portofolio, tes lisan, observasi sikap.',
-     target:'Instrumen penilaian beragam dan autentik',waktu:'2 bulan'},
-    {aspek:'Memberikan umpan balik terhadap hasil belajar',
-     masalah:'Umpan balik terhadap hasil belajar belum diberikan secara tepat waktu.',
-     rekomendasi:'Berikan umpan balik dalam 1x24 jam setelah penilaian. Gunakan komentar tertulis yang spesifik dan membangun.',
-     target:'Umpan balik hasil belajar tepat waktu',waktu:'2 minggu'},
-    {aspek:'Mendorong peserta didik melakukan penilaian diri',
-     masalah:'Penilaian diri peserta didik belum difasilitasi secara sistematis.',
-     rekomendasi:'Perkenalkan format penilaian diri sederhana. Latih peserta didik menilai pekerjaan sendiri secara objektif.',
-     target:'Penilaian diri peserta didik terlaksana',waktu:'1 bulan'},
-    {aspek:'Menggunakan hasil asesmen untuk perbaikan pembelajaran',
-     masalah:'Data hasil asesmen belum dianalisis dan digunakan untuk perbaikan.',
-     rekomendasi:'Analisis data asesmen setiap akhir unit. Gunakan hasilnya untuk merencanakan remedial dan pengayaan.',
-     target:'Data asesmen dimanfaatkan untuk perbaikan',waktu:'1 bulan'},
-    {aspek:'Mencatat perkembangan belajar peserta didik',
-     masalah:'Pencatatan perkembangan belajar peserta didik belum tertib.',
-     rekomendasi:'Buat jurnal/catatan anekdot. Gunakan aplikasi atau buku catatan untuk dokumentasi perkembangan.',
-     target:'Perkembangan belajar terdokumentasi',waktu:'1 bulan'},
-    {aspek:'Mengintegrasikan penilaian karakter dalam asesmen',
-     masalah:'Penilaian karakter belum terintegrasi dalam sistem asesmen.',
-     rekomendasi:'Kembangkan rubrik penilaian akhlak/karakter. Integrasikan penilaian sikap dalam setiap pembelajaran.',
-     target:'Penilaian karakter terintegrasi',waktu:'2 bulan'},
+  a: [ // Asesmen — 6 item sesuai lampiran
+    {aspek:'Instrumen penilaian sesuai tujuan pembelajaran',
+     masalah:'Instrumen penilaian yang digunakan tidak selaras dengan tujuan pembelajaran yang ditetapkan.',
+     rekomendasi:'Review setiap instrumen dan pastikan mengukur kompetensi yang tertuang dalam tujuan pembelajaran. Buat tabel alignment tujuan-instrumen.',
+     target:'Instrumen selaras dengan tujuan pembelajaran',waktu:'1 bulan'},
+    {aspek:'Penilaian mencakup proses dan hasil belajar',
+     masalah:'Penilaian hanya fokus pada hasil akhir, tanpa menilai proses belajar murid.',
+     rekomendasi:'Kembangkan rubrik penilaian proses (observasi keaktifan, kolaborasi, diskusi) dan rubrik hasil belajar secara seimbang.',
+     target:'Penilaian proses dan hasil seimbang',waktu:'2 bulan'},
+    {aspek:'Penilaian berorientasi pada dimensi profil lulusan dan Topik Panca Cinta',
+     masalah:'Instrumen penilaian belum mencerminkan dimensi profil lulusan atau nilai Panca Cinta.',
+     rekomendasi:'Integrasikan indikator profil lulusan dan Panca Cinta dalam rubrik penilaian. Nilai sikap dan karakter secara terstruktur.',
+     target:'Profil lulusan & Panca Cinta terukur dalam asesmen',waktu:'2 bulan'},
+    {aspek:'Menggunakan teknik beragam (tes, non-tes, observasi, portofolio)',
+     masalah:'Teknik penilaian masih monoton (hanya tes tertulis) dan tidak mencerminkan keberagaman kemampuan murid.',
+     rekomendasi:'Variasikan teknik penilaian: tes tertulis, observasi, portofolio, unjuk kerja, dan penilaian diri. Sesuaikan dengan karakteristik kompetensi.',
+     target:'Teknik penilaian beragam dan autentik',waktu:'2 bulan'},
+    {aspek:'Memberikan umpan balik yang membangun',
+     masalah:'Umpan balik yang diberikan bersifat umum, terlambat, atau tidak mendorong perbaikan.',
+     rekomendasi:'Berikan umpan balik spesifik, segera, dan berorientasi perbaikan. Gunakan teknik sandwich feedback atau komentar tertulis bermakna.',
+     target:'Umpan balik membangun dan tepat waktu',waktu:'2 minggu'},
+    {aspek:'Memanfaatkan hasil asesmen untuk perbaikan pembelajaran',
+     masalah:'Data hasil asesmen tidak dianalisis dan tidak digunakan sebagai dasar perbaikan pembelajaran.',
+     rekomendasi:'Analisis data asesmen setiap akhir unit/semester. Susun program remedial dan pengayaan berdasarkan data. Revisi strategi jika diperlukan.',
+     target:'Data asesmen menjadi dasar perbaikan KBM',waktu:'1 bulan'},
   ],
 };
 
@@ -10600,42 +10617,9 @@ function TabPenugasan({sesi, showToast}) {
 // ── TAB INSTRUMEN (EDITOR) ────────────────────────────────────
 function TabInstrumen({sesi, showToast}) {
   const DEFAULT = {
-    perencanaan: [
-      'Merumuskan tujuan pembelajaran berbasis KBC',
-      'Menyusun indikator capaian berbasis kompetensi',
-      'Merancang materi ajar kontekstual dan bermakna',
-      'Memilih metode pembelajaran yang tepat',
-      'Menyiapkan media/sumber belajar yang relevan',
-      'Merancang aktivitas KBC (mengetahui, memahami, mengaplikasi, merefleksi)',
-      'Menyusun instrumen penilaian formatif',
-      'Mengintegrasikan nilai karakter Islam dalam pembelajaran',
-      'Merancang diferensiasi untuk keberagaman peserta didik',
-    ],
-    pelaksanaan: [
-      'Membuka pembelajaran dengan apersepsi bermakna',
-      'Menyampaikan tujuan dan manfaat pembelajaran',
-      'Mengaitkan materi dengan konteks kehidupan nyata',
-      'Memfasilitasi aktivitas MENGETAHUI (penguatan konsep)',
-      'Memfasilitasi aktivitas MEMAHAMI (pendalaman makna)',
-      'Memfasilitasi aktivitas MENGAPLIKASI (penerapan)',
-      'Memfasilitasi aktivitas MEREFLEKSI (evaluasi diri)',
-      'Mendorong interaksi aktif antar peserta didik',
-      'Memberikan umpan balik konstruktif',
-      'Mengintegrasikan nilai-nilai Islam (akhlak, adab)',
-      'Menggunakan media/teknologi secara efektif',
-      'Mengelola waktu pembelajaran dengan baik',
-      'Menyesuaikan pendekatan dengan kebutuhan peserta didik',
-      'Menutup pembelajaran dengan refleksi dan penguatan',
-    ],
-    asesmen: [
-      'Melaksanakan penilaian formatif selama pembelajaran',
-      'Menggunakan instrumen penilaian yang beragam',
-      'Memberikan umpan balik terhadap hasil belajar',
-      'Mendorong peserta didik melakukan penilaian diri',
-      'Menggunakan hasil asesmen untuk perbaikan pembelajaran',
-      'Mencatat perkembangan belajar peserta didik',
-      'Mengintegrasikan penilaian karakter dalam asesmen',
-    ],
+    perencanaan: [...P_ITEMS],
+    pelaksanaan: [...L_ITEMS],
+    asesmen:     [...A_ITEMS],
   };
 
   const [komponen, setKomponen] = React.useState('perencanaan');
@@ -10832,43 +10816,53 @@ function TabInstrumen({sesi, showToast}) {
   );
 }
 
+// Instrumen Supervisi PM-KBC sesuai lampiran resmi
 const P_ITEMS = [
-  'Merumuskan tujuan pembelajaran berbasis KBC',
-  'Menyusun indikator capaian berbasis kompetensi',
-  'Merancang materi ajar kontekstual dan bermakna',
-  'Memilih metode pembelajaran yang tepat',
-  'Menyiapkan media/sumber belajar yang relevan',
-  'Merancang aktivitas KBC (mengetahui, memahami, mengaplikasi, merefleksi)',
-  'Menyusun instrumen penilaian formatif',
-  'Mengintegrasikan nilai karakter Islam dalam pembelajaran',
-  'Merancang diferensiasi untuk keberagaman peserta didik',
+  'Identifikasi Murid: Sesuai kondisi obyektifitas dan menunjukkan kebiasaan belajar',
+  'Dimensi profil lulusan yang dipilih sesuai dengan materi pembelajaran',
+  'Mengintegrasikan Topik Panca Cinta dalam Pembelajaran',
+  'Tujuan pembelajaran jelas, terukur, relevan serta mengandung kompetensi minimal yakni kompetensi dan materi',
+  'Praktik pedagogis sesuai prinsip pembelajaran berdasarkan, bermakna, menggembirakan (mendukung pembelajaran siswa aktif)',
+  'Kemitraan pembelajaran melibatkan stakeholder yang mendukung tercapainya tujuan pembelajaran',
+  'Lingkungan pembelajaran mendukung suasana aman, inklusif',
+  'Pemanfaatan teknologi/digital mendukung pembelajaran interaktif',
+  'Langkah-langkah pembelajaran runtut, sesuai waktu dan sesuai dengan tahapan pengalaman belajar (Memahami, Mengaplikasikan, dan Merefleksi)',
 ];
+// Tahap Pelaksanaan: Memahami (1-5), Mengaplikasi (6-10), Merefleksi (11-14)
 const L_ITEMS = [
-  'Membuka pembelajaran dengan apersepsi bermakna',
-  'Menyampaikan tujuan dan manfaat pembelajaran',
-  'Mengaitkan materi dengan konteks kehidupan nyata',
-  'Memfasilitasi aktivitas MENGETAHUI (penguatan konsep)',
-  'Memfasilitasi aktivitas MEMAHAMI (pendalaman makna)',
-  'Memfasilitasi aktivitas MENGAPLIKASI (penerapan)',
-  'Memfasilitasi aktivitas MEREFLEKSI (evaluasi diri)',
-  'Mendorong interaksi aktif antar peserta didik',
-  'Memberikan umpan balik konstruktif',
-  'Mengintegrasikan nilai-nilai Islam (akhlak, adab)',
-  'Menggunakan media/teknologi secara efektif',
-  'Mengelola waktu pembelajaran dengan baik',
-  'Menyesuaikan pendekatan dengan kebutuhan peserta didik',
-  'Menutup pembelajaran dengan refleksi dan penguatan',
+  // Tahap Memahami
+  'Guru menyampaikan tujuan pembelajaran',
+  'Guru membuka pembelajaran dengan apersepsi dan motivasi',
+  'Mengajukan pertanyaan terbuka, narasikan',
+  'Memfasilitasi pertanyaan dan penggalian pengetahuan awal',
+  'Mengimplementasikan Prinsip Pembelajaran (Berdasarkan, Bermakna, Menggembirakan)',
+  // Tahap Mengaplikasi
+  'Menggunakan media pembelajaran yang relevan dan interaktif',
+  'Memberikan pengalaman nyata (Kontekstualisasi) melalui kegiatan praktik, proyek, simulasi dan sejenisnya',
+  'Melibatkan siswa aktif dalam kolaborasi dan diskusi',
+  'Mengembangkan berpikir kritis dan kreatif',
+  'Mengimplementasikan Prinsip Pembelajaran (Berdasarkan, Bermakna, Menggembirakan)',
+  // Tahap Merefleksi
+  'Mengajak murid merefleksikan proses dan hasil belajar',
+  'Memberikan umpan balik dan rencana tindak lanjut',
+  'Mengintegrasikan Topik Panca Cinta dalam materi/kegiatan pembelajaran',
+  'Mengimplementasikan Prinsip Pembelajaran (Berdasarkan, Bermakna, Menggembirakan)',
+];
+const L_TAHAP = [
+  {label:'Tahap Memahami',from:0,to:4},
+  {label:'Tahap Mengaplikasi',from:5,to:9},
+  {label:'Tahap Merefleksi',from:10,to:13},
 ];
 const A_ITEMS = [
-  'Melaksanakan penilaian formatif selama pembelajaran',
-  'Menggunakan instrumen penilaian yang beragam',
-  'Memberikan umpan balik terhadap hasil belajar',
-  'Mendorong peserta didik melakukan penilaian diri',
-  'Menggunakan hasil asesmen untuk perbaikan pembelajaran',
-  'Mencatat perkembangan belajar peserta didik',
-  'Mengintegrasikan penilaian karakter dalam asesmen',
+  'Instrumen penilaian sesuai tujuan pembelajaran',
+  'Penilaian mencakup proses dan hasil belajar',
+  'Penilaian berorientasi pada dimensi profil lulusan dan Topik Panca Cinta',
+  'Menggunakan teknik beragam (tes, non-tes, observasi, portofolio)',
+  'Memberikan umpan balik yang membangun',
+  'Memanfaatkan hasil asesmen untuk perbaikan pembelajaran',
 ];
-const PREDIKAT = (p) => p >= 87.5 ? 'Sangat Baik' : p >= 75 ? 'Baik' : p >= 62.5 ? 'Cukup' : 'Kurang';
+// Predikat: 91-100% SB, 81-90% Baik, 71-79% Cukup, <71% Kurang (sesuai lampiran)
+const PREDIKAT = (p) => p >= 91 ? 'Sangat Baik' : p >= 81 ? 'Baik' : p >= 71 ? 'Cukup' : 'Kurang';
 
 function SkorBtns({value, onChange}) {
   return (
@@ -10892,7 +10886,7 @@ function TabelPenilaian({items, prefix, skor, onChange, catatan, setCatatan, lab
   const max   = items.length * 3;
   const pct   = max > 0 ? (total/max*100) : 0;
   const pred  = PREDIKAT(pct);
-  const warna = pct>=87.5?'#16a34a':pct>=75?'#2563eb':pct>=62.5?'#d97706':'#dc2626';
+  const warna = pct>=91?'#16a34a':pct>=81?'#2563eb':pct>=71?'#d97706':'#dc2626';
 
   return (
     <div className="card" style={{marginBottom:16}}>
@@ -10903,8 +10897,8 @@ function TabelPenilaian({items, prefix, skor, onChange, catatan, setCatatan, lab
             Skor: <b style={{color:warna}}>{total}/{max}</b>
           </div>
           <span style={{padding:'3px 10px',borderRadius:20,fontSize:'.72rem',fontWeight:700,
-            background:pct>=87.5?'#d1fae5':pct>=75?'#dbeafe':pct>=62.5?'#fef3c7':'#fee2e2',
-            color:pct>=87.5?'#065f46':pct>=75?'#1d4ed8':pct>=62.5?'#92400e':'#991b1b'}}>
+            background:pct>=91?'#d1fae5':pct>=81?'#dbeafe':pct>=71?'#fef3c7':'#fee2e2',
+            color:pct>=91?'#065f46':pct>=81?'#1d4ed8':pct>=71?'#92400e':'#991b1b'}}>
             {pred} ({pct.toFixed(1)}%)
           </span>
         </div>
@@ -10914,7 +10908,7 @@ function TabelPenilaian({items, prefix, skor, onChange, catatan, setCatatan, lab
           <thead>
             <tr style={{background:'var(--p3)',color:'#fff'}}>
               <th style={{padding:'7px 10px',textAlign:'left',width:32}}>No</th>
-              <th style={{padding:'7px 10px',textAlign:'left'}}>Aspek Penilaian</th>
+              <th style={{padding:'7px 10px',textAlign:'left'}}>Komponen Penilaian</th>
               <th style={{padding:'7px 10px',textAlign:'center',width:140}}>Skor (0-3)</th>
             </tr>
           </thead>
@@ -10991,6 +10985,37 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
   const [catL, setCatL] = useState({c:'',r:''});
   const [catA, setCatA] = useState({c:'',r:''});
 
+  // Wawancara Pra Observasi (8 pertanyaan)
+  const PRA_Q = [
+    'Apa tujuan pembelajaran yang akan saudara sajikan?',
+    'Metode apa yang akan saudara gunakan dalam pembelajaran ini? Apa alasan anda memilih metode tersebut?',
+    'Alat dan bahan (sumber belajar) apakah yang saudara siapkan? Jelaskan alasannya!',
+    'Ceritakan tahapan pembelajaran yang akan saudara sajikan!',
+    'Persiapan tertulis apa saja yang saudara buat?',
+    'Materi apa yang dianggap sulit oleh siswa berdasarkan perkiraan saudara? Jika ada, Materi apa? Jelaskan alasan Saudara!',
+    'Kompetensi apa yang bias dimiliki siswa setelah mengikuti pembelajaran sesuai dengan harapan saudara?',
+    'Apa yang perlu mendapat perhatian khusus pada pembelajaran kali ini?',
+  ];
+  const [praJawab, setPraJawab]   = useState(PRA_Q.map(()=>''));
+  const [praLama,  setPraLama]    = useState('');
+
+  // Wawancara Pasca Observasi (9 pertanyaan)
+  const PASCA_Q = [
+    'Bagaimana pendapat saudara setelah menyajikan pelajaran ini?',
+    'Apakah proses pembelajaran sudah sesuai dengan yang direncanakan?',
+    'Dapatkah Saudara menceritakan hal-hal yang dirasakan memuaskan dalam proses pembelajaran tadi?',
+    'Bagaimana perkiraan Saudara mengenai ketercapaian tujuan pembelajaran?',
+    'Apa yang menjadi kesulitan siswa?',
+    'Apa yang menjadi kesulitasn saudara?',
+    'Adakah alternatif lain untuk mengatasi kesulitan Saudara?',
+    'Marilah bersama-sama kita identifikasi hal-hal yang telah mantap dan hal-hal yang peerlu peningkatan, berdasarkan kegiatan yang baru saja Saudara lakukan dan pengamatan saya.',
+    'Dengan demikian, apa yang akan Saudara lakukan untuk pertemuan berikutnya?',
+  ];
+  const [pascaJawab,  setPascaJawab]  = useState(PASCA_Q.map(()=>''));
+  const [pascaLama,   setPascaLama]   = useState('');
+  const [kesanUmum,   setKesanUmum]   = useState('');
+  const [saranMasukan,setSaranMasukan]= useState('');
+
   // Hitung capaian
   const capP = (skorP.reduce((a,b)=>a+b,0)/(itemsP.length*3)*100);
   const capL = (skorL.reduce((a,b)=>a+b,0)/(itemsL.length*3)*100);
@@ -11002,11 +11027,13 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
   function setSkorAItem(i,v){ const s=[...skorA]; s[i]=v; setSkorA(s); }
 
   const tabs = [
-    {key:'identitas',  label:'📋 Identitas'},
-    {key:'perencanaan',label:'📝 Perencanaan'},
-    {key:'pelaksanaan',label:'🎯 Pelaksanaan'},
-    {key:'asesmen',    label:'✅ Asesmen'},
-    {key:'rekap',      label:'📊 Rekap'},
+    {key:'identitas',     label:'📋 Identitas'},
+    {key:'pra_observasi', label:'🗣️ Pra Observasi'},
+    {key:'perencanaan',   label:'📝 Perencanaan'},
+    {key:'pelaksanaan',   label:'🎯 Pelaksanaan'},
+    {key:'asesmen',       label:'✅ Asesmen'},
+    {key:'pasca_observasi',label:'💬 Pasca Observasi'},
+    {key:'rekap',         label:'📊 Rekap'},
   ];
 
   async function simpan(status='selesai') {
@@ -11039,6 +11066,8 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
         catatan_p:           catP.c, rekomendasi_p: catP.r,
         catatan_l:           catL.c, rekomendasi_l: catL.r,
         catatan_a:           catA.c, rekomendasi_a: catA.r,
+        wawancara_pra:       {lama:praLama, jawaban:praJawab},
+        wawancara_pasca:     {lama:pascaLama, jawaban:pascaJawab, kesan_umum:kesanUmum, saran_masukan:saranMasukan},
         capaian_perencanaan: parseFloat(capP.toFixed(2)),
         capaian_pelaksanaan: parseFloat(capL.toFixed(2)),
         capaian_asesmen:     parseFloat(capA.toFixed(2)),
@@ -11088,36 +11117,33 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
     
     function buildRTL() {
       var REKS = {
-        'Merumuskan tujuan pembelajaran berbasis KBC':'Ikuti workshop KBC. Gunakan format A-B-C-D.',
-        'Menyusun indikator capaian berbasis kompetensi':'Studi CP/TP/ATP terbaru. Konsultasi pengawas.',
-        'Merancang materi ajar kontekstual dan bermakna':'Kembangkan materi berbasis konteks lokal Aceh.',
-        'Memilih metode pembelajaran yang tepat':'Variasikan metode aktif learning.',
-        'Menyiapkan media/sumber belajar yang relevan':'Manfaatkan teknologi digital.',
-        'Merancang aktivitas KBC (mengetahui, memahami, mengaplikasi, merefleksi)':'Rancang aktivitas 4M dalam setiap RPP.',
-        'Menyusun instrumen penilaian formatif':'Susun instrumen formatif tiap pertemuan.',
-        'Mengintegrasikan nilai karakter Islam dalam pembelajaran':'Cantumkan nilai Islam dalam RPP.',
-        'Merancang diferensiasi untuk keberagaman peserta didik':'Rancang diferensiasi konten, proses, produk.',
-        'Membuka pembelajaran dengan apersepsi bermakna':'Gunakan pertanyaan pemantik kontekstual.',
-        'Menyampaikan tujuan dan manfaat pembelajaran':'Sampaikan tujuan dengan bahasa mudah.',
-        'Mengaitkan materi dengan konteks kehidupan nyata':'Gunakan contoh kehidupan sehari-hari.',
-        'Memfasilitasi aktivitas MENGETAHUI (penguatan konsep)':'Gunakan brainstorming atau mind mapping.',
-        'Memfasilitasi aktivitas MEMAHAMI (pendalaman makna)':'Gunakan diskusi kelompok atau studi kasus.',
-        'Memfasilitasi aktivitas MENGAPLIKASI (penerapan)':'Rancang tugas proyek atau simulasi nyata.',
-        'Memfasilitasi aktivitas MEREFLEKSI (evaluasi diri)':'Gunakan jurnal belajar atau kartu refleksi.',
-        'Mendorong interaksi aktif antar peserta didik':'Terapkan pembelajaran kooperatif.',
-        'Memberikan umpan balik konstruktif':'Berikan umpan balik segera dan spesifik.',
-        'Mengintegrasikan nilai-nilai Islam (akhlak, adab)':'Sisipkan nilai akhlak/adab secara kontekstual.',
-        'Menggunakan media/teknologi secara efektif':'Integrasikan media digital secara bertahap.',
-        'Mengelola waktu pembelajaran dengan baik':'Buat alokasi waktu detail per aktivitas.',
-        'Menyesuaikan pendekatan dengan kebutuhan peserta didik':'Terapkan diferensiasi proses.',
-        'Menutup pembelajaran dengan refleksi dan penguatan':'Gunakan exit ticket atau one sentence summary.',
-        'Melaksanakan penilaian formatif selama pembelajaran':'Gunakan observasi dan pertanyaan lisan.',
-        'Menggunakan instrumen penilaian yang beragam':'Kembangkan rubrik, portofolio, tes lisan.',
-        'Memberikan umpan balik terhadap hasil belajar':'Berikan umpan balik dalam 1x24 jam.',
-        'Mendorong peserta didik melakukan penilaian diri':'Latih peserta didik menilai karya sendiri.',
-        'Menggunakan hasil asesmen untuk perbaikan pembelajaran':'Analisis asesmen untuk remedial dan pengayaan.',
-        'Mencatat perkembangan belajar peserta didik':'Buat jurnal/catatan anekdot secara tertib.',
-        'Mengintegrasikan penilaian karakter dalam asesmen':'Kembangkan rubrik penilaian akhlak/karakter.'
+        'Identifikasi Murid: Sesuai kondisi obyektifitas dan menunjukkan kebiasaan belajar':'Lakukan asesmen diagnostik awal untuk mengenali kebiasaan dan kondisi belajar murid.',
+        'Dimensi profil lulusan yang dipilih sesuai dengan materi pembelajaran':'Pelajari dimensi Profil Pelajar Pancasila dan kaitkan secara eksplisit dengan materi.',
+        'Mengintegrasikan Topik Panca Cinta dalam Pembelajaran':'Cantumkan integrasi Topik Panca Cinta dalam rencana pembelajaran secara kongkrit.',
+        'Tujuan pembelajaran jelas, terukur, relevan serta mengandung kompetensi minimal yakni kompetensi dan materi':'Rumuskan tujuan menggunakan format SMART: kompetensi + materi yang terukur.',
+        'Praktik pedagogis sesuai prinsip pembelajaran berdasarkan, bermakna, menggembirakan (mendukung pembelajaran siswa aktif)':'Terapkan prinsip BBM (Berdasarkan, Bermakna, Menggembirakan) dalam setiap langkah pembelajaran.',
+        'Kemitraan pembelajaran melibatkan stakeholder yang mendukung tercapainya tujuan pembelajaran':'Libatkan orang tua, komunitas, atau mitra lain sebagai bagian ekosistem pembelajaran.',
+        'Lingkungan pembelajaran mendukung suasana aman, inklusif':'Ciptakan aturan kelas bersama murid dan pastikan semua murid merasa aman dan dihargai.',
+        'Pemanfaatan teknologi/digital mendukung pembelajaran interaktif':'Integrasikan media digital/aplikasi pembelajaran yang relevan dan interaktif.',
+        'Langkah-langkah pembelajaran runtut, sesuai waktu dan sesuai dengan tahapan pengalaman belajar (Memahami, Mengaplikasikan, dan Merefleksi)':'Susun langkah pembelajaran dengan alokasi waktu per tahap: Memahami, Mengaplikasi, Merefleksi.',
+        'Guru menyampaikan tujuan pembelajaran':'Sampaikan tujuan pembelajaran di awal dengan bahasa yang mudah dipahami murid.',
+        'Guru membuka pembelajaran dengan apersepsi dan motivasi':'Gunakan pertanyaan pemantik kontekstual untuk mengaktifkan pengetahuan awal murid.',
+        'Mengajukan pertanyaan terbuka, narasikan':'Latih penggunaan pertanyaan terbuka yang mendorong murid berpikir lebih dalam.',
+        'Memfasilitasi pertanyaan dan penggalian pengetahuan awal':'Beri ruang murid bertanya dan dorong eksplorasi pengetahuan awal secara aktif.',
+        'Mengimplementasikan Prinsip Pembelajaran (Berdasarkan, Bermakna, Menggembirakan)':'Terapkan prinsip BBM secara konsisten di setiap tahap pembelajaran.',
+        'Menggunakan media pembelajaran yang relevan dan interaktif':'Pilih media yang sesuai karakteristik materi dan mendorong keterlibatan aktif murid.',
+        'Memberikan pengalaman nyata (Kontekstualisasi) melalui kegiatan praktik, proyek, simulasi dan sejenisnya':'Rancang kegiatan berbasis pengalaman nyata: proyek, simulasi, atau problem-solving kontekstual.',
+        'Melibatkan siswa aktif dalam kolaborasi dan diskusi':'Terapkan struktur pembelajaran kooperatif agar semua murid terlibat aktif.',
+        'Mengembangkan berpikir kritis dan kreatif':'Rancang pertanyaan dan tugas yang menantang murid untuk menganalisis dan berkreasi.',
+        'Mengajak murid merefleksikan proses dan hasil belajar':'Gunakan jurnal belajar, exit ticket, atau tanya-jawab reflektif di akhir sesi.',
+        'Memberikan umpan balik dan rencana tindak lanjut':'Berikan umpan balik spesifik dan rencanakan tindak lanjut untuk murid yang belum mencapai tujuan.',
+        'Mengintegrasikan Topik Panca Cinta dalam materi/kegiatan pembelajaran':'Sisipkan nilai Panca Cinta secara kontekstual dalam kegiatan dan diskusi kelas.',
+        'Instrumen penilaian sesuai tujuan pembelajaran':'Pastikan setiap instrumen penilaian selaras dengan indikator tujuan pembelajaran.',
+        'Penilaian mencakup proses dan hasil belajar':'Kembangkan rubrik yang menilai proses (keterlibatan, kolaborasi) dan hasil belajar murid.',
+        'Penilaian berorientasi pada dimensi profil lulusan dan Topik Panca Cinta':'Integrasikan dimensi profil lulusan dan Panca Cinta dalam rubrik penilaian.',
+        'Menggunakan teknik beragam (tes, non-tes, observasi, portofolio)':'Kembangkan variasi instrumen: tes tertulis, observasi, portofolio, dan unjuk kerja.',
+        'Memberikan umpan balik yang membangun':'Berikan umpan balik yang konstruktif, spesifik, dan tepat waktu untuk mendorong perbaikan.',
+        'Memanfaatkan hasil asesmen untuk perbaikan pembelajaran':'Analisis data asesmen untuk merancang remedial, pengayaan, dan perbaikan strategi mengajar.'
       };
       var items = [];
       [[P_ITEMS,skorP,'Perencanaan'],[L_ITEMS,skorL,'Pelaksanaan'],[A_ITEMS,skorA,'Asesmen']].forEach(function(x){
@@ -11145,21 +11171,54 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
         rows + '</table>';
     }
 
+    function buildWawancara(judul, nomor, pertanyaan, jawaban, lama, extra) {
+      let rows = '';
+      pertanyaan.forEach(function(q,i){
+        rows += '<tr><td style="border:1px solid #000;padding:5px 8px;text-align:center;vertical-align:top;width:5%">'+(i+1)+'</td>'+
+          '<td style="border:1px solid #000;padding:5px 8px;vertical-align:top;width:45%">'+q+'</td>'+
+          '<td style="border:1px solid #000;padding:5px 8px;vertical-align:top">'+(jawaban[i]||'')+'</td></tr>';
+      });
+      var extraHtml = '';
+      if(extra) {
+        if(extra.kesan) extraHtml += '<tr><td colspan="3" style="border:1px solid #000;padding:6px 8px"><b>Kesan Umum :</b><br>'+(extra.kesan||'')+'</td></tr>';
+        if(extra.saran) extraHtml += '<tr><td colspan="3" style="border:1px solid #000;padding:6px 8px"><b>Saran-Masukan :</b><br>'+(extra.saran||'')+'</td></tr>';
+      }
+      return '<div style="page-break-before:always;padding-top:10px">'+
+        '<h3 style="text-align:center;font-size:11pt;text-transform:uppercase;margin:0 0 4px;font-weight:900">'+nomor+'. '+judul+'</h3>'+
+        '<div style="text-align:center;font-size:9pt;color:#444;margin-bottom:10px;border-bottom:2px solid #000;padding-bottom:6px">'+
+        'Lamanya wawancara: '+(lama||'……')+'  Menit</div>'+
+        '<table style="width:100%;border-collapse:collapse;font-size:10pt">'+
+        '<tr style="background:#0f4238;color:#fff">'+
+        '<th style="border:1px solid #000;padding:5px 8px;width:5%">No</th>'+
+        '<th style="border:1px solid #000;padding:5px 8px;width:45%">Pertanyaan</th>'+
+        '<th style="border:1px solid #000;padding:5px 8px">Jawaban</th></tr>'+
+        rows+extraHtml+'</table>'+
+        '<div class="ttd" style="margin-top:16px">'+
+        '<div><div style="margin-bottom:4px">Supervisor,</div>'+
+        '<div style="height:54px"></div>'+
+        '<div style="border-top:1.5px solid #000;padding-top:4px"><b>'+(namaSupervisor||'—')+'</b><br>NIP. '+(nipSupervisor||'—')+'</div></div>'+
+        '<div></div>'+
+        '<div><div style="margin-bottom:4px">Guru,</div>'+
+        '<div style="height:54px"></div>'+
+        '<div style="border-top:1.5px solid #000;padding-top:4px"><b>'+guru.nama+'</b><br>NIP. '+(guru.nip||'—')+'</div></div>'+
+        '</div></div>';
+    }
+
     function buildRekap() {
       const rows = [
         {l:'Perencanaan',s:skorP.reduce((a,b)=>a+b,0),m:itemsP.length*3,c:capP},
         {l:'Pelaksanaan',s:skorL.reduce((a,b)=>a+b,0),m:itemsL.length*3,c:capL},
         {l:'Asesmen',    s:skorA.reduce((a,b)=>a+b,0),m:itemsA.length*3,c:capA},
       ].map(r=>'<tr><td><b>'+r.l+'</b></td><td style="text-align:center">'+r.s+'/'+r.m+'</td>'+
-        '<td><div style="background:#e5e7eb;border-radius:4px;height:14px;overflow:hidden"><div style="width:'+r.c+'%;height:100%;background:'+(r.c>=87.5?'#16a34a':r.c>=75?'#2563eb':r.c>=62.5?'#d97706':'#dc2626')+'"></div></div></td>'+
-        '<td style="text-align:center;font-weight:700;color:'+(r.c>=87.5?'#16a34a':r.c>=75?'#2563eb':r.c>=62.5?'#d97706':'#dc2626')+'">'+r.c.toFixed(1)+'%</td>'+
+        '<td><div style="background:#e5e7eb;border-radius:4px;height:14px;overflow:hidden"><div style="width:'+r.c+'%;height:100%;background:'+(r.c>=91?'#16a34a':r.c>=81?'#2563eb':r.c>=71?'#d97706':'#dc2626')+'"></div></div></td>'+
+        '<td style="text-align:center;font-weight:700;color:'+(r.c>=91?'#16a34a':r.c>=81?'#2563eb':r.c>=71?'#d97706':'#dc2626')+'">'+r.c.toFixed(1)+'%</td>'+
         '<td style="text-align:center"><b>'+PREDIKAT(r.c)+'</b></td></tr>').join('');
       return '<table><tr><th colspan="5" style="background:#0f4238;color:#fff">REKAPITULASI CAPAIAN SUPERVISI PEMBELAJARAN</th></tr>'+
         '<tr style="background:#f5f5f5"><th>Komponen</th><th>Skor</th><th width="30%">Capaian</th><th>%</th><th>Predikat</th></tr>'+
         rows+
         '<tr style="background:#f0fdf4;border-top:2px solid #0f4238"><td><b>RATA-RATA</b></td><td></td>'+
-        '<td><div style="background:#e5e7eb;border-radius:4px;height:14px;overflow:hidden"><div style="width:'+capRata+'%;height:100%;background:'+(capRata>=87.5?'#16a34a':capRata>=75?'#2563eb':capRata>=62.5?'#d97706':'#dc2626')+'"></div></div></td>'+
-        '<td style="text-align:center;font-weight:900;font-size:11pt;color:'+(capRata>=87.5?'#16a34a':capRata>=75?'#2563eb':capRata>=62.5?'#d97706':'#dc2626')+'">'+capRata.toFixed(1)+'%</td>'+
+        '<td><div style="background:#e5e7eb;border-radius:4px;height:14px;overflow:hidden"><div style="width:'+capRata+'%;height:100%;background:'+(capRata>=91?'#16a34a':capRata>=81?'#2563eb':capRata>=71?'#d97706':'#dc2626')+'"></div></div></td>'+
+        '<td style="text-align:center;font-weight:900;font-size:11pt;color:'+(capRata>=91?'#16a34a':capRata>=81?'#2563eb':capRata>=71?'#d97706':'#dc2626')+'">'+capRata.toFixed(1)+'%</td>'+
         '<td style="text-align:center;font-weight:900;font-size:11pt">'+PREDIKAT(capRata)+'</td></tr></table>';
     }
     
@@ -11209,6 +11268,8 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
     '<div><div style="margin-bottom:4px">Supervisor,</div><div style="font-size:9pt">('+jabatanSup+')</div><div class="ttd-line"><b>'+(namaSupervisor||'—')+'</b><br>NIP. '+(nipSupervisor||'—')+'</div></div>'+
     '<div><div style="margin-bottom:4px">Mengetahui,</div><div style="font-size:9pt">Kepala Madrasah</div><div class="ttd-line"><b>'+(mad.nama_kepala||'.....')+'</b><br>NIP. '+(mad.nip_kepala||'—')+'</div></div>'+
     '</div>'+
+    buildWawancara('Daftar Pertanyaan Pra Observasi','1',PRA_Q,praJawab,praLama,null)+
+    buildWawancara('Daftar Pertanyaan Pasca Observasi','2',PASCA_Q,pascaJawab,pascaLama,{kesan:kesanUmum,saran:saranMasukan})+
     '<div style="page-break-before:always;padding-top:10px">'+
     '<h3 style="text-align:center;font-size:11pt;text-transform:uppercase;margin:0 0 4px;font-weight:900">'+
     'Rekomendasi Tindak Lanjut (RTL)</h3>'+
@@ -11249,10 +11310,10 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
       {/* Rekap mini */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:14}}>
         {[
-          {label:'Perencanaan', val:capP, warna:capP>=87.5?'#16a34a':capP>=75?'#2563eb':capP>=62.5?'#d97706':'#dc2626'},
-          {label:'Pelaksanaan', val:capL, warna:capL>=87.5?'#16a34a':capL>=75?'#2563eb':capL>=62.5?'#d97706':'#dc2626'},
-          {label:'Asesmen',     val:capA, warna:capA>=87.5?'#16a34a':capA>=75?'#2563eb':capA>=62.5?'#d97706':'#dc2626'},
-          {label:'Rata-rata',   val:capRata, warna:capRata>=87.5?'#16a34a':capRata>=75?'#2563eb':capRata>=62.5?'#d97706':'#dc2626'},
+          {label:'Perencanaan', val:capP, warna:capP>=91?'#16a34a':capP>=81?'#2563eb':capP>=71?'#d97706':'#dc2626'},
+          {label:'Pelaksanaan', val:capL, warna:capL>=91?'#16a34a':capL>=81?'#2563eb':capL>=71?'#d97706':'#dc2626'},
+          {label:'Asesmen',     val:capA, warna:capA>=91?'#16a34a':capA>=81?'#2563eb':capA>=71?'#d97706':'#dc2626'},
+          {label:'Rata-rata',   val:capRata, warna:capRata>=91?'#16a34a':capRata>=81?'#2563eb':capRata>=71?'#d97706':'#dc2626'},
         ].map((k,i)=>(
           <div key={i} style={{background:'#fff',border:'1px solid var(--border)',borderRadius:10,
             padding:'10px',textAlign:'center',borderTop:'3px solid '+k.warna}}>
@@ -11319,9 +11380,32 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
                 placeholder="Kepala Madrasah / Waka / Pengawas"/>
             </div>
           </div>
-          <button className="btn btn-primary btn-sm" style={{marginTop:8}} onClick={()=>setTab('perencanaan')}>
-            Lanjut ke Perencanaan →
+          <button className="btn btn-primary btn-sm" style={{marginTop:8}} onClick={()=>setTab('pra_observasi')}>
+            Lanjut ke Pra Observasi →
           </button>
+        </div>
+      )}
+
+      {/* PRA OBSERVASI */}
+      {tab==='pra_observasi' && (
+        <div className="card">
+          <div style={{fontWeight:800,color:'var(--p3)',marginBottom:4,fontSize:'.95rem'}}>🗣️ Wawancara Pra Observasi</div>
+          <div style={{fontSize:'.75rem',color:'var(--text2)',marginBottom:14}}>Dilakukan sebelum supervisi pembelajaran berlangsung</div>
+          <div className="form-group" style={{maxWidth:200}}>
+            <label>Lama Wawancara (Menit)</label>
+            <input type="number" value={praLama} onChange={e=>setPraLama(e.target.value)} placeholder="misal: 15"/>
+          </div>
+          {PRA_Q.map((q,i)=>(
+            <div key={i} className="form-group">
+              <label>{i+1}. {q}</label>
+              <textarea rows={2} value={praJawab[i]} onChange={e=>{const a=[...praJawab];a[i]=e.target.value;setPraJawab(a);}}
+                placeholder="Jawaban guru..."/>
+            </div>
+          ))}
+          <div style={{display:'flex',gap:8,marginTop:4}}>
+            <button className="btn btn-outline btn-sm" onClick={()=>setTab('identitas')}>← Identitas</button>
+            <button className="btn btn-primary btn-sm" onClick={()=>setTab('perencanaan')}>Lanjut ke Perencanaan →</button>
+          </div>
         </div>
       )}
 
@@ -11331,9 +11415,10 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
           <TabelPenilaian label="📝 Komponen Perencanaan Pembelajaran (9 Item)"
             items={itemsP} skor={skorP} onChange={setSkorPItem}
             catatan={catP} setCatatan={setCatP}/>
-          <button className="btn btn-primary btn-sm" onClick={()=>setTab('pelaksanaan')}>
-            Lanjut ke Pelaksanaan →
-          </button>
+          <div style={{display:'flex',gap:8,marginTop:4}}>
+            <button className="btn btn-outline btn-sm" onClick={()=>setTab('pra_observasi')}>← Pra Observasi</button>
+            <button className="btn btn-primary btn-sm" onClick={()=>setTab('pelaksanaan')}>Lanjut ke Pelaksanaan →</button>
+          </div>
         </div>
       )}
 
@@ -11343,21 +11428,53 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
           <TabelPenilaian label="🎯 Komponen Pelaksanaan Pembelajaran (14 Item)"
             items={itemsL} skor={skorL} onChange={setSkorLItem}
             catatan={catL} setCatatan={setCatL}/>
-          <button className="btn btn-primary btn-sm" onClick={()=>setTab('asesmen')}>
-            Lanjut ke Asesmen →
-          </button>
+          <div style={{display:'flex',gap:8,marginTop:4}}>
+            <button className="btn btn-outline btn-sm" onClick={()=>setTab('perencanaan')}>← Perencanaan</button>
+            <button className="btn btn-primary btn-sm" onClick={()=>setTab('asesmen')}>Lanjut ke Asesmen →</button>
+          </div>
         </div>
       )}
 
       {/* ASESMEN */}
       {tab==='asesmen' && (
         <div>
-          <TabelPenilaian label="✅ Komponen Asesmen Pembelajaran (7 Item)"
+          <TabelPenilaian label="✅ Komponen Asesmen Pembelajaran (6 Item)"
             items={itemsA} skor={skorA} onChange={setSkorAItem}
             catatan={catA} setCatatan={setCatA}/>
-          <button className="btn btn-primary btn-sm" onClick={()=>setTab('rekap')}>
-            Lihat Rekap →
+          <button className="btn btn-primary btn-sm" onClick={()=>setTab('pasca_observasi')}>
+            Lanjut ke Pasca Observasi →
           </button>
+        </div>
+      )}
+
+      {/* PASCA OBSERVASI */}
+      {tab==='pasca_observasi' && (
+        <div className="card">
+          <div style={{fontWeight:800,color:'var(--p3)',marginBottom:4,fontSize:'.95rem'}}>💬 Wawancara Pasca Observasi</div>
+          <div style={{fontSize:'.75rem',color:'var(--text2)',marginBottom:14}}>Dilakukan setelah supervisi pembelajaran selesai</div>
+          <div className="form-group" style={{maxWidth:200}}>
+            <label>Lama Wawancara (Menit)</label>
+            <input type="number" value={pascaLama} onChange={e=>setPascaLama(e.target.value)} placeholder="misal: 20"/>
+          </div>
+          {PASCA_Q.map((q,i)=>(
+            <div key={i} className="form-group">
+              <label>{i+1}. {q}</label>
+              <textarea rows={2} value={pascaJawab[i]} onChange={e=>{const a=[...pascaJawab];a[i]=e.target.value;setPascaJawab(a);}}
+                placeholder="Jawaban guru..."/>
+            </div>
+          ))}
+          <div className="form-group" style={{marginTop:8}}>
+            <label>Kesan Umum</label>
+            <textarea rows={3} value={kesanUmum} onChange={e=>setKesanUmum(e.target.value)} placeholder="Kesan supervisor terhadap pembelajaran..."/>
+          </div>
+          <div className="form-group">
+            <label>Saran-Masukan</label>
+            <textarea rows={3} value={saranMasukan} onChange={e=>setSaranMasukan(e.target.value)} placeholder="Saran dan masukan untuk perbaikan..."/>
+          </div>
+          <div style={{display:'flex',gap:8,marginTop:4}}>
+            <button className="btn btn-outline btn-sm" onClick={()=>setTab('asesmen')}>← Asesmen</button>
+            <button className="btn btn-primary btn-sm" onClick={()=>setTab('rekap')}>Lihat Rekap →</button>
+          </div>
         </div>
       )}
 
