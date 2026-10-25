@@ -8540,7 +8540,7 @@ function TabNilai({sesi, showToast}) {
       id, mapel, kelas_id, aktif,
       supermad_kelas!kelas_id(id, nama_kelas, tingkat)
     `)
-      .eq('pengguna_id', sesi.pengguna.id)
+      .eq('guru_id', sesi.pengguna.id)
       .eq('tahun_ajaran', filterTA)
       .eq('aktif', true)
       .order('mapel');
@@ -9997,7 +9997,7 @@ function TabJurnal({sesi, showToast}) {
 
 // ── TAB PENUGASAN (OPERATOR) ─────────────────────────────────
 function TabPenugasan({sesi, showToast}) {
-  const [penggunaList, setPenggunaList] = React.useState([]);
+  const [guruList,     setGuruList]     = React.useState([]);
   const [kelasList,    setKelasList]    = React.useState([]);
   const [penugasanList,setPenugasanList]= React.useState([]);
   const [loading,  setLoading]  = React.useState(true);
@@ -10005,7 +10005,7 @@ function TabPenugasan({sesi, showToast}) {
   const [showForm, setShowForm] = React.useState(false);
   const [filterTA, setFilterTA] = React.useState(getTASekarang());
   const [form, setForm] = React.useState({
-    pengguna_id:'', mapel:'', kelas_id:'', tahun_ajaran: getTASekarang()
+    guru_id:'', mapel:'', kelas_id:'', tahun_ajaran: getTASekarang()
   });
 
   const MAPEL_LIST = [
@@ -10022,17 +10022,17 @@ function TabPenugasan({sesi, showToast}) {
   async function loadData() {
     setLoading(true);
     const [pg, kl, pt] = await Promise.all([
-      sb.from('supermad_pengguna').select('id,nama,role,username')
-        .eq('madrasah_id', sesi.mad.id).eq('aktif', true).eq('role','guru').order('nama'),
-      sb.from('supermad_kelas').select('id,nama_kelas,tingkat')
-        .eq('madrasah_id', sesi.mad.id).eq('tahun_ajaran', filterTA).order('tingkat').order('nama_kelas'),
+      sb.from('supermad_guru').select('id,nama,mapel,token')
+        .eq('madrasah_id', sesi.mad.id).eq('aktif', true).order('nama'),
+      sb.from('supermad_kelas').select('id,nama_kelas,tingkat,tahun_ajaran')
+        .eq('madrasah_id', sesi.mad.id).order('tingkat').order('nama_kelas'),
       sb.from('supermad_penugasan').select(`
-        id, pengguna_id, mapel, kelas_id, tahun_ajaran, aktif,
-        supermad_pengguna!pengguna_id(nama,role),
+        id, guru_id, mapel, kelas_id, tahun_ajaran, aktif,
+        supermad_guru!guru_id(id,nama,mapel),
         supermad_kelas!kelas_id(nama_kelas,tingkat)
       `).eq('madrasah_id', sesi.mad.id).eq('tahun_ajaran', filterTA).order('created_at', {ascending:false}),
     ]);
-    setPenggunaList(pg.data||[]);
+    setGuruList(pg.data||[]);
     setKelasList(kl.data||[]);
     setPenugasanList(pt.data||[]);
     setLoading(false);
@@ -10040,13 +10040,13 @@ function TabPenugasan({sesi, showToast}) {
 
   async function simpanPenugasan(e) {
     e.preventDefault();
-    if (!form.pengguna_id||!form.mapel||!form.kelas_id) {
+    if (!form.guru_id||!form.mapel||!form.kelas_id) {
       showToast('Lengkapi semua field!','error'); return;
     }
     setSaving(true);
     const {error} = await sb.from('supermad_penugasan').insert({
       madrasah_id:  sesi.mad.id,
-      pengguna_id:  form.pengguna_id,
+      guru_id:      form.guru_id,
       mapel:        form.mapel,
       kelas_id:     form.kelas_id,
       tahun_ajaran: form.tahun_ajaran,
@@ -10060,12 +10060,12 @@ function TabPenugasan({sesi, showToast}) {
     }
     showToast('✅ Penugasan berhasil ditambahkan!');
     setShowForm(false);
-    setForm({pengguna_id:'',mapel:'',kelas_id:'',tahun_ajaran:getTASekarang()});
+    setForm({guru_id:'',mapel:'',kelas_id:'',tahun_ajaran:getTASekarang()});
     loadData();
   }
 
   async function hapusPenugasan(pt) {
-    if (!confirm(`Hapus penugasan "${pt.supermad_pengguna?.nama} — ${pt.mapel} — ${pt.supermad_kelas?.nama_kelas}"?`)) return;
+    if (!confirm(`Hapus penugasan "${pt.supermad_guru?.nama} — ${pt.mapel} — ${pt.supermad_kelas?.nama_kelas}"?`)) return;
     const {error} = await sb.from('supermad_penugasan').delete().eq('id', pt.id);
     if (error) { showToast('Gagal hapus: '+error.message,'error'); return; }
     showToast('🗑️ Penugasan dihapus.');
@@ -10083,8 +10083,8 @@ function TabPenugasan({sesi, showToast}) {
   // Kelompokkan per guru
   const byGuru = {};
   penugasanList.forEach(pt=>{
-    const gId = pt.pengguna_id;
-    if (!byGuru[gId]) byGuru[gId] = {nama: pt.supermad_pengguna?.nama||'?', role: pt.supermad_pengguna?.role||'', list:[]};
+    const gId = pt.guru_id;
+    if (!byGuru[gId]) byGuru[gId] = {nama: pt.supermad_guru?.nama||'?', mapel_utama: pt.supermad_guru?.mapel||'', list:[]};
     byGuru[gId].list.push(pt);
   });
 
@@ -10113,11 +10113,11 @@ function TabPenugasan({sesi, showToast}) {
           <form onSubmit={simpanPenugasan}>
             <div className="grid2">
               <div className="form-group">
-                <label>Guru / Pengguna *</label>
-                <select value={form.pengguna_id} onChange={e=>setForm({...form,pengguna_id:e.target.value})} required>
-                  <option value="">— Pilih Pengguna —</option>
-                  {penggunaList.map(p=>(
-                    <option key={p.id} value={p.id}>{p.nama} ({p.role})</option>
+                <label>Guru *</label>
+                <select value={form.guru_id} onChange={e=>setForm({...form,guru_id:e.target.value})} required>
+                  <option value="">— Pilih Guru —</option>
+                  {guruList.map(g=>(
+                    <option key={g.id} value={g.id}>{g.nama}{g.mapel?' ('+g.mapel+')':''}</option>
                   ))}
                 </select>
               </div>
@@ -10164,11 +10164,12 @@ function TabPenugasan({sesi, showToast}) {
             <div key={gId} className="card" style={{padding:14}}>
               <div style={{fontWeight:800,color:'var(--p3)',marginBottom:10,fontSize:'.88rem'}}>
                 👤 {guru.nama}
-                <span style={{marginLeft:8,padding:'2px 8px',borderRadius:20,fontSize:'.68rem',fontWeight:700,
-                  background:guru.role==='guru'?'#fef3c7':'#dbeafe',
-                  color:guru.role==='guru'?'#92400e':'#1d4ed8'}}>
-                  {guru.role}
-                </span>
+                {guru.mapel_utama && (
+                  <span style={{marginLeft:8,padding:'2px 8px',borderRadius:20,fontSize:'.68rem',fontWeight:700,
+                    background:'#fef3c7',color:'#92400e'}}>
+                    {guru.mapel_utama}
+                  </span>
+                )}
               </div>
               <div style={{display:'flex',flexDirection:'column',gap:6}}>
                 {guru.list.map(pt=>(
