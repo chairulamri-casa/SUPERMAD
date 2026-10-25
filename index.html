@@ -10023,7 +10023,7 @@ function TabPenugasan({sesi, showToast}) {
     setLoading(true);
     const [pg, kl, pt] = await Promise.all([
       sb.from('supermad_pengguna').select('id,nama,role,username')
-        .eq('madrasah_id', sesi.mad.id).eq('aktif', true).order('nama'),
+        .eq('madrasah_id', sesi.mad.id).eq('aktif', true).eq('role','guru').order('nama'),
       sb.from('supermad_kelas').select('id,nama_kelas,tingkat')
         .eq('madrasah_id', sesi.mad.id).eq('tahun_ajaran', filterTA).order('tingkat').order('nama_kelas'),
       sb.from('supermad_penugasan').select(`
