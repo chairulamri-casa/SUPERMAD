@@ -11449,6 +11449,8 @@ function TabRekapNilai({sesi, showToast}) {
 
   const [filterTA,  setFilterTA]  = React.useState(taAwalR+'/'+(taAwalR+1));
   const [filterSmt, setFilterSmt] = React.useState(smtDefaultR);
+  // Konversi label semester ke angka (sesuai DB)
+  const smtToNum = s => s==='Ganjil'||s==='1'||s===1?1:2;
   const [kelasList, setKelasList] = React.useState([]);
   const kelasListRef = React.useRef([]);
   const [filterKelas, setFilterKelas] = React.useState('');
@@ -11510,10 +11512,12 @@ function TabRekapNilai({sesi, showToast}) {
     const siswaIds = siswaData.map(s=>s.id);
 
     // Load semua nilai untuk siswa-siswa ini, semester+TA yang dipilih
+    // semester di DB disimpan sebagai angka (1=Ganjil, 2=Genap)
+    const smtNum = smtToNum(filterSmt);
     const {data:nilaiData} = await sb.from('supermad_nilai')
       .select('siswa_id,mapel,jenis_nilai,nilai,kktp')
       .in('siswa_id', siswaIds)
-      .eq('semester', filterSmt)
+      .eq('semester', smtNum)
       .eq('tahun_ajaran', filterTA)
       .eq('madrasah_id', sesi.mad.id)
       .eq('kelas', kelasStr);
