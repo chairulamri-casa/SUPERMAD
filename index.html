@@ -969,8 +969,11 @@ function DashboardOperator({sesi, showToast}) {
                   </div>
                   <div className="form-group">
                     <label>Mata Pelajaran *</label>
-                    <input value={formGuru.mapel} onChange={e=>setFormGuru({...formGuru,mapel:e.target.value})} required
-                      placeholder="Contoh: Matematika"/>
+                    <select value={formGuru.mapel} required
+                      onChange={e=>setFormGuru({...formGuru,mapel:e.target.value})}>
+                      <option value="">-- Pilih Mapel --</option>
+                      {getMapelByJenjang(sesi.mad.jenjang).map(m=><option key={m} value={m}>{m}</option>)}
+                    </select>
                   </div>
                   <div className="form-group">
                     <label>Status Kepegawaian</label>
@@ -3394,7 +3397,10 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
               </div>
               <div className="form-group">
                 <label>Mata Pelajaran</label>
-                <input value={form.mapel} placeholder="otomatis dari guru" onChange={e=>setForm({...form,mapel:e.target.value})}/>
+                <select value={form.mapel} onChange={e=>setForm({...form,mapel:e.target.value})}>
+                  <option value="">-- Pilih / otomatis dari guru --</option>
+                  {getMapelByJenjang(sesi.mad.jenjang).map(m=><option key={m} value={m}>{m}</option>)}
+                </select>
               </div>
               <div className="form-group">
                 <label>Jumlah Jam (JTM)</label>
@@ -10815,14 +10821,7 @@ function TabPenugasan({sesi, showToast}) {
     guru_id:'', mapel:'', kelas_id:'', tahun_ajaran: getTASekarang()
   });
 
-  const MAPEL_LIST = [
-    'Al-Qur\'an Hadis','Akidah Akhlak','Fikih','Sejarah Kebudayaan Islam',
-    'Bahasa Arab','Pendidikan Pancasila','Bahasa Indonesia','Matematika',
-    'Ilmu Pengetahuan Alam dan Sosial','Seni Budaya dan Prakarya',
-    'Pendidikan Jasmani Olahraga dan Kesehatan','Bahasa Inggris',
-    'Pendidikan Pancasila dan Kewarganegaraan','Ilmu Pengetahuan Sosial',
-    'Ilmu Pengetahuan Alam','Prakarya','Informatika','Lainnya'
-  ];
+  const MAPEL_LIST = getMapelByJenjang(sesi.mad.jenjang);
 
   React.useEffect(()=>{ loadData(); }, [filterTA]);
 
@@ -11264,6 +11263,121 @@ const A_ITEMS = [
 ];
 // Predikat: 91-100% SB, 81-90% Baik, 71-79% Cukup, <71% Kurang (sesuai lampiran)
 const PREDIKAT = (p) => p >= 91 ? 'Sangat Baik' : p >= 81 ? 'Baik' : p >= 71 ? 'Cukup' : 'Kurang';
+
+// ── MAPEL KMA 1503/2025 per jenjang ──────────────────────────────────────────
+const MAPEL_KMA1503 = {
+  MI: [
+    // PAI & Bahasa Arab (semua kelas)
+    'Al-Qur\'an Hadis',
+    'Akidah Akhlak',
+    'Fikih',
+    'Sejarah Kebudayaan Islam',   // mulai kelas III
+    'Bahasa Arab',
+    // Umum
+    'Pendidikan Pancasila',
+    'Bahasa Indonesia',
+    'Matematika',
+    'Ilmu Pengetahuan Alam dan Sosial (IPAS)', // kelas III–VI
+    'Pendidikan Jasmani, Olahraga, dan Kesehatan',
+    'Seni dan Budaya',
+    'Bahasa Inggris',             // kelas III–VI
+    // Pilihan
+    'Koding dan Kecerdasan Artifisial', // kelas V–VI
+    'Muatan Lokal',
+  ],
+  MTs: [
+    // PAI & Bahasa Arab
+    'Al-Qur\'an Hadis',
+    'Akidah Akhlak',
+    'Fikih',
+    'Sejarah Kebudayaan Islam',
+    'Bahasa Arab',
+    // Umum
+    'Pendidikan Pancasila',
+    'Bahasa Indonesia',
+    'Matematika',
+    'Ilmu Pengetahuan Alam',
+    'Ilmu Pengetahuan Sosial',
+    'Bahasa Inggris',
+    'Pendidikan Jasmani, Olahraga, dan Kesehatan',
+    'Informatika',
+    'Seni Musik',
+    'Seni Rupa',
+    'Seni Teater',
+    'Seni Tari',
+    'Prakarya Budi Daya',
+    'Prakarya Kerajinan',
+    'Prakarya Rekayasa',
+    'Prakarya Pengolahan',
+    // Pilihan
+    'Koding dan Kecerdasan Artifisial',
+    'Muatan Lokal',
+  ],
+  MA: [
+    // PAI & Bahasa Arab
+    'Al-Qur\'an Hadis',
+    'Akidah Akhlak',
+    'Fikih',
+    'Sejarah Kebudayaan Islam',
+    'Bahasa Arab',
+    // Umum wajib
+    'Pendidikan Pancasila',
+    'Bahasa Indonesia',
+    'Matematika',
+    'Bahasa Inggris',
+    'Pendidikan Jasmani, Olahraga, dan Kesehatan',
+    'Sejarah',
+    'Seni dan Budaya',
+    'Informatika',
+    // IPA & IPS (kelas X terpadu, XI-XII pilihan)
+    'Fisika',
+    'Kimia',
+    'Biologi',
+    'Sosiologi',
+    'Ekonomi',
+    'Geografi',
+    // Mapel Pilihan Keagamaan (XI–XII)
+    'Ilmu Tafsir',
+    'Ilmu Hadis',
+    'Ushul Fikih',
+    // Pilihan lainnya
+    'Bahasa dan Sastra Indonesia',
+    'Bahasa dan Sastra Inggris',
+    'Bahasa Arab Tingkat Lanjut',
+    'Bahasa Jepang',
+    'Bahasa Jerman',
+    'Bahasa Mandarin',
+    'Bahasa Perancis',
+    'Prakarya dan Kewirausahaan',
+    'Koding dan Kecerdasan Artifisial',
+    'Muatan Lokal',
+  ],
+  MAK: [
+    // PAI & Bahasa Arab
+    'Al-Qur\'an Hadis',
+    'Akidah Akhlak',
+    'Fikih',
+    'Sejarah Kebudayaan Islam',
+    'Bahasa Arab',
+    // Umum
+    'Pendidikan Pancasila',
+    'Bahasa Indonesia',
+    'Matematika',
+    'Bahasa Inggris',
+    'Pendidikan Jasmani, Olahraga, dan Kesehatan',
+    'Sejarah',
+    'Seni dan Budaya',
+    'Informatika',
+    // Kejuruan (umum)
+    'Dasar-dasar Kejuruan',
+    'Projek Kreatif dan Kewirausahaan',
+    'Muatan Lokal',
+  ],
+};
+// Helper: ambil daftar mapel sesuai jenjang madrasah
+function getMapelByJenjang(jenjang) {
+  return MAPEL_KMA1503[jenjang] || MAPEL_KMA1503['MTs'];
+}
 
 function SkorBtns({value, onChange}) {
   return (
