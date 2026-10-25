@@ -970,13 +970,13 @@ function DashboardOperator({sesi, showToast}) {
                   <div className="form-group">
                     <label>Mata Pelajaran *
                       <span style={{fontWeight:400,fontSize:'.7rem',color:'var(--text3)',marginLeft:6}}>
-                        ({sesi.mad.jenjang||'jenjang?'} · KMA 1503/2025)
+                        ({getJenjangMad(sesi.mad)||'jenjang?'} · KMA 1503/2025)
                       </span>
                     </label>
                     <select value={formGuru.mapel} required
                       onChange={e=>setFormGuru({...formGuru,mapel:e.target.value})}>
                       <option value="">-- Pilih Mapel --</option>
-                      {getMapelByJenjang(sesi.mad.jenjang).map(m=><option key={m} value={m}>{m}</option>)}
+                      {getMapelByJenjang(getJenjangMad(sesi.mad)).map(m=><option key={m} value={m}>{m}</option>)}
                     </select>
                   </div>
                   <div className="form-group">
@@ -3403,7 +3403,7 @@ function HalamanJadwal({sesi, showToast, guruList, filterSmt, filterTA, onMulaiS
                 <label>Mata Pelajaran</label>
                 <select value={form.mapel} onChange={e=>setForm({...form,mapel:e.target.value})}>
                   <option value="">-- Pilih / otomatis dari guru --</option>
-                  {getMapelByJenjang(sesi.mad.jenjang).map(m=><option key={m} value={m}>{m}</option>)}
+                  {getMapelByJenjang(getJenjangMad(sesi.mad)).map(m=><option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
               <div className="form-group">
@@ -10825,7 +10825,7 @@ function TabPenugasan({sesi, showToast}) {
     guru_id:'', mapel:'', kelas_id:'', tahun_ajaran: getTASekarang()
   });
 
-  const MAPEL_LIST = getMapelByJenjang(sesi.mad.jenjang);
+  const MAPEL_LIST = getMapelByJenjang(getJenjangMad(sesi.mad));
 
   React.useEffect(()=>{ loadData(); }, [filterTA]);
 
@@ -11378,18 +11378,21 @@ const MAPEL_KMA1503 = {
     'Muatan Lokal',
   ],
 };
-// Helper: ambil daftar mapel sesuai jenjang madrasah (toleran berbagai format)
-function getMapelByJenjang(jenjang) {
-  if (!jenjang) return MAPEL_KMA1503['MTs'];
-  const j = String(jenjang).trim().toUpperCase();
-  // Normalisasi berbagai kemungkinan nilai kolom jenjang di DB
+// Helper: ambil daftar mapel sesuai jenjang madrasah
+// Kolom di DB bisa 'tingkat' atau 'jenjang' — terima keduanya
+function getMapelByJenjang(jenjangOrTingkat) {
+  if (!jenjangOrTingkat) return MAPEL_KMA1503['MTs'];
+  const j = String(jenjangOrTingkat).trim().toUpperCase();
   if (j === 'MI' || j.includes('IBTIDAIYAH')) return MAPEL_KMA1503['MI'];
-  if (j === 'MTS' || j.includes('TSANAWIYAH')) return MAPEL_KMA1503['MTs'];
-  if (j === 'MAK' || j.includes('KEJURUAN') || j.includes('MAK')) return MAPEL_KMA1503['MAK'];
+  if (j === 'MTS' || j === 'MTs'.toUpperCase() || j.includes('TSANAWIYAH')) return MAPEL_KMA1503['MTs'];
+  if (j === 'MAK' || j.includes('KEJURUAN')) return MAPEL_KMA1503['MAK'];
   if (j === 'MA' || j.includes('ALIYAH')) return MAPEL_KMA1503['MA'];
-  if (j === 'RA' || j.includes('RAUDHATUL')) return MAPEL_KMA1503['MI']; // RA pakai MI sebagai fallback
-  // Fallback: MTs
+  if (j === 'RA' || j.includes('RAUDHATUL')) return MAPEL_KMA1503['MI'];
   return MAPEL_KMA1503['MTs'];
+}
+// Helper gabungan: baca tingkat atau jenjang dari objek mad
+function getJenjangMad(mad) {
+  return mad ? (mad.tingkat || mad.jenjang || '') : '';
 }
 
 function SkorBtns({value, onChange}) {
