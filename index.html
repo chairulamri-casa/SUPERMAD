@@ -968,7 +968,11 @@ function DashboardOperator({sesi, showToast}) {
                       placeholder="16 digit NUPTK"/>
                   </div>
                   <div className="form-group">
-                    <label>Mata Pelajaran *</label>
+                    <label>Mata Pelajaran *
+                      <span style={{fontWeight:400,fontSize:'.7rem',color:'var(--text3)',marginLeft:6}}>
+                        ({sesi.mad.jenjang||'jenjang?'} · KMA 1503/2025)
+                      </span>
+                    </label>
                     <select value={formGuru.mapel} required
                       onChange={e=>setFormGuru({...formGuru,mapel:e.target.value})}>
                       <option value="">-- Pilih Mapel --</option>
@@ -11374,9 +11378,18 @@ const MAPEL_KMA1503 = {
     'Muatan Lokal',
   ],
 };
-// Helper: ambil daftar mapel sesuai jenjang madrasah
+// Helper: ambil daftar mapel sesuai jenjang madrasah (toleran berbagai format)
 function getMapelByJenjang(jenjang) {
-  return MAPEL_KMA1503[jenjang] || MAPEL_KMA1503['MTs'];
+  if (!jenjang) return MAPEL_KMA1503['MTs'];
+  const j = String(jenjang).trim().toUpperCase();
+  // Normalisasi berbagai kemungkinan nilai kolom jenjang di DB
+  if (j === 'MI' || j.includes('IBTIDAIYAH')) return MAPEL_KMA1503['MI'];
+  if (j === 'MTS' || j.includes('TSANAWIYAH')) return MAPEL_KMA1503['MTs'];
+  if (j === 'MAK' || j.includes('KEJURUAN') || j.includes('MAK')) return MAPEL_KMA1503['MAK'];
+  if (j === 'MA' || j.includes('ALIYAH')) return MAPEL_KMA1503['MA'];
+  if (j === 'RA' || j.includes('RAUDHATUL')) return MAPEL_KMA1503['MI']; // RA pakai MI sebagai fallback
+  // Fallback: MTs
+  return MAPEL_KMA1503['MTs'];
 }
 
 function SkorBtns({value, onChange}) {
