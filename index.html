@@ -209,7 +209,15 @@ function HalamanLogin({onLogin}) {
         .eq('dipakai', false)
         .single();
       if (error || !tok) { setErr('Token tidak valid atau sudah digunakan.'); return; }
-      setRegMad(tok.supermad_madrasah);
+      // Cek apakah madrasah ini sudah terdaftar (sudah punya operator aktif)
+      const mad = tok.supermad_madrasah;
+      const {data:existingOp} = await sb.from('supermad_pengguna')
+        .select('id').eq('madrasah_id', mad.id).eq('aktif', true).limit(1);
+      if (existingOp && existingOp.length > 0) {
+        setErr(`Madrasah ${mad.nama} (NPSN: ${mad.npsn}) sudah terdaftar. Hubungi admin jika lupa kode akses.`);
+        return;
+      }
+      setRegMad(mad);
       setRegStep('form');
     } catch(err) { setErr('Koneksi gagal.'); }
     finally { setLoading(false); }
