@@ -51,6 +51,46 @@ label{display:block;font-size:.76rem;font-weight:700;color:var(--text2);margin-b
 
 const { useState, useEffect, useCallback } = React;
 
+// ── MD5 HASH (untuk password) ──────────────────────────────────
+function md5(str) {
+  function safeAdd(x,y){const lsw=(x&0xffff)+(y&0xffff);return(((x>>16)+(y>>16)+(lsw>>16))<<16)|(lsw&0xffff);}
+  function bitRotateLeft(num,cnt){return(num<<cnt)|(num>>>(32-cnt));}
+  function md5cmn(q,a,b,x,s,t){return safeAdd(bitRotateLeft(safeAdd(safeAdd(a,q),safeAdd(x,t)),s),b);}
+  function md5ff(a,b,c,d,x,s,t){return md5cmn((b&c)|((~b)&d),a,b,x,s,t);}
+  function md5gg(a,b,c,d,x,s,t){return md5cmn((b&d)|(c&(~d)),a,b,x,s,t);}
+  function md5hh(a,b,c,d,x,s,t){return md5cmn(b^c^d,a,b,x,s,t);}
+  function md5ii(a,b,c,d,x,s,t){return md5cmn(c^(b|(~d)),a,b,x,s,t);}
+  const ucs2decode=str=>{const out=[];let i=0;while(i<str.length){const c=str.charCodeAt(i++);if(c>=0xD800&&c<=0xDBFF&&i<str.length){const c2=str.charCodeAt(i++);if((c2&0xFC00)===0xDC00)out.push(((c&0x3FF)<<10)+(c2&0x3FF)+0x10000);else{out.push(c);i--;}}else out.push(c);}return out;};
+  const bytes=ucs2decode(str).map(c=>c>0x7F?c>0x7FF?c>0xFFFF?[0xF0|c>>18,0x80|c>>12&0x3F,0x80|c>>6&0x3F,0x80|c&0x3F]:[0xE0|c>>12,0x80|c>>6&0x3F,0x80|c&0x3F]:[0xC0|c>>6,0x80|c&0x3F]:[c]).flat();
+  const len8=bytes.length;const words=[];for(let i=0;i<len8;i+=1)words[i>>2]|=bytes[i]<<((i%4)*8);
+  words[len8>>2]|=0x80<<((len8%4)*8);words[(((len8+8)>>6)<<4)+14]=len8*8;
+  let a=1732584193,b=-271733879,c=-1732584194,d=271733878;
+  for(let i=0;i<words.length;i+=16){const[oa,ob,oc,od]=[a,b,c,d];
+    a=md5ff(a,b,c,d,words[i+0],7,-680876936);d=md5ff(d,a,b,c,words[i+1],12,-389564586);c=md5ff(c,d,a,b,words[i+2],17,606105819);b=md5ff(b,c,d,a,words[i+3],22,-1044525330);
+    a=md5ff(a,b,c,d,words[i+4],7,-176418897);d=md5ff(d,a,b,c,words[i+5],12,1200080426);c=md5ff(c,d,a,b,words[i+6],17,-1473231341);b=md5ff(b,c,d,a,words[i+7],22,-45705983);
+    a=md5ff(a,b,c,d,words[i+8],7,1770035416);d=md5ff(d,a,b,c,words[i+9],12,-1958414417);c=md5ff(c,d,a,b,words[i+10],17,-42063);b=md5ff(b,c,d,a,words[i+11],22,-1990404162);
+    a=md5ff(a,b,c,d,words[i+12],7,1804603682);d=md5ff(d,a,b,c,words[i+13],12,-40341101);c=md5ff(c,d,a,b,words[i+14],17,-1502002290);b=md5ff(b,c,d,a,words[i+15],22,1236535329);
+    a=md5gg(a,b,c,d,words[i+1],5,-165796510);d=md5gg(d,a,b,c,words[i+6],9,-1069501632);c=md5gg(c,d,a,b,words[i+11],14,643717713);b=md5gg(b,c,d,a,words[i+0],20,-373897302);
+    a=md5gg(a,b,c,d,words[i+5],5,-701558691);d=md5gg(d,a,b,c,words[i+10],9,38016083);c=md5gg(c,d,a,b,words[i+15],14,-660478335);b=md5gg(b,c,d,a,words[i+4],20,-405537848);
+    a=md5gg(a,b,c,d,words[i+9],5,568446438);d=md5gg(d,a,b,c,words[i+14],9,-1019803690);c=md5gg(c,d,a,b,words[i+3],14,-187363961);b=md5gg(b,c,d,a,words[i+8],20,1163531501);
+    a=md5gg(a,b,c,d,words[i+13],5,-1444681467);d=md5gg(d,a,b,c,words[i+2],9,-51403784);c=md5gg(c,d,a,b,words[i+7],14,1735328473);b=md5gg(b,c,d,a,words[i+12],20,-1926607734);
+    a=md5hh(a,b,c,d,words[i+5],4,-378558);d=md5hh(d,a,b,c,words[i+8],11,-2022574463);c=md5hh(c,d,a,b,words[i+11],16,1839030562);b=md5hh(b,c,d,a,words[i+14],23,-35309556);
+    a=md5hh(a,b,c,d,words[i+1],4,-1530992060);d=md5hh(d,a,b,c,words[i+4],11,1272893353);c=md5hh(c,d,a,b,words[i+7],16,-155497632);b=md5hh(b,c,d,a,words[i+10],23,-1094730640);
+    a=md5hh(a,b,c,d,words[i+13],4,681279174);d=md5hh(d,a,b,c,words[i+0],11,-358537222);c=md5hh(c,d,a,b,words[i+3],16,-722521979);b=md5hh(b,c,d,a,words[i+6],23,76029189);
+    a=md5hh(a,b,c,d,words[i+9],4,-640364487);d=md5hh(d,a,b,c,words[i+12],11,-421815835);c=md5hh(c,d,a,b,words[i+15],16,530742520);b=md5hh(b,c,d,a,words[i+2],23,-995338651);
+    a=md5ii(a,b,c,d,words[i+0],6,-198630844);d=md5ii(d,a,b,c,words[i+7],10,1126891415);c=md5ii(c,d,a,b,words[i+14],15,-1416354905);b=md5ii(b,c,d,a,words[i+5],21,-57434055);
+    a=md5ii(a,b,c,d,words[i+12],6,1700485571);d=md5ii(d,a,b,c,words[i+3],10,-1894986606);c=md5ii(c,d,a,b,words[i+10],15,-1051523);b=md5ii(b,c,d,a,words[i+1],21,-2054922799);
+    a=md5ii(a,b,c,d,words[i+8],6,1873313359);d=md5ii(d,a,b,c,words[i+15],10,-30611744);c=md5ii(c,d,a,b,words[i+6],15,-1560198380);b=md5ii(b,c,d,a,words[i+13],21,1309151649);
+    a=md5ii(a,b,c,d,words[i+4],6,-145523070);d=md5ii(d,a,b,c,words[i+11],10,-1120210379);c=md5ii(c,d,a,b,words[i+2],15,718787259);b=md5ii(b,c,d,a,words[i+9],21,-343485551);
+    a=safeAdd(a,oa);b=safeAdd(b,ob);c=safeAdd(c,oc);d=safeAdd(d,od);}
+  return [a,b,c,d].map(n=>Array.from({length:4},(_,i)=>('0'+((n>>(i*8))&0xFF).toString(16)).slice(-2)).join('')).join('');
+}
+// Cek password: cocokkan plaintext ATAU md5
+function cekPass(input, stored) {
+  if (!input || !stored) return false;
+  return stored === input || stored === md5(input);
+}
+
 // ── SUPABASE CONFIG ────────────────────────────────────────────
 const SUPA_URL = 'https://djnbttyjyzknujrepdfe.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqbmJ0dHlqeXprbnVqcmVwZGZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1Mzc3MDksImV4cCI6MjEwMjExMzcwOX0.UfrTknQM7EU_3BiSGBy9bPtOeXh5u14X4ujRNxRlYcM';
@@ -241,7 +281,7 @@ function HalamanLogin({onLogin}) {
         jabatan: regForm.jabatan,
         role: 'operator',
         username: regForm.username.trim(),
-        password_hash: regForm.password,
+        password_hash: md5(regForm.password),
         aktif: true,
       });
       if (errIns) { setErr('Gagal daftar: '+errIns.message); return; }
@@ -779,7 +819,7 @@ function DashboardOperator({sesi, showToast}) {
     if (resetPass !== resetPass2) { showToast('Password tidak cocok!','error'); return; }
     if (resetPass.length < 4) { showToast('Password minimal 4 karakter!','error'); return; }
     const {error} = await sb.from('supermad_pengguna')
-      .update({password_hash: resetPass})
+      .update({password_hash: md5(resetPass)})
       .eq('id', resetTarget.id);
     if (error) { showToast('Gagal: '+error.message,'error'); return; }
     showToast('✅ Password berhasil direset!');
@@ -807,20 +847,10 @@ function DashboardOperator({sesi, showToast}) {
       jabatan:  formUser.jabatan,
       role:     formUser.role,
       username: formUser.username,
-      password_hash: formUser.password, // akan di-hash via RPC
+      password_hash: md5(formUser.password),
       aktif: true,
     });
     if (error) { showToast('Gagal: '+error.message,'error'); return; }
-    // Update password_hash ke md5
-    await sb.rpc('supermad_cek_password', {p_id:'dummy',p_pass:'dummy'}).maybeSingle();
-    // Set hash yang benar
-    const {data:u} = await sb.from('supermad_pengguna')
-      .select('id').eq('username', formUser.username).single();
-    if (u) {
-      await sb.from('supermad_pengguna')
-        .update({password_hash: formUser.password})
-        .eq('id', u.id);
-    }
     showToast('✅ Pengguna berhasil ditambahkan!');
     setShowFormUser(false);
     setFormUser({nama:'',nip:'',jabatan:'Kepala Madrasah',role:'supervisor',username:'',password:''});
@@ -1436,7 +1466,7 @@ function KelolaPengguna({mad, showToast, onBack}) {
       madrasah_id: mad.id,
       nama: form.nama, nip: form.nip,
       jabatan: form.jabatan, role: form.role,
-      username: form.username, password_hash: form.password,
+      username: form.username, password_hash: md5(form.password),
       aktif: true,
     });
     if (error) { showToast('Gagal: '+error.message,'error'); return; }
@@ -2274,7 +2304,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
 
       {/* Tab */}
       <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
-        {[['dashboard','📊 Dashboard'],['grafik','📈 Grafik'],['analitik','🔬 Analitik'],['rtl','📋 RTL Kanwil'],['tindaklanjut','✍️ Tindak Lanjut'],['madrasah','🏫 Madrasah'],['fitur','⚙️ Kelola Fitur']].map(([key,label])=>(
+        {[['dashboard','📊 Dashboard'],['wilayah','🗺️ Per Wilayah'],['grafik','📈 Grafik'],['analitik','🔬 Analitik'],['rtl','📋 RTL Kanwil'],['tindaklanjut','✍️ Tindak Lanjut'],['madrasah','🏫 Madrasah'],['fitur','⚙️ Kelola Fitur']].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',
               fontWeight:700,fontSize:'.8rem',fontFamily:'inherit',
@@ -2390,6 +2420,116 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
           </div>
         </div>
       )}
+
+      {/* TAB WILAYAH */}
+      {tab==='wilayah' && (()=>{
+        // Agregat per kota_kab
+        const kabMap = {};
+        madrasahList.forEach(m => {
+          const kab = m.kota_kab || 'Tidak Diisi';
+          if (!kabMap[kab]) kabMap[kab] = {kab, madrasah:[], totalSup:0, nilaiList:[], MI:0, MTs:0, MA:0, MAK:0};
+          kabMap[kab].madrasah.push(m);
+          kabMap[kab][m.tingkat] = (kabMap[kab][m.tingkat]||0) + 1;
+          const s = stats[m.id];
+          if (s) {
+            kabMap[kab].totalSup += s.selesai||0;
+            kabMap[kab].nilaiList.push(...(s.rata||[]));
+          }
+        });
+        const kabList2 = Object.values(kabMap).sort((a,b)=>b.madrasah.length-a.madrasah.length);
+        const avg2 = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
+        const warna = v => v>=87.5?'#16a34a':v>=75?'#2563eb':v>=62.5?'#d97706':'#dc2626';
+        const totalMad = madrasahList.length;
+        const totalSupAll = kabList2.reduce((s,k)=>s+k.totalSup,0);
+        const allNilai = kabList2.flatMap(k=>k.nilaiList);
+        const rataAll = avg2(allNilai);
+        return (
+          <div>
+            {/* Ringkasan Provinsi */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12,marginBottom:20}}>
+              {[
+                {label:'Total Madrasah',val:totalMad,ico:'🏫',warna:'#1a6b5c'},
+                {label:'Total Supervisi Selesai',val:totalSupAll,ico:'✅',warna:'#2563eb'},
+                {label:'Rata-rata Nilai Provinsi',val:rataAll?rataAll.toFixed(1)+'%':'—',ico:'📊',warna:rataAll?warna(rataAll):'#8aada6'},
+                {label:'Wilayah Terdaftar',val:kabList2.length,ico:'🗺️',warna:'#7c3aed'},
+              ].map(({label,val,ico,warna:w})=>(
+                <div key={label} className="card" style={{textAlign:'center',padding:'16px 12px'}}>
+                  <div style={{fontSize:'1.5rem',marginBottom:6}}>{ico}</div>
+                  <div style={{fontSize:'1.4rem',fontWeight:900,color:w}}>{val}</div>
+                  <div style={{fontSize:'.72rem',color:'var(--text2)',marginTop:4}}>{label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Kartu per Wilayah */}
+            <div style={{display:'flex',flexDirection:'column',gap:14}}>
+              {kabList2.map(k=>{
+                const rata = avg2(k.nilaiList);
+                const pctAktif = k.madrasah.length ? Math.round(k.madrasah.filter(m=>(stats[m.id]?.selesai||0)>0).length/k.madrasah.length*100) : 0;
+                return (
+                  <div key={k.kab} className="card" style={{padding:'18px 20px'}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10,marginBottom:14}}>
+                      <div>
+                        <div style={{fontWeight:900,fontSize:'1rem',color:'var(--p3)'}}>{k.kab}</div>
+                        <div style={{fontSize:'.75rem',color:'var(--text2)',marginTop:2}}>
+                          {k.madrasah.length} madrasah · {k.totalSup} supervisi selesai
+                        </div>
+                      </div>
+                      <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                        {rata && (
+                          <span style={{padding:'4px 14px',borderRadius:20,fontWeight:800,fontSize:'.85rem',
+                            background:rata>=87.5?'#d1fae5':rata>=75?'#dbeafe':rata>=62.5?'#fef3c7':'#fee2e2',
+                            color:warna(rata)}}>
+                            {rata.toFixed(1)}%
+                          </span>
+                        )}
+                        {!rata && <span style={{padding:'4px 14px',borderRadius:20,fontWeight:700,fontSize:'.8rem',background:'#f3f4f6',color:'#6b7280'}}>Belum ada data</span>}
+                      </div>
+                    </div>
+
+                    {/* Bar komposisi tingkat */}
+                    <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>
+                      {[['MI','#d1fae5','#065f46'],['MTs','#fef3c7','#92400e'],['MA','#dbeafe','#1d4ed8'],['MAK','#fce7f3','#9d174d']].map(([tkt,bg,clr])=>(
+                        k[tkt]>0 && <span key={tkt} style={{padding:'3px 10px',borderRadius:20,fontSize:'.72rem',fontWeight:700,background:bg,color:clr}}>
+                          {tkt}: {k[tkt]}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Progress bar keaktifan supervisi */}
+                    <div style={{marginBottom:6}}>
+                      <div style={{display:'flex',justifyContent:'space-between',fontSize:'.72rem',color:'var(--text2)',marginBottom:4}}>
+                        <span>Madrasah aktif supervisi</span>
+                        <span style={{fontWeight:700,color:pctAktif>=80?'#16a34a':pctAktif>=50?'#d97706':'#dc2626'}}>
+                          {k.madrasah.filter(m=>(stats[m.id]?.selesai||0)>0).length}/{k.madrasah.length} ({pctAktif}%)
+                        </span>
+                      </div>
+                      <div style={{height:8,background:'#e5e7eb',borderRadius:99,overflow:'hidden'}}>
+                        <div style={{height:'100%',width:pctAktif+'%',borderRadius:99,
+                          background:pctAktif>=80?'#16a34a':pctAktif>=50?'#f59e0b':'#ef4444',transition:'width .4s'}}/>
+                      </div>
+                    </div>
+
+                    {/* Madrasah belum mulai */}
+                    {(()=>{
+                      const belum = k.madrasah.filter(m=>!(stats[m.id]?.selesai>0));
+                      if (!belum.length) return <div style={{fontSize:'.72rem',color:'#16a34a',marginTop:8}}>✅ Semua madrasah sudah mulai supervisi</div>;
+                      return (
+                        <div style={{marginTop:8}}>
+                          <div style={{fontSize:'.72rem',color:'#92400e',fontWeight:700,marginBottom:4}}>⚠️ Belum mulai ({belum.length}):</div>
+                          <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                            {belum.map(m=><span key={m.id} style={{padding:'2px 8px',borderRadius:20,fontSize:'.68rem',background:'#fef3c7',border:'1px solid #f59e0b',color:'#92400e',fontWeight:600}}>{m.nama}</span>)}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* TAB GRAFIK */}
       {tab==='grafik' && (
