@@ -756,6 +756,69 @@ function App() {
 }
 
 
+// ── PRINT TOKEN GURU ──────────────────────────────────────────
+function printTokenGuru(guruList, mad) {
+  const tanggal = new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'});
+  const slips = guruList.filter(g => g.token).map((g,i) => `
+    <div class="slip">
+      <div class="slip-head">🔑 TOKEN LOGIN SUPERMAD</div>
+      <div class="slip-mad">${mad ? mad.nama : ''}</div>
+      <div class="slip-nama">${g.nama}</div>
+      <div class="slip-nip">NIP: ${g.nip || '—'}</div>
+      ${g.mapel ? `<div class="slip-mapel">📚 ${g.mapel}</div>` : ''}
+      <div class="slip-token-lbl">Kode Token</div>
+      <div class="slip-token">${g.token}</div>
+      <div class="slip-foot">Gunakan token ini untuk login ke SUPERMAD · Jaga kerahasiaannya</div>
+    </div>`).join('');
+
+  const noToken = guruList.filter(g => !g.token);
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html>
+<html lang="id"><head><meta charset="UTF-8">
+<title>Print Token Guru — ${mad ? mad.nama : 'SUPERMAD'}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#fff;padding:10mm}
+h2{font-size:13pt;color:#0f4238;margin-bottom:4mm;text-align:center}
+.info{font-size:9pt;color:#555;text-align:center;margin-bottom:6mm}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5mm}
+.slip{border:1.5px solid #0f4238;border-radius:7px;padding:9px;page-break-inside:avoid}
+.slip-head{background:#0f4238;color:#fff;text-align:center;padding:4px 8px;
+  border-radius:4px;margin:-9px -9px 7px -9px;font-size:8pt;font-weight:bold;letter-spacing:.5px}
+.slip-mad{font-size:8pt;color:#555;text-align:center;margin-bottom:5px;
+  padding-bottom:4px;border-bottom:1px dashed #ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slip-nama{font-size:10pt;font-weight:bold;color:#0f4238;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slip-nip{font-size:8pt;color:#777;margin:1px 0 4px}
+.slip-mapel{font-size:8pt;color:#444;font-style:italic;margin-bottom:4px}
+.slip-token-lbl{font-size:7pt;color:#999;text-transform:uppercase;letter-spacing:1px}
+.slip-token{font-size:22pt;font-weight:bold;color:#0f4238;letter-spacing:5px;
+  text-align:center;background:#edf7f4;border:2px dashed #1a6b5c;
+  border-radius:5px;padding:4px;font-family:'Courier New',monospace;margin:2px 0}
+.slip-foot{font-size:7pt;color:#bbb;text-align:center;margin-top:4px;
+  padding-top:3px;border-top:1px dashed #ddd}
+.warn{background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;
+  padding:8px 12px;font-size:9pt;color:#92400e;margin-bottom:6mm;text-align:center}
+.no-print{margin-top:8mm;text-align:center}
+.btn-print{background:#0f4238;color:#fff;border:none;padding:9px 24px;
+  border-radius:7px;font-size:11pt;font-weight:bold;cursor:pointer}
+@media print{.no-print{display:none}body{padding:5mm}}
+</style></head><body>
+<div class="no-print">
+  <button class="btn-print" onclick="window.print()">🖨️ Print Sekarang</button>
+  &nbsp;
+  <button onclick="window.close()" style="padding:9px 18px;border-radius:7px;border:1px solid #ccc;cursor:pointer;font-size:11pt">✕ Tutup</button>
+</div>
+<h2>TOKEN LOGIN GURU — SUPERMAD</h2>
+<div class="info">${mad ? mad.nama + ' &nbsp;·&nbsp; ' : ''}Dicetak: ${tanggal} &nbsp;·&nbsp; ${guruList.filter(g=>g.token).length} guru</div>
+${noToken.length ? `<div class="warn">⚠️ ${noToken.length} guru belum punya token: ${noToken.map(g=>g.nama).join(', ')}</div>` : ''}
+<div class="grid">${slips}</div>
+${!slips ? '<div style="text-align:center;padding:40px;color:#999">Belum ada guru dengan token.</div>' : ''}
+</body></html>`);
+  win.document.close();
+}
+
 // ── DASHBOARD OPERATOR + KANWIL (LENGKAP) ──────────────────────
 // ── DASHBOARD OPERATOR (LENGKAP) ──────────────────────────────
 function DashboardOperator({sesi, showToast}) {
@@ -966,6 +1029,10 @@ function DashboardOperator({sesi, showToast}) {
               📤 Import Excel
               <input type="file" accept=".xlsx,.xls" onChange={importExcel} style={{display:'none'}}/>
             </label>
+            <button className="btn btn-sm" onClick={()=>printTokenGuru(guruList, sesi.mad)}
+              style={{background:'#0f4238',color:'#fff'}}>
+              🖨️ Print Token
+            </button>
             <button className="btn btn-primary btn-sm"
               onClick={()=>{setShowFormGuru(!showFormGuru);setEditGuru(null);
                 setFormGuru({nama:'',nip:'',mapel:'',status_kepeg:'GTT',pendidikan:'S1',nuptk:''});}}>
