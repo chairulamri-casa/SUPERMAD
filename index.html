@@ -434,7 +434,7 @@ function HalamanLogin({onLogin}) {
           <form onSubmit={cekToken}>
             <div style={{fontWeight:800,color:'#6366f1',marginBottom:4,fontSize:'.9rem'}}>📝 Daftar Akun Operator</div>
             <div style={{fontSize:'.76rem',color:'var(--text2)',marginBottom:14}}>
-              Masukkan token registrasi dari Kanwil Kemenag
+              Masukkan token registrasi yang diberikan admin SUPERMAD
             </div>
             <div className="form-group">
               <label>Token Registrasi *</label>
@@ -496,7 +496,7 @@ function HalamanLogin({onLogin}) {
 
         <div style={{textAlign:'center',fontSize:'.66rem',color:'#b0c4be',marginTop:14,
           paddingTop:10,borderTop:'1px solid #f0ece4'}}>
-          KMA 1503/2025 · Dirjenpendis 6077/2025 · Kanwil Kemenag Aceh
+          KMA 1503/2025 · Dirjenpendis 6077/2025
         </div>
       </div>
     );
@@ -539,17 +539,20 @@ function HalamanLogin({onLogin}) {
           <div style={{display:'inline-block',background:'#fff3d6',color:'#92400e',
             fontSize:'.7rem',fontWeight:700,padding:'4px 12px',borderRadius:20,
             letterSpacing:1,marginBottom:20,border:'1px solid #fcd34d'}}>
-            ✦ KEMENTERIAN AGAMA RI · BIDANG PENDIDIKAN MADRASAH ACEH
+            ✦ SUPERVISI PEMBELAJARAN MADRASAH
           </div>
-          <h1 style={{fontSize:'2.8rem',fontWeight:900,lineHeight:1.15,color:'#0f2e2a',marginBottom:16}}>
+          <h1 style={{fontSize:'2.8rem',fontWeight:900,lineHeight:1.15,color:'#0f2e2a',marginBottom:12}}>
             Supervisi<br/>
             <span style={{color:'#1a6b5c'}}>Pembelajaran</span><br/>
             <span style={{fontStyle:'italic',color:'#d4a017',fontWeight:800}}>Madrasah Unggul</span>
           </h1>
+          <div style={{fontSize:'.85rem',fontWeight:600,color:'#1a6b5c',marginBottom:16,letterSpacing:.3}}>
+            berbasis KBC dan Pembelajaran Mendalam
+          </div>
           <p style={{fontSize:'.95rem',color:'#4a6b63',lineHeight:1.75,marginBottom:32,maxWidth:420}}>
-            Platform digital supervisi pembelajaran berbasis <strong>KMA 1503/2025</strong> dan PM-KBC.
-            Memantau, menilai, dan meningkatkan mutu pembelajaran di setiap madrasah
-            se-Provinsi Aceh secara terstruktur dan akuntabel.
+            Alat bantu digital untuk supervisi pembelajaran berbasis <strong>KMA 1503/2025</strong> dan PM-KBC.
+            Membantu memantau, menilai, dan meningkatkan mutu pembelajaran
+            secara terstruktur dan akuntabel.
           </p>
           <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
             <button onClick={()=>bukaLogin('madrasah')}
@@ -626,8 +629,7 @@ function HalamanLogin({onLogin}) {
       {/* FOOTER */}
       <footer style={{background:'#0f2e2a',color:'rgba(255,255,255,.45)',
         textAlign:'center',padding:'18px 32px',fontSize:'.72rem'}}>
-        © 2025–2026 Bidang Pendidikan Madrasah · Kanwil Kemenag Provinsi Aceh &nbsp;·&nbsp;
-        SUPERMAD v2 &nbsp;·&nbsp; KMA 1503/2025
+        © 2025–2026 SUPERMAD &nbsp;·&nbsp; Supervisi Pembelajaran Madrasah &nbsp;·&nbsp; KMA 1503/2025
       </footer>
     </div>
   );
@@ -778,7 +780,7 @@ function App() {
           }
           <div>
             <div style={{fontSize:'.68rem',opacity:.7,letterSpacing:.5}}>
-              KEMENTERIAN AGAMA REPUBLIK INDONESIA
+              SUPERMAD · Supervisi Pembelajaran
             </div>
             <div style={{fontWeight:800,fontSize:'.82rem'}}>
               {sesi.mad
