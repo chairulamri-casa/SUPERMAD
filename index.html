@@ -233,6 +233,12 @@ function HalamanLogin({onLogin}) {
     (window.location.search.includes('kanwil') || window.location.hash.includes('kanwil'));
   const [mode, setMode]     = useState(isKanwilMode ? 'kanwil' : 'pilih');
   const [panelOpen, setPanelOpen] = useState(isKanwilMode);
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 768);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   const [regToken, setRegToken] = useState('');
   const [regStep, setRegStep]   = useState('token');
   const [regMad, setRegMad]     = useState(null);
@@ -518,10 +524,10 @@ function HalamanLogin({onLogin}) {
             <div style={{fontSize:'.6rem',color:'#7a9991'}}>Supervisi Pembelajaran Madrasah</div>
           </div>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:24}}>
-          <span style={{fontSize:'.82rem',color:'#5a7a74',fontWeight:600}}>Beranda</span>
-          <span style={{fontSize:'.82rem',color:'#5a7a74'}}>Panduan</span>
-          <span style={{fontSize:'.82rem',color:'#5a7a74'}}>KMA 1503/2025</span>
+        <div style={{display:'flex',alignItems:'center',gap:isMobile?12:24}}>
+          {!isMobile && <span style={{fontSize:'.82rem',color:'#5a7a74',fontWeight:600}}>Beranda</span>}
+          {!isMobile && <span style={{fontSize:'.82rem',color:'#5a7a74'}}>Panduan</span>}
+          {!isMobile && <span style={{fontSize:'.82rem',color:'#5a7a74'}}>KMA 1503/2025</span>}
           <button onClick={()=>bukaLogin('madrasah')}
             style={{background:'#0f4238',color:'#fff',border:'none',padding:'8px 20px',
               borderRadius:8,fontWeight:700,fontSize:'.82rem',cursor:'pointer'}}>
@@ -531,8 +537,10 @@ function HalamanLogin({onLogin}) {
       </nav>
 
       {/* HERO */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',minHeight:'calc(100vh - 64px)',
-        maxWidth:1100,margin:'0 auto',padding:'0 32px',alignItems:'center',gap:48}}>
+      <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',
+        minHeight:'calc(100vh - 64px)',
+        maxWidth:1100,margin:'0 auto',padding:isMobile?'24px 16px':'0 32px',
+        alignItems:'center',gap:isMobile?28:48}}>
 
         {/* KIRI */}
         <div>
@@ -541,7 +549,7 @@ function HalamanLogin({onLogin}) {
             letterSpacing:1,marginBottom:20,border:'1px solid #fcd34d'}}>
             ✦ SUPERVISI PEMBELAJARAN MADRASAH
           </div>
-          <h1 style={{fontSize:'2.8rem',fontWeight:900,lineHeight:1.15,color:'#0f2e2a',marginBottom:12}}>
+          <h1 style={{fontSize:isMobile?'2rem':'2.8rem',fontWeight:900,lineHeight:1.15,color:'#0f2e2a',marginBottom:12}}>
             Supervisi<br/>
             <span style={{color:'#1a6b5c'}}>Pembelajaran</span><br/>
             <span style={{fontStyle:'italic',color:'#d4a017',fontWeight:800}}>Madrasah Unggul</span>
@@ -580,7 +588,7 @@ function HalamanLogin({onLogin}) {
         </div>
 
         {/* KANAN: visual atau panel login */}
-        <div>
+        <div style={{display:isMobile&&!panelOpen?'none':'block'}}>
           {panelOpen ? <PanelLogin/> : (
             <div>
               {/* Card utama */}
