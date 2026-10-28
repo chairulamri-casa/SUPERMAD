@@ -38,6 +38,12 @@ label{display:block;font-size:.76rem;font-weight:700;color:var(--text2);margin-b
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
 @media(max-width:600px){.grid2,.grid3{grid-template-columns:1fr}}
+@media(max-width:768px){
+  .hero-grid{grid-template-columns:1fr !important;padding:16px !important}
+  .hero-title{font-size:2rem !important}
+  .hero-kanan{display:none}
+  .hero-nav-links{display:none}
+}
 .toast{position:fixed;bottom:20px;right:20px;padding:12px 18px;border-radius:10px;font-weight:600;font-size:.82rem;z-index:9999;animation:slideIn .3s ease}
 .toast-success{background:#f0fdf4;color:#166534;border:1.5px solid #86efac}
 .toast-warning{background:#fffbeb;color:#92400e;border:1.5px solid #fcd34d}
@@ -369,19 +375,170 @@ function HalamanLogin({onLogin}) {
     } finally { setLoading(false); }
   }
 
+  // State untuk animasi panel login
+  const [panelOpen, setPanelOpen] = useState(mode !== 'pilih');
+
+  function bukaLogin(m) {
+    setMode(m);
+    setPanelOpen(true);
+  }
+  function tutupPanel() {
+    setMode('pilih');
+    setPanelOpen(false);
+    setErr('');
+  }
+
+  // Jika sudah di mode form (kanwil dari URL), langsung buka panel
+  React.useEffect(() => {
+    if (isKanwilMode) setPanelOpen(true);
+  }, []);
+
   return (
-    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',
-      background:'linear-gradient(135deg,#063d35,#0e7c6e)',padding:16}}>
-      <div style={{background:'#fff',borderRadius:18,padding:'32px 28px',width:'100%',maxWidth:420,
-        boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
-        {/* Logo */}
-        <div style={{textAlign:'center',marginBottom:24}}>
-          <div style={{fontSize:'2.5rem',marginBottom:8}}>🏫</div>
-          <div style={{fontWeight:900,fontSize:'1.4rem',color:'var(--p3)'}}>SUPERMAD</div>
-          <div style={{fontSize:'.76rem',color:'var(--text2)',marginTop:4}}>
-            Supervisi Pembelajaran Madrasah PM-KBC
+    <div style={{minHeight:'100vh',fontFamily:"'Segoe UI',sans-serif",background:'#f5f3ee',overflowX:'hidden'}}>
+
+      {/* ── NAVBAR ─────────────────────────────────────── */}
+      <nav style={{background:'#fff',borderBottom:'1px solid #e8e0d0',
+        padding:'0 32px',display:'flex',alignItems:'center',justifyContent:'space-between',
+        height:64,position:'sticky',top:0,zIndex:100,boxShadow:'0 1px 8px rgba(0,0,0,.06)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div style={{width:38,height:38,background:'linear-gradient(135deg,#0f4238,#1a6b5c)',
+            borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',
+            fontSize:'1.3rem'}}>📋</div>
+          <div>
+            <div style={{fontWeight:900,fontSize:'.9rem',color:'#0f4238',letterSpacing:.5}}>SUPERMAD</div>
+            <div style={{fontSize:'.62rem',color:'#7a9991',letterSpacing:.3}}>Supervisi Pembelajaran Madrasah</div>
           </div>
         </div>
+        <div style={{display:'flex',alignItems:'center',gap:24}}>
+          <span style={{fontSize:'.82rem',color:'#5a7a74',fontWeight:600,cursor:'default'}}>Beranda</span>
+          <span style={{fontSize:'.82rem',color:'#5a7a74',cursor:'default'}}>Tentang</span>
+          <span style={{fontSize:'.82rem',color:'#5a7a74',cursor:'default'}}>Panduan</span>
+          <span style={{fontSize:'.82rem',color:'#5a7a74',cursor:'default'}}>KMA 1503/2025</span>
+          <button onClick={()=>bukaLogin('madrasah')}
+            style={{background:'#0f4238',color:'#fff',border:'none',padding:'8px 20px',
+              borderRadius:8,fontWeight:700,fontSize:'.82rem',cursor:'pointer',
+              display:'flex',alignItems:'center',gap:6}}>
+            Masuk →
+          </button>
+        </div>
+      </nav>
+
+      {/* ── HERO ───────────────────────────────────────── */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',minHeight:'calc(100vh - 64px)',
+        maxWidth:1200,margin:'0 auto',padding:'0 32px',alignItems:'center',gap:48}}>
+
+        {/* Kiri: teks */}
+        <div>
+          <div style={{display:'inline-block',background:'#fff3d6',color:'#92400e',
+            fontSize:'.72rem',fontWeight:700,padding:'4px 12px',borderRadius:20,
+            letterSpacing:1,marginBottom:20,border:'1px solid #fcd34d'}}>
+            ✦ KEMENTERIAN AGAMA RI · BIDANG PENDIDIKAN MADRASAH
+          </div>
+          <h1 style={{fontSize:'3rem',fontWeight:900,lineHeight:1.15,color:'#0f2e2a',marginBottom:16}}>
+            Supervisi<br/>
+            <span style={{color:'#1a6b5c'}}>Pembelajaran</span><br/>
+            <span style={{fontStyle:'italic',color:'#d4a017',fontWeight:800}}>Madrasah Unggul</span>
+          </h1>
+          <p style={{fontSize:'1rem',color:'#4a6b63',lineHeight:1.7,marginBottom:32,maxWidth:440}}>
+            Platform digital untuk supervisi pembelajaran berbasis KMA 1503/2025 dan PM-KBC.
+            Memantau, menilai, dan meningkatkan mutu pembelajaran di setiap madrasah
+            se-Provinsi Aceh secara terstruktur dan akuntabel.
+          </p>
+          <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+            <button onClick={()=>bukaLogin('madrasah')}
+              style={{background:'#0f4238',color:'#fff',border:'none',padding:'14px 28px',
+                borderRadius:10,fontWeight:700,fontSize:'.95rem',cursor:'pointer',
+                display:'flex',alignItems:'center',gap:8,boxShadow:'0 4px 16px rgba(15,66,56,.35)'}}>
+              🏫 Masuk Madrasah →
+            </button>
+            <button onClick={()=>bukaLogin('guru')}
+              style={{background:'#fff',color:'#0f4238',border:'2px solid #0f4238',padding:'14px 24px',
+                borderRadius:10,fontWeight:700,fontSize:'.95rem',cursor:'pointer',
+                display:'flex',alignItems:'center',gap:8}}>
+              👨‍🏫 Login Guru
+            </button>
+          </div>
+          <div style={{marginTop:32,display:'flex',gap:24}}>
+            {[['187+','Madrasah'],['3.800+','Guru'],['KMA','1503/2025']].map(([v,l])=>(
+              <div key={l}>
+                <div style={{fontWeight:900,fontSize:'1.4rem',color:'#0f4238'}}>{v}</div>
+                <div style={{fontSize:'.72rem',color:'#7a9991'}}>{l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Kanan: visual card + panel login */}
+        <div style={{position:'relative'}}>
+          {/* Card visual utama */}
+          {!panelOpen && (
+            <div>
+              <div style={{background:'linear-gradient(135deg,#0f4238,#1a6b5c)',borderRadius:20,
+                padding:32,color:'#fff',boxShadow:'0 20px 60px rgba(15,66,56,.4)',
+                position:'relative',overflow:'hidden'}}>
+                <div style={{position:'absolute',top:-30,right:-30,width:140,height:140,
+                  background:'rgba(255,255,255,.07)',borderRadius:'50%'}}></div>
+                <div style={{position:'absolute',bottom:-20,left:-20,width:100,height:100,
+                  background:'rgba(255,255,255,.05)',borderRadius:'50%'}}></div>
+                <div style={{fontSize:'3rem',marginBottom:12}}>📊</div>
+                <div style={{fontWeight:900,fontSize:'1.2rem',marginBottom:8}}>
+                  Dashboard Supervisi
+                </div>
+                <div style={{fontSize:'.82rem',opacity:.8,lineHeight:1.6,marginBottom:20}}>
+                  Pantau progress supervisi pembelajaran setiap guru secara real-time
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                  {[
+                    {icon:'✅',label:'Selesai Supervisi',val:'68%'},
+                    {icon:'⏳',label:'Dalam Proses',val:'22%'},
+                    {icon:'📋',label:'Instrumen Terisi',val:'142'},
+                    {icon:'⭐',label:'Rata-rata Capaian',val:'78.4'},
+                  ].map(k=>(
+                    <div key={k.label} style={{background:'rgba(255,255,255,.12)',
+                      borderRadius:10,padding:'10px 12px'}}>
+                      <div style={{fontSize:'1.1rem'}}>{k.icon}</div>
+                      <div style={{fontWeight:900,fontSize:'1.1rem',marginTop:2}}>{k.val}</div>
+                      <div style={{fontSize:'.65rem',opacity:.7}}>{k.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* Card fitur kecil */}
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginTop:12}}>
+                {[
+                  {icon:'📝',judul:'Instrumen KMA 1503',desc:'Penilaian terstruktur sesuai regulasi'},
+                  {icon:'📊',judul:'Rekap Otomatis',desc:'Laporan dan grafik instan'},
+                  {icon:'👨‍🏫',judul:'Portal Guru',desc:'Guru lihat hasil supervisi sendiri'},
+                  {icon:'🏛️',judul:'Pantauan Kanwil',desc:'Monitoring lintas madrasah'},
+                ].map(f=>(
+                  <div key={f.judul} style={{background:'#fff',borderRadius:12,padding:'14px',
+                    border:'1px solid #e8e0d0',boxShadow:'0 2px 8px rgba(0,0,0,.04)'}}>
+                    <div style={{fontSize:'1.3rem',marginBottom:6}}>{f.icon}</div>
+                    <div style={{fontWeight:700,fontSize:'.8rem',color:'#0f2e2a',marginBottom:3}}>{f.judul}</div>
+                    <div style={{fontSize:'.72rem',color:'#7a9991'}}>{f.desc}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Panel Login — muncul menggantikan visual */}
+          {panelOpen && (
+            <div style={{background:'#fff',borderRadius:18,padding:'32px 28px',
+              boxShadow:'0 20px 60px rgba(0,0,0,.15)',border:'1px solid #e8e0d0'}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:20}}>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <div style={{width:32,height:32,background:'linear-gradient(135deg,#0f4238,#1a6b5c)',
+                    borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:'1rem'}}>📋</div>
+                  <div style={{fontWeight:900,fontSize:'1rem',color:'#0f2e2a'}}>SUPERMAD</div>
+                </div>
+                {mode !== 'kanwil' && (
+                  <button onClick={tutupPanel}
+                    style={{background:'#f5f3ee',border:'none',borderRadius:7,padding:'5px 10px',
+                      cursor:'pointer',fontSize:'.8rem',color:'#5a7a74'}}>✕ Tutup</button>
+                )}
+              </div>
 
         {mode === 'pilih' && (
           <div style={{display:'flex',flexDirection:'column',gap:12}}>
@@ -399,7 +556,6 @@ function HalamanLogin({onLogin}) {
               onClick={() => {setMode('daftar');setRegStep('token');setRegToken('');setErr('');}}>
               📝 Daftar Akun Operator
             </button>
-            {/* Kanwil login tersembunyi - akses via URL ?kanwil */}
             <div style={{textAlign:'center',fontSize:'.72rem',color:'var(--text3)',marginTop:4}}>
               KMA 1503/2025 · Dirjenpendis 6077/2025
             </div>
@@ -550,7 +706,25 @@ function HalamanLogin({onLogin}) {
               onClick={()=>setRegStep('token')}>← Ganti Token</button>
           </form>
         )}
-      </div>
+
+            {/* footer panel */}
+            <div style={{textAlign:'center',fontSize:'.68rem',color:'#9ab5af',marginTop:16,
+              paddingTop:12,borderTop:'1px solid #f0ece4'}}>
+              KMA 1503/2025 · Dirjenpendis 6077/2025 · Kanwil Kemenag Aceh
+            </div>
+            </div>{/* end panel */}
+          )}{/* end panelOpen */}
+
+        </div>{/* end kanan */}
+      </div>{/* end grid hero */}
+
+      {/* ── FOOTER ─────────────────────────────────────── */}
+      <footer style={{background:'#0f2e2a',color:'rgba(255,255,255,.5)',
+        textAlign:'center',padding:'20px 32px',fontSize:'.74rem'}}>
+        © 2025–2026 Bidang Pendidikan Madrasah · Kanwil Kemenag Provinsi Aceh &nbsp;·&nbsp;
+        SUPERMAD v2 &nbsp;·&nbsp; KMA 1503/2025
+      </footer>
+
     </div>
   );
 }
