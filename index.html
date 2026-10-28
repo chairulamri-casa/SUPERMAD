@@ -608,10 +608,10 @@ function HalamanLogin({onLogin}) {
               </div>
               {/* Card fitur kecil */}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                {[{icon:'📝',j:'Instrumen KMA 1503',d:'Penilaian sesuai regulasi'},
-                  {icon:'📊',j:'Rekap Otomatis',d:'Laporan & grafik instan'},
-                  {icon:'👨‍🏫',j:'Portal Guru',d:'Guru lihat hasil sendiri'},
-                  {icon:'🏛️',j:'Pantauan Kanwil',d:'Monitoring lintas madrasah'},
+                {[{icon:'🙋',j:'Absensi Siswa',d:'Rekap per pertemuan otomatis'},
+                  {icon:'📓',j:'Jurnal Pembelajaran',d:'Pengisian per pertemuan'},
+                  {icon:'📝',j:'Input Nilai',d:'Formatif & sumatif terintegrasi'},
+                  {icon:'📋',j:'Rapor Siswa',d:'Generate rapor langsung'},
                 ].map(f=>(
                   <div key={f.j} style={{background:'#fff',borderRadius:11,padding:'13px',
                     border:'1px solid #e8e0d0',boxShadow:'0 2px 8px rgba(0,0,0,.04)'}}>
