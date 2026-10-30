@@ -10608,6 +10608,93 @@ function TabNilai({sesi, showToast}) {
 }
 
 // ── TAB JURNAL MENGAJAR (GURU) ────────────────────────────────
+// ── CONTOH PENGISIAN JURNAL MENGAJAR ─────────────────────────
+const CONTOH_JURNAL = [
+  {hari:'Senin, 14 Juli 2026', kelas:'VII A', jam:'1 – 2',
+   materi:'Bilangan bulat.', tp:'Murid dapat melakukan operasi penjumlahan dan pengurangan bilangan bulat.',
+   kendala:'Sebagian murid masih bingung tanda positif dan negatif.',
+   tl:'Memberikan contoh nyata dan latihan bertahap.',
+   refleksi:'Murid lebih memahami setelah diberi contoh kehidupan sehari-hari.'},
+  {hari:'Selasa, 15 Juli 2026', kelas:'VIII A', jam:'3 – 4',
+   materi:'Persamaan linear satu variabel.', tp:'Murid dapat menyelesaikan persamaan linear satu variabel.',
+   kendala:'Murid kesulitan memindahkan suku dan operasi hitung.',
+   tl:'Memberikan latihan tambahan dan pembahasan bersama di papan tulis.',
+   refleksi:'Pembelajaran berjalan baik, murid mulai lebih percaya diri mengerjakan soal.'},
+  {hari:'Kamis, 17 Juli 2026', kelas:'VII B', jam:'3 – 4',
+   materi:'Pecahan.', tp:'Murid dapat melakukan operasi penjumlahan dan pengurangan pecahan.',
+   kendala:'Murid kesulitan menyamakan penyebut.',
+   tl:'Memberikan contoh menggunakan media gambar dan latihan berpasangan.',
+   refleksi:'Diskusi kelompok membantu murid lebih memahami konsep pecahan.'},
+  {hari:'Senin, 21 Juli 2026', kelas:'IX B', jam:'3 – 4',
+   materi:'Fungsi kuadrat.', tp:'Murid dapat menentukan nilai, grafik, dan titik puncak fungsi kuadrat.',
+   kendala:'Sebagian murid kesulitan menentukan titik puncak.',
+   tl:'Memberikan contoh soal dan penggunaan tabel nilai.',
+   refleksi:'Murid mulai mampu menentukan titik puncak dengan bimbingan.'},
+];
+
+function PanelContohJurnal({defaultOpen=false}) {
+  const [buka, setBuka] = React.useState(defaultOpen);
+  const th = {padding:'6px 8px',border:'1px solid #cbd5e1',background:'#0f4238',color:'#fff',fontSize:'.7rem',fontWeight:700,textAlign:'center'};
+  const td = {padding:'6px 8px',border:'1px solid #cbd5e1',fontSize:'.72rem',verticalAlign:'top',lineHeight:1.4};
+  return (
+    <div style={{marginBottom:14,borderRadius:12,border:'1.5px solid #93c5fd',background:'#eff6ff',overflow:'hidden'}}>
+      <button type="button" onClick={()=>setBuka(!buka)}
+        style={{width:'100%',display:'flex',alignItems:'center',gap:8,padding:'10px 14px',border:'none',
+          background:'transparent',cursor:'pointer',fontFamily:'inherit',textAlign:'left'}}>
+        <span style={{fontSize:'1.1rem'}}>📖</span>
+        <span style={{flex:1,fontWeight:800,color:'#1e40af',fontSize:'.86rem'}}>
+          Contoh Pengisian Jurnal Mengajar
+          <span style={{fontWeight:500,color:'#3b82f6',fontSize:'.75rem'}}> — mencatat, merefleksi, dan meningkatkan pembelajaran</span>
+        </span>
+        <span style={{color:'#1e40af',fontWeight:800}}>{buka?'▲ Tutup':'▼ Lihat'}</span>
+      </button>
+      {buka && (
+        <div style={{padding:'0 14px 14px'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:8,marginBottom:10}}>
+            {[
+              ['📚 Materi / TP','Tulis judul materi, lalu tujuan pembelajaran diawali "Murid dapat …" dengan kata kerja yang terukur.'],
+              ['⚠️ Kendala','Tulis kesulitan nyata murid saat belajar, singkat dan spesifik (bukan "tidak ada").'],
+              ['🔧 Tindak Lanjut','Tulis langkah yang dilakukan/akan dilakukan guru untuk mengatasi kendala tersebut.'],
+              ['💭 Refleksi Guru','Tulis perubahan yang terlihat pada murid dan apa yang berhasil dari pembelajaran.'],
+            ].map(([j,k])=>(
+              <div key={j} style={{background:'#fff',borderRadius:9,padding:'8px 10px',border:'1px solid #bfdbfe'}}>
+                <div style={{fontWeight:800,fontSize:'.76rem',color:'#1e3a8a',marginBottom:2}}>{j}</div>
+                <div style={{fontSize:'.71rem',color:'#475569',lineHeight:1.4}}>{k}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{overflowX:'auto',background:'#fff',borderRadius:8}}>
+            <table style={{borderCollapse:'collapse',width:'100%',minWidth:760}}>
+              <thead><tr>
+                <th style={th}>No</th><th style={th}>Hari / Tanggal</th><th style={th}>Kelas</th><th style={th}>Jam Ke</th>
+                <th style={th}>Materi / Tujuan Pembelajaran</th><th style={th}>Kendala</th>
+                <th style={th}>Tindak Lanjut</th><th style={th}>Refleksi Guru</th>
+              </tr></thead>
+              <tbody>
+                {CONTOH_JURNAL.map((c,i)=>(
+                  <tr key={i} style={{background:i%2?'#f8fafc':'#fff'}}>
+                    <td style={{...td,textAlign:'center'}}>{i+1}</td>
+                    <td style={td}>{c.hari}</td>
+                    <td style={{...td,textAlign:'center',fontWeight:700}}>{c.kelas}</td>
+                    <td style={{...td,textAlign:'center'}}>{c.jam}</td>
+                    <td style={td}><b>{c.materi}</b><br/>{c.tp}</td>
+                    <td style={td}>{c.kendala}</td>
+                    <td style={td}>{c.tl}</td>
+                    <td style={td}>{c.refleksi}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{fontSize:'.7rem',color:'#64748b',marginTop:6}}>
+            Contoh menggunakan mapel Matematika. Sesuaikan dengan mapel, kelas, dan kondisi murid Anda.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TabJurnal({sesi, showToast, mode='jurnal'}) {
   const isAbsensiMode = mode==='absensi';
   const BELUM = '(belum diisi)';
@@ -10666,6 +10753,57 @@ function TabJurnal({sesi, showToast, mode='jurnal'}) {
   });
   const [saving, setSaving] = React.useState(false);
   const [rekapMode, setRekapMode] = React.useState(false);
+  const [bulanCetak, setBulanCetak] = React.useState('');
+
+  function cetakJurnalBulanan(rows, bulanKey) {
+    const mad = sesi.mad||{};
+    const esc = v => String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const blnLabel = bulanKey ? new Date(bulanKey+'-01T00:00:00').toLocaleDateString('id-ID',{month:'long',year:'numeric'}) : 'Semua';
+    const tglCetak = new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
+    const mapelSet = [...new Set(rows.map(r=>r.mapel).filter(Boolean))].join(', ') || (sesi.pengguna.mapel||'—');
+    const isi = rows.map((j,i)=>`<tr>
+      <td class="c">${i+1}</td>
+      <td>${esc(new Date(j.tanggal+'T00:00:00').toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'}))}</td>
+      <td class="c"><b>${esc(j.kelas)}</b></td>
+      <td class="c">${esc(j.jam_ke)}</td>
+      <td><b>${esc(j.materi)}</b>${j.tujuan_pembelajaran?'<br>'+esc(j.tujuan_pembelajaran):''}</td>
+      <td>${esc(j.kendala)}</td><td>${esc(j.tindak_lanjut)}</td><td>${esc(j.refleksi)}</td><td></td>
+    </tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Jurnal Mengajar — ${esc(sesi.pengguna.nama)}</title>
+<style>
+@page{size:A4 landscape;margin:12mm}
+*{box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:9.5pt;color:#111;margin:0;padding:10px}
+h1{text-align:center;font-size:15pt;margin:0}.sub{text-align:center;font-size:9.5pt;margin:2px 0 10px}
+.id{display:grid;grid-template-columns:1fr 1fr;gap:6px 30px;border:1px solid #555;border-radius:6px;padding:8px 12px;margin-bottom:10px}
+.id div{display:grid;grid-template-columns:110px 10px 1fr}
+table{width:100%;border-collapse:collapse}th,td{border:1px solid #555;padding:5px 6px;vertical-align:top}
+th{background:#0f4238;color:#fff;font-size:9pt}td.c{text-align:center}
+.ttd{display:grid;grid-template-columns:1fr 1fr;margin-top:18px;text-align:center}.sp{height:55px}
+.no-print{margin-bottom:10px}@media print{.no-print{display:none}}
+</style></head><body>
+<div class="no-print"><button onclick="window.print()" style="padding:7px 18px;background:#0f4238;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">🖨️ Cetak / PDF</button>
+<button onclick="window.close()" style="padding:7px 14px;border:1px solid #ccc;border-radius:6px;cursor:pointer;margin-left:6px">✕ Tutup</button></div>
+<h1>JURNAL MENGAJAR GURU</h1><div class="sub">Mencatat, Merefleksi, dan Meningkatkan Pembelajaran</div>
+<div class="id">
+  <div><b>Nama Guru</b><span>:</span><span>${esc(sesi.pengguna.nama)}</span></div>
+  <div><b>Tahun Pelajaran</b><span>:</span><span>${esc(filterTA)}</span></div>
+  <div><b>Mata Pelajaran</b><span>:</span><span>${esc(mapelSet)}</span></div>
+  <div><b>Semester</b><span>:</span><span>${esc(filterSmt)}</span></div>
+  <div><b>Madrasah</b><span>:</span><span>${esc(mad.nama)}</span></div>
+  <div><b>Bulan</b><span>:</span><span>${esc(blnLabel)}</span></div>
+</div>
+<table><thead><tr><th style="width:28px">No</th><th style="width:105px">Hari / Tanggal</th><th style="width:48px">Kelas</th>
+<th style="width:42px">Jam Ke</th><th>Materi / Tujuan Pembelajaran (Materi/TP)</th><th>Kendala</th><th>Tindak Lanjut</th>
+<th>Refleksi Guru</th><th style="width:50px">Paraf</th></tr></thead>
+<tbody>${isi||'<tr><td colspan="9" class="c">Belum ada jurnal</td></tr>'}</tbody></table>
+<div class="ttd">
+  <div>Mengetahui,<br>Kepala Madrasah<div class="sp"></div><b>${esc(mad.nama_kepala||'.............................')}</b><br>NIP. ${esc(mad.nip_kepala||'—')}</div>
+  <div>${esc(mad.kota_kab||'..............')}, ${tglCetak}<br>Guru Mata Pelajaran<div class="sp"></div><b>${esc(sesi.pengguna.nama)}</b><br>NIP. ${esc(sesi.pengguna.nip||'—')}</div>
+</div></body></html>`;
+    const w = window.open('','_blank');
+    if (!w) { showToast('Izinkan pop-up untuk mencetak','warning'); return; }
+    w.document.write(html); w.document.close();
+  }
 
   React.useEffect(()=>{ loadPenugasan(); }, [filterTA]);
   React.useEffect(()=>{ loadData(filterTA, filterSmt); }, [filterTA, filterSmt]);
@@ -11052,6 +11190,7 @@ function TabJurnal({sesi, showToast, mode='jurnal'}) {
             {editJurnal?'✏️ Edit Jurnal':'📝 Tambah Jurnal Mengajar'}
           </div>
         </div>
+        <PanelContohJurnal />
         <div className="card">
           <form onSubmit={simpanJurnal}>
             <div className="grid2">
@@ -11108,16 +11247,16 @@ function TabJurnal({sesi, showToast, mode='jurnal'}) {
               </div>
             </div>
             <div className="form-group">
-              <label>Materi / TP (Tujuan Pembelajaran) *</label>
+              <label>Materi Pokok *</label>
               <textarea rows={2} value={form.materi} onChange={e=>setForm({...form,materi:e.target.value})} required
-                placeholder="Tuliskan materi atau tujuan pembelajaran hari ini..."
+                placeholder="Contoh: Bilangan bulat"
                 style={{width:'100%',padding:'10px 12px',border:'1.5px solid var(--border)',borderRadius:9,
                   fontSize:'.85rem',fontFamily:'inherit',resize:'vertical',outline:'none'}}/>
             </div>
             <div className="form-group">
-              <label>Tujuan Pembelajaran (TP) Spesifik</label>
+              <label>Tujuan Pembelajaran (TP)</label>
               <textarea rows={2} value={form.tujuan_pembelajaran} onChange={e=>setForm({...form,tujuan_pembelajaran:e.target.value})}
-                placeholder="Uraian tujuan pembelajaran yang lebih detail..."
+                placeholder="Contoh: Murid dapat melakukan operasi penjumlahan dan pengurangan bilangan bulat."
                 style={{width:'100%',padding:'10px 12px',border:'1.5px solid var(--border)',borderRadius:9,
                   fontSize:'.85rem',fontFamily:'inherit',resize:'vertical',outline:'none'}}/>
             </div>
@@ -11125,14 +11264,14 @@ function TabJurnal({sesi, showToast, mode='jurnal'}) {
               <div className="form-group">
                 <label>Kendala</label>
                 <textarea rows={2} value={form.kendala} onChange={e=>setForm({...form,kendala:e.target.value})}
-                  placeholder="Kendala yang dihadapi saat pembelajaran..."
+                  placeholder="Contoh: Sebagian murid masih bingung tanda positif dan negatif."
                   style={{width:'100%',padding:'10px 12px',border:'1.5px solid var(--border)',borderRadius:9,
                     fontSize:'.85rem',fontFamily:'inherit',resize:'vertical',outline:'none'}}/>
               </div>
               <div className="form-group">
                 <label>Tindak Lanjut</label>
                 <textarea rows={2} value={form.tindak_lanjut} onChange={e=>setForm({...form,tindak_lanjut:e.target.value})}
-                  placeholder="Rencana tindak lanjut..."
+                  placeholder="Contoh: Memberikan contoh nyata dan latihan bertahap."
                   style={{width:'100%',padding:'10px 12px',border:'1.5px solid var(--border)',borderRadius:9,
                     fontSize:'.85rem',fontFamily:'inherit',resize:'vertical',outline:'none'}}/>
               </div>
@@ -11140,7 +11279,7 @@ function TabJurnal({sesi, showToast, mode='jurnal'}) {
             <div className="form-group">
               <label>Refleksi Guru</label>
               <textarea rows={2} value={form.refleksi} onChange={e=>setForm({...form,refleksi:e.target.value})}
-                placeholder="Refleksi pembelajaran hari ini..."
+                placeholder="Contoh: Murid lebih memahami setelah diberi contoh kehidupan sehari-hari."
                 style={{width:'100%',padding:'10px 12px',border:'1.5px solid var(--border)',borderRadius:9,
                   fontSize:'.85rem',fontFamily:'inherit',resize:'vertical',outline:'none'}}/>
             </div>
@@ -11269,14 +11408,30 @@ function TabJurnal({sesi, showToast, mode='jurnal'}) {
             setFormAbsensi({tanggal:new Date().toISOString().split('T')[0],jam_ke:'1',...defaultDariPenugasan()});
             setView('form-absensi');
           }}>+ Absensi Baru</button>
-        </>) : (
+        </>) : (<>
+          {daftarJurnal.length > 0 && (()=>{
+            const bulanList = [...new Set(daftarJurnal.map(j=>(j.tanggal||'').slice(0,7)).filter(Boolean))].sort();
+            const bln = bulanList.includes(bulanCetak) ? bulanCetak : (bulanList[bulanList.length-1]||'');
+            return (<>
+              <select value={bln} onChange={e=>setBulanCetak(e.target.value)}
+                style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit',width:'auto'}}>
+                {bulanList.map(b=><option key={b} value={b}>{new Date(b+'-01T00:00:00').toLocaleDateString('id-ID',{month:'long',year:'numeric'})}</option>)}
+              </select>
+              <button className="btn btn-outline btn-sm" onClick={()=>cetakJurnalBulanan(
+                [...daftarJurnal].filter(j=>(j.tanggal||'').startsWith(bln)).sort((a,b)=>a.tanggal>b.tanggal?1:a.tanggal<b.tanggal?-1:String(a.jam_ke).localeCompare(String(b.jam_ke))), bln)}>
+                🖨️ Cetak Jurnal
+              </button>
+            </>);
+          })()}
           <button className="btn btn-primary btn-sm" onClick={()=>{
             setView('form-jurnal'); setEditJurnal(null);
             setForm({tanggal:new Date().toISOString().split('T')[0],jam_ke:'1',...defaultDariPenugasan(),
               materi:'',tujuan_pembelajaran:'',kendala:'',tindak_lanjut:'',refleksi:''});
           }}>+ Jurnal Baru</button>
-        )}
+        </>)}
       </div>
+
+      {!isAbsensiMode && <PanelContohJurnal defaultOpen={daftarJurnal.length===0} />}
 
       {/* Pengingat pertemuan yang belum lengkap */}
       {pending.length > 0 && (
