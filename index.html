@@ -157,7 +157,6 @@ function NamaMadrasah({npsn}) {
 }
 
 function GantiPasswordPertama({sesi, onDone, onLogout}) {
-  const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
   const [pass1, setPass1] = React.useState('');
   const [pass2, setPass2] = React.useState('');
   const [err, setErr]     = React.useState('');
@@ -4309,6 +4308,18 @@ function DashboardSupervisor({sesi, showToast}) {
                   .update({status:'selesai'})
                   .eq('id', s.id);
                 if (error) { showToast('Gagal: '+error.message,'error'); return; }
+                // Buat RTL otomatis jika belum ada, agar muncul di akun guru
+                const {data:rtlAda} = await sb.from('supermad_rtl').select('id').eq('supervisi_id', s.id).limit(1);
+                if (!rtlAda || !rtlAda.length) {
+                  const g = generateRTL(s.skor_perencanaan||[], s.skor_pelaksanaan||[], s.skor_asesmen||[]);
+                  await sb.from('supermad_rtl').insert({
+                    supervisi_id: s.id, madrasah_id: sesi.mad.id, guru_id: s.guru_id,
+                    tahun_ajaran: s.tahun_ajaran||filterTA, rtl_perencanaan: g.p, rtl_pelaksanaan: g.l,
+                    rtl_asesmen: g.a, rtl_madrasah: [], catatan_umum: '', konfirmasi_guru: 'belum',
+                    catatan_guru: '', status: 'draft', dibuat_oleh: sesi.pengguna.id,
+                    updated_at: new Date().toISOString(),
+                  });
+                }
                 showToast('✅ Supervisi '+guru?.nama+' ditandai Selesai','success');
                 loadData(filterSmt, filterTA);
               }
@@ -6097,6 +6108,31 @@ ${catUmum ? `<div class="section-title">C. CATATAN UMUM SUPERVISOR</div>
 }
 
 
+// ── HELPER: penugasan guru (robust, tanpa embed FK, fallback TA) ──
+async function fetchPenugasanGuru(guruId, ta) {
+  const {data, error} = await sb.from('supermad_penugasan')
+    .select('id,mapel,kelas_id,aktif,tahun_ajaran')
+    .eq('guru_id', guruId).eq('aktif', true);
+  if (error) { console.error('Penugasan error:', error); return {list:[], ta, error}; }
+  const all = data||[];
+  let pakaiTA = ta;
+  let list = all.filter(p=>p.tahun_ajaran===ta);
+  if (!list.length && all.length) {
+    pakaiTA = all.map(p=>p.tahun_ajaran).filter(Boolean).sort().reverse()[0] || ta;
+    list = all.filter(p=>p.tahun_ajaran===pakaiTA);
+  }
+  const ids = [...new Set(list.map(p=>p.kelas_id).filter(Boolean))];
+  const kmap = {};
+  if (ids.length) {
+    const {data:ks} = await sb.from('supermad_kelas').select('id,nama_kelas,tingkat').in('id', ids);
+    (ks||[]).forEach(k=>{ kmap[k.id]=k; });
+  }
+  list = list.map(p=>({...p, supermad_kelas: kmap[p.kelas_id]||null}))
+    .sort((a,b)=>(a.mapel||'').localeCompare(b.mapel||'') ||
+      (a.supermad_kelas?.nama_kelas||'').localeCompare(b.supermad_kelas?.nama_kelas||''));
+  return {list, ta: pakaiTA};
+}
+
 // ── DASHBOARD GURU ────────────────────────────────────────────
 function DashboardGuru({sesi, showToast}) {
   // Fitur aktif dari setting kanwil
@@ -6112,6 +6148,7 @@ function DashboardGuru({sesi, showToast}) {
   const [konfirmasi, setKonfirmasi] = useState('belum');
   const [catatanGuru, setCatatanGuru] = useState('');
   const [saving, setSaving]     = useState(false);
+  const [penugasanGuru, setPenugasanGuru] = useState({list:[], ta:''});
 
   useEffect(()=>{ loadData(); }, []);
 
@@ -6119,19 +6156,30 @@ function DashboardGuru({sesi, showToast}) {
     setLoading(true);
     // Guru login via token - id guru langsung dari sesi.pengguna.id
     const guruId = sesi.pengguna.id;
+    fetchPenugasanGuru(guruId, getTASekarang()).then(r=>setPenugasanGuru(r));
     const {data:sups} = await sb.from('supermad_supervisi')
       .select('*').eq('madrasah_id', sesi.mad.id)
       .eq('guru_id', guruId)
       .eq('status','selesai').order('created_at',{ascending:false});
-    // Ambil RTL via supervisi_id agar tidak tergantung guru_id di RTL
+    // Ambil RTL berdasarkan guru_id ATAU supervisi_id milik guru ini
     const supIds = (sups||[]).map(s=>s.id);
-    let rtls = [];
-    if (supIds.length > 0) {
-      const {data:rtlData} = await sb.from('supermad_rtl')
-        .select('*').in('supervisi_id', supIds)
-        .order('created_at',{ascending:false});
-      rtls = rtlData||[];
-    }
+    let rq = sb.from('supermad_rtl').select('*').order('created_at',{ascending:false});
+    rq = supIds.length
+      ? rq.or('guru_id.eq.'+guruId+',supervisi_id.in.('+supIds.join(',')+')')
+      : rq.eq('guru_id', guruId);
+    const {data:rtlData, error:rtlErr} = await rq;
+    if (rtlErr) console.error('RTL error:', rtlErr);
+    let rtls = rtlData||[];
+    // Supervisi selesai yang belum punya RTL tersimpan → tampilkan RTL otomatis dari skor
+    const adaRTL = new Set(rtls.map(r=>r.supervisi_id));
+    (sups||[]).forEach(s=>{
+      if (adaRTL.has(s.id)) return;
+      const g = generateRTL(s.skor_perencanaan||[], s.skor_pelaksanaan||[], s.skor_asesmen||[]);
+      if (!(g.p.length+g.l.length+g.a.length)) return;
+      rtls.push({id:null, _virtual:true, supervisi_id:s.id, guru_id:guruId,
+        tahun_ajaran:s.tahun_ajaran, rtl_perencanaan:g.p, rtl_pelaksanaan:g.l, rtl_asesmen:g.a,
+        rtl_madrasah:[], konfirmasi_guru:'belum', catatan_guru:'', created_at:s.created_at});
+    });
     setSupList(sups||[]);
     setRtlList(rtls||[]);
     setLoading(false);
@@ -6140,12 +6188,31 @@ function DashboardGuru({sesi, showToast}) {
   async function simpanKonfirmasi() {
     if (!aktifRTL) return;
     setSaving(true);
-    const {error} = await sb.from('supermad_rtl').update({
+    const konf = {
       konfirmasi_guru: konfirmasi,
       catatan_guru:    catatanGuru,
       tgl_konfirmasi:  new Date().toISOString().split('T')[0],
       updated_at:      new Date().toISOString(),
-    }).eq('id', aktifRTL.id);
+    };
+    let error;
+    if (aktifRTL.id) {
+      ({error} = await sb.from('supermad_rtl').update(konf).eq('id', aktifRTL.id));
+    } else {
+      // RTL belum tersimpan (dibuat otomatis dari skor) → simpan baru
+      ({error} = await sb.from('supermad_rtl').insert({
+        supervisi_id:    aktifRTL.supervisi_id,
+        madrasah_id:     sesi.mad.id,
+        guru_id:         sesi.pengguna.id,
+        tahun_ajaran:    aktifRTL.tahun_ajaran || sesi.mad.tahun_ajaran || getTASekarang(),
+        rtl_perencanaan: aktifRTL.rtl_perencanaan||[],
+        rtl_pelaksanaan: aktifRTL.rtl_pelaksanaan||[],
+        rtl_asesmen:     aktifRTL.rtl_asesmen||[],
+        rtl_madrasah:    [],
+        catatan_umum:    '',
+        status:          'draft',
+        ...konf,
+      }));
+    }
     setSaving(false);
     if (error) { showToast('Gagal: '+error.message,'error'); return; }
     showToast('✅ Konfirmasi berhasil disimpan!');
@@ -6240,6 +6307,32 @@ function DashboardGuru({sesi, showToast}) {
         );
       })()}
 
+      {/* Kelas & Mapel yang diampu (dari Penugasan operator) */}
+      <div className="card" style={{marginBottom:12,padding:'12px 16px'}}>
+        <div style={{fontWeight:800,color:'var(--p3)',fontSize:'.85rem',marginBottom:8}}>
+          📌 Kelas & Mapel yang Diampu {penugasanGuru.ta ? '· TA '+penugasanGuru.ta : ''}
+        </div>
+        {penugasanGuru.list.length===0 ? (
+          <div style={{fontSize:'.78rem',color:'var(--text3)'}}>
+            Belum ada penugasan mengajar. Minta operator mengatur di menu Penugasan.
+          </div>
+        ) : (
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {Object.entries(penugasanGuru.list.reduce((acc,p)=>{
+              (acc[p.mapel]=acc[p.mapel]||[]).push(p.supermad_kelas?.nama_kelas||'?'); return acc;
+            },{})).map(([mp,kls])=>(
+              <div key={mp} style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',fontSize:'.8rem'}}>
+                <b style={{minWidth:140}}>{mp}</b>
+                {kls.map(k=>(
+                  <span key={k} style={{padding:'2px 9px',borderRadius:20,fontSize:'.72rem',fontWeight:700,
+                    background:'#d1fae5',color:'#065f46'}}>{k}</span>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Tab */}
       <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
         {[
@@ -6330,13 +6423,13 @@ function DashboardGuru({sesi, showToast}) {
             </div>
           ) : (
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
-              {rtlList.map(r=>{
+              {rtlList.map((r,ri)=>{
                 const sup = supList.find(s=>s.id===r.supervisi_id);
                 const totalRTL = (r.rtl_perencanaan?.length||0)+(r.rtl_pelaksanaan?.length||0)+(r.rtl_asesmen?.length||0);
                 const statusColor = r.konfirmasi_guru==='sudah'?'#16a34a':r.konfirmasi_guru==='sebagian'?'#d97706':'#dc2626';
                 const statusLabel = r.konfirmasi_guru==='sudah'?'✅ Sudah':r.konfirmasi_guru==='sebagian'?'🔄 Sebagian':'⏳ Belum';
                 return (
-                  <div key={r.id} className="card">
+                  <div key={r.id||('v'+ri)} className="card">
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,flexWrap:'wrap'}}>
                       <div>
                         <div style={{fontWeight:700}}>
@@ -9231,7 +9324,6 @@ function TabKelasSiswa({sesi, showToast}) {
 
 // ── TAB NILAI SISWA (GURU) ────────────────────────────────────
 function TabNilai({sesi, showToast}) {
-  const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
   const [filterTA,  setFilterTA]  = React.useState(getTASekarang());
   const [filterSmt, setFilterSmt] = React.useState('1');
   const [kelasList, setKelasList] = React.useState([]);
@@ -9282,17 +9374,16 @@ function TabNilai({sesi, showToast}) {
   // Load penugasan saat pertama kali
   React.useEffect(()=>{ loadPenugasan(); }, [filterTA]);
 
+  const penugasanAutoTA = React.useRef(false);
   async function loadPenugasan() {
     setLoadingPenugasan(true);
-    const {data} = await sb.from('supermad_penugasan').select(`
-      id, mapel, kelas_id, aktif,
-      supermad_kelas!kelas_id(id, nama_kelas, tingkat)
-    `)
-      .eq('guru_id', sesi.pengguna.id)
-      .eq('tahun_ajaran', filterTA)
-      .eq('aktif', true)
-      .order('mapel');
-    const list = data||[];
+    const res = await fetchPenugasanGuru(sesi.pengguna.id, filterTA);
+    // Saat pertama dibuka: jika penugasan tercatat di TA lain, pindah otomatis ke TA itu
+    if (!penugasanAutoTA.current) {
+      penugasanAutoTA.current = true;
+      if (res.ta !== filterTA && res.list.length) { setFilterTA(res.ta); return; }
+    }
+    const list = res.ta===filterTA ? res.list : [];
     setPenugasanList(list);
 
     if (list.length > 0) {
@@ -10488,6 +10579,15 @@ function TabJurnal({sesi, showToast}) {
     return [...new Set(penugasanList.map(p=>p.mapel))];
   }, [penugasanList]);
 
+  // Isi awal mapel & kelas dari penugasan (jika ada)
+  function defaultDariPenugasan() {
+    if (penugasanList && penugasanList.length) {
+      const mp = (selectedMapel && penugasanList.some(p=>p.mapel===selectedMapel)) ? selectedMapel : penugasanList[0].mapel;
+      const pt = penugasanList.find(p=>p.mapel===mp);
+      return {mapel: mp, kelas: pt?.supermad_kelas?.nama_kelas||'', kelas_id: pt?.kelas_id||''};
+    }
+    return {mapel: sesi.pengguna.mapel||'', kelas:'', kelas_id:''};
+  }
   const [formAbsensi, setFormAbsensi] = React.useState({
     tanggal: new Date().toISOString().split('T')[0],
     kelas: '', kelas_id: '',
@@ -10511,16 +10611,14 @@ function TabJurnal({sesi, showToast}) {
   React.useEffect(()=>{ loadPenugasan(); }, [filterTA]);
   React.useEffect(()=>{ loadData(filterTA, filterSmt); }, [filterTA, filterSmt]);
 
+  const penugasanAutoTA = React.useRef(false);
   async function loadPenugasan() {
-    const {data} = await sb.from('supermad_penugasan').select(`
-      id, mapel, kelas_id, aktif,
-      supermad_kelas!kelas_id(id, nama_kelas, tingkat)
-    `)
-      .eq('guru_id', sesi.pengguna.id)
-      .eq('tahun_ajaran', filterTA)
-      .eq('aktif', true)
-      .order('mapel');
-    const list = data||[];
+    const res = await fetchPenugasanGuru(sesi.pengguna.id, filterTA);
+    if (!penugasanAutoTA.current) {
+      penugasanAutoTA.current = true;
+      if (res.ta !== filterTA && res.list.length) { setFilterTA(res.ta); return; }
+    }
+    const list = res.ta===filterTA ? res.list : [];
     setPenugasanList(list);
     if (list.length > 0 && !selectedMapel) {
       setSelectedMapel(list[0].mapel);
@@ -11037,13 +11135,13 @@ function TabJurnal({sesi, showToast}) {
         </select>
         <button className="btn btn-outline btn-sm" onClick={()=>setRekapMode(true)}>📊 Rekap</button>
         <button className="btn btn-outline btn-sm" style={{borderColor:'#0891b2',color:'#0891b2'}} onClick={()=>{
-          setFormAbsensi({tanggal:new Date().toISOString().split('T')[0],kelas:'',jam_ke:'1',mapel:sesi.pengguna.mapel||''});
+          setFormAbsensi({tanggal:new Date().toISOString().split('T')[0],jam_ke:'1',...defaultDariPenugasan()});
           setView('form-absensi');
         }}>📋 Absensi</button>
         <button className="btn btn-primary btn-sm" onClick={()=>{
           setView('form-jurnal'); setEditJurnal(null);
-          setForm({tanggal:new Date().toISOString().split('T')[0],kelas:'',jam_ke:'1',
-            mapel:sesi.pengguna.mapel||'',materi:'',tujuan_pembelajaran:'',kendala:'',tindak_lanjut:'',refleksi:''});
+          setForm({tanggal:new Date().toISOString().split('T')[0],jam_ke:'1',...defaultDariPenugasan(),
+            materi:'',tujuan_pembelajaran:'',kendala:'',tindak_lanjut:'',refleksi:''});
         }}>📝 Jurnal</button>
       </div>
 
@@ -11092,6 +11190,7 @@ function TabJurnal({sesi, showToast}) {
                   </button>
                   <button onClick={()=>{setEditJurnal(j);setForm({
                     tanggal:j.tanggal,kelas:j.kelas,jam_ke:j.jam_ke,mapel:j.mapel||'',
+                    kelas_id:((penugasanList||[]).find(p=>p.mapel===j.mapel&&p.supermad_kelas?.nama_kelas===j.kelas)||{}).kelas_id||'',
                     materi:j.materi==='(belum diisi)'?'':j.materi,tujuan_pembelajaran:j.tujuan_pembelajaran||'',
                     kendala:j.kendala||'',tindak_lanjut:j.tindak_lanjut||'',refleksi:j.refleksi||''
                   });setView('form-jurnal');}}
@@ -11944,6 +12043,20 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
         updated_at: new Date().toISOString()
       }).eq('id', jadwal.id);
     }
+      // Buat RTL otomatis agar langsung muncul di akun guru
+      if (status==='selesai' && newSup && newSup.id) {
+        const {data:rtlAda} = await sb.from('supermad_rtl').select('id').eq('supervisi_id', newSup.id).limit(1);
+        if (!rtlAda || !rtlAda.length) {
+          const g = generateRTL(skorP, skorL, skorA);
+          const {error:rtlErr} = await sb.from('supermad_rtl').insert({
+            supervisi_id: newSup.id, madrasah_id: sesi.mad.id, guru_id: guru.id,
+            tahun_ajaran: tahunAjaran, rtl_perencanaan: g.p, rtl_pelaksanaan: g.l, rtl_asesmen: g.a,
+            rtl_madrasah: [], catatan_umum: '', konfirmasi_guru: 'belum', catatan_guru: '',
+            status: 'draft', dibuat_oleh: sesi.pengguna.id, updated_at: new Date().toISOString(),
+          });
+          if (rtlErr) console.error('Auto RTL error:', rtlErr);
+        }
+      }
       onSelesai();
     } catch(err) {
       showToast('❌ Error: '+err.message, 'error');
@@ -12411,7 +12524,6 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
 
 // ── TAB REKAP NILAI (Operator & Supervisor — view only) ────────
 function TabRekapNilai({sesi, showToast}) {
-  const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
 
   const jenisOpt = [
     {val:'formatif', label:'Formatif'},
