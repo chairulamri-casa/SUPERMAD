@@ -1761,8 +1761,34 @@ function KelolaPengguna({mad, showToast, onBack}) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({nama:'',nip:'',jabatan:'Kepala Madrasah',role:'supervisor',username:'',password:''});
+  const [editP, setEditP]   = useState(null);   // pengguna yang sedang diedit
+  const [formE, setFormE]   = useState({});
+  const [savingE, setSavingE] = useState(false);
 
   useEffect(()=>{ loadList(); }, []);
+
+  async function simpanEdit(e) {
+    e.preventDefault();
+    if (!formE.nama?.trim() || !formE.username?.trim()) { showToast('Nama dan username wajib diisi!','error'); return; }
+    setSavingE(true);
+    // Username harus unik
+    const {data:dup} = await sb.from('supermad_pengguna').select('id')
+      .eq('username', formE.username.trim()).neq('id', editP.id).limit(1);
+    if (dup && dup.length) { setSavingE(false); showToast('Username sudah dipakai akun lain!','error'); return; }
+    const payload = {
+      nama: formE.nama.trim(), nip: (formE.nip||'').trim(), jabatan: formE.jabatan,
+      role: formE.role, username: formE.username.trim(), aktif: !!formE.aktif,
+    };
+    if (formE.password_baru) {
+      if (formE.password_baru.length < 6) { setSavingE(false); showToast('Password minimal 6 karakter!','error'); return; }
+      payload.password_hash = md5(formE.password_baru);
+    }
+    const {error} = await sb.from('supermad_pengguna').update(payload).eq('id', editP.id);
+    setSavingE(false);
+    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    showToast('✅ Data '+payload.nama+' diperbarui'+(formE.password_baru?' (password diganti)':''));
+    setEditP(null); loadList();
+  }
 
   async function loadList() {
     setLoading(true);
@@ -1889,6 +1915,16 @@ function KelolaPengguna({mad, showToast, onBack}) {
                   color:p.role==='supervisor'?'#065f46':'#1d4ed8'}}>
                   {p.role==='supervisor'?'Supervisor':'Operator'}
                 </span>
+                {p.aktif===false && (
+                  <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.68rem',fontWeight:700,
+                    background:'#f3f4f6',color:'#6b7280'}}>Nonaktif</span>
+                )}
+                <button onClick={()=>{ setEditP(p); setFormE({nama:p.nama||'',nip:p.nip||'',jabatan:p.jabatan||'Operator TU',
+                    role:p.role||'operator',username:p.username||'',aktif:p.aktif!==false,password_baru:''}); }}
+                  style={{padding:'3px 8px',borderRadius:6,border:'1px solid var(--p)',
+                    background:'#fff',color:'var(--p)',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
+                  ✏️ Edit
+                </button>
                 <button onClick={()=>resetPass(p)}
                   style={{padding:'3px 8px',borderRadius:6,border:'1px solid #d97706',
                     background:'#fffbeb',color:'#92400e',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
@@ -1902,6 +1938,63 @@ function KelolaPengguna({mad, showToast, onBack}) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {editP && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',display:'flex',alignItems:'center',
+          justifyContent:'center',zIndex:1000,padding:16}}>
+          <div style={{background:'#fff',borderRadius:16,padding:22,width:'100%',maxWidth:480,
+            maxHeight:'90vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
+            <div style={{fontWeight:900,color:'var(--p3)',marginBottom:4}}>✏️ Edit Pengguna</div>
+            <div style={{fontSize:'.76rem',color:'var(--text2)',marginBottom:14}}>{mad.nama}</div>
+            <form onSubmit={simpanEdit}>
+              <div className="grid2">
+                <div className="form-group">
+                  <label>Nama Lengkap *</label>
+                  <input value={formE.nama} onChange={e=>setFormE({...formE,nama:e.target.value})} required/>
+                </div>
+                <div className="form-group">
+                  <label>NIP</label>
+                  <input value={formE.nip} onChange={e=>setFormE({...formE,nip:e.target.value})}/>
+                </div>
+                <div className="form-group">
+                  <label>Jabatan</label>
+                  <select value={formE.jabatan} onChange={e=>setFormE({...formE,jabatan:e.target.value})}>
+                    {[...new Set(['Kepala Madrasah','Wakil Kepala Madrasah','Pengawas','Operator TU','Staf TU','Bendahara','Kepala Tata Usaha',formE.jabatan].filter(Boolean))]
+                      .map(j=><option key={j}>{j}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Role</label>
+                  <select value={formE.role} onChange={e=>setFormE({...formE,role:e.target.value})}>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="operator">Operator</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Username *</label>
+                  <input value={formE.username} onChange={e=>setFormE({...formE,username:e.target.value})} required/>
+                </div>
+                <div className="form-group">
+                  <label>Password Baru <span style={{fontWeight:400,color:'var(--text3)'}}>(kosongkan jika tidak diganti)</span></label>
+                  <input type="password" value={formE.password_baru} placeholder="Min. 6 karakter"
+                    onChange={e=>setFormE({...formE,password_baru:e.target.value})}/>
+                </div>
+              </div>
+              <label style={{display:'flex',alignItems:'center',gap:8,fontSize:'.82rem',marginBottom:14,cursor:'pointer'}}>
+                <input type="checkbox" checked={!!formE.aktif} style={{width:'auto'}}
+                  onChange={e=>setFormE({...formE,aktif:e.target.checked})}/>
+                Akun aktif (bisa dipilih saat login)
+              </label>
+              <div style={{display:'flex',gap:8}}>
+                <button className="btn btn-primary" type="submit" disabled={savingE}>
+                  {savingE?'⏳ Menyimpan...':'💾 Simpan Perubahan'}
+                </button>
+                <button type="button" className="btn btn-outline" onClick={()=>setEditP(null)}>Batal</button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
