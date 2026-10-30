@@ -589,7 +589,7 @@ function HalamanLogin({onLogin}) {
 
         {/* KANAN: visual atau panel login */}
         <div style={{display:isMobile&&!panelOpen?'none':'block'}}>
-          {panelOpen ? <PanelLogin/> : (
+          {panelOpen ? PanelLogin() : (
             <div>
               {/* Card utama */}
               <div style={{background:'linear-gradient(135deg,#0f4238,#1a6b5c)',borderRadius:20,
