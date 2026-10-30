@@ -113,6 +113,24 @@ setInterval(async () => {
   }
 }, 4 * 60 * 1000);
 
+// ── RPC BERSESI (data sensitif hanya lewat fungsi server) ─────
+function sesiValid(s) {
+  if (!s || !s.pengguna || !s.mode) return false;
+  if (s.mode === 'admin_kanwil') return true;
+  return !!s.token; // sesi lama tanpa token → wajib login ulang
+}
+async function rpcSesi(nama, sesi) {
+  const {data, error} = await sb.rpc(nama, {p_sesi: sesi && sesi.token});
+  if (error) {
+    if (String(error.message||'').includes('SESI_TIDAK_VALID')) {
+      window.dispatchEvent(new Event('supermad-sesi-habis'));
+    }
+    console.error(nama, error);
+    return {data:null, error};
+  }
+  return {data, error:null};
+}
+
 // ── TOAST ──────────────────────────────────────────────────────
 function Toast({msg, type, onClose}) {
   useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); }, []);
@@ -138,10 +156,9 @@ function NamaMadrasah({npsn}) {
   React.useEffect(()=>{
     setLoading(true); setNama('');
     if (!npsn || npsn.length < 8) return;
-    sb.from('supermad_madrasah').select('nama,kota_kab,jenjang')
-      .eq('npsn', npsn.trim()).maybeSingle()
+    sb.rpc('supermad_cek_npsn', {p_npsn: npsn.trim()})
       .then(({data})=>{
-        setNama(data ? data.nama : 'NPSN tidak ditemukan');
+        setNama(data ? data : 'NPSN tidak ditemukan');
         setLoading(false);
       });
   }, [npsn]);
@@ -256,17 +273,10 @@ function HalamanLogin({onLogin}) {
   async function cekToken(e) {
     e.preventDefault(); setErr(''); setLoading(true);
     try {
-      const {data:tok, error} = await sb.from('supermad_reg_token')
-        .select('*, supermad_madrasah(*)')
-        .eq('token', regToken.trim().toUpperCase()).eq('dipakai', false).single();
-      if (error || !tok) { setErr('Token tidak valid atau sudah digunakan.'); return; }
-      const mad = tok.supermad_madrasah;
-      const {data:existingOp} = await sb.from('supermad_pengguna')
-        .select('id').eq('madrasah_id', mad.id).eq('aktif', true).limit(1);
-      if (existingOp && existingOp.length > 0) {
-        setErr(`Madrasah ${mad.nama} sudah terdaftar. Hubungi admin jika lupa kode akses.`); return;
-      }
-      setRegMad(mad); setRegStep('form');
+      const {data:res, error} = await sb.rpc('supermad_cek_reg_token', {p_token: regToken.trim().toUpperCase()});
+      if (error) { setErr('Error: '+error.message); return; }
+      if (!res || res.error) { setErr(res?.error || 'Token tidak valid atau sudah digunakan.'); return; }
+      setRegMad(res.mad); setRegStep('form');
     } catch(err) { setErr('Koneksi gagal.'); }
     finally { setLoading(false); }
   }
@@ -277,20 +287,13 @@ function HalamanLogin({onLogin}) {
     if (regForm.password.length < 6) { setErr('Password minimal 6 karakter.'); return; }
     setErr(''); setLoading(true);
     try {
-      const {data:cek} = await sb.from('supermad_pengguna').select('id').eq('username', regForm.username.trim());
-      if (cek && cek.length > 0) { setErr('Username sudah dipakai, pilih username lain.'); return; }
-      const {error:errIns} = await sb.from('supermad_pengguna').insert({
-        madrasah_id: regMad.id, nama: regForm.nama.trim(), nip: regForm.nip.trim(),
-        jabatan: regForm.jabatan, role: 'operator', username: regForm.username.trim(),
-        password_hash: md5(regForm.password), aktif: true,
+      const {data:res, error} = await sb.rpc('supermad_daftar_operator', {
+        p_token: regToken.trim().toUpperCase(), p_nama: regForm.nama.trim(), p_nip: regForm.nip.trim(),
+        p_jabatan: regForm.jabatan, p_username: regForm.username.trim(), p_password: regForm.password,
       });
-      if (errIns) { setErr('Gagal daftar: '+errIns.message); return; }
-      await sb.from('supermad_reg_token')
-        .update({dipakai:true, dipakai_oleh:regForm.nama.trim(), dipakai_at:new Date().toISOString()})
-        .eq('token', regToken.trim().toUpperCase());
-      const {data:penggunaList} = await sb.from('supermad_pengguna')
-        .select('*').eq('madrasah_id', regMad.id).eq('aktif', true).order('nama');
-      onLogin({mad:regMad, penggunaList, mode:'madrasah'});
+      if (error) { setErr('Gagal daftar: '+error.message); return; }
+      if (!res || res.error) { setErr(res?.error || 'Gagal daftar.'); return; }
+      onLogin({mad:res.mad, penggunaList:res.pengguna||[], mode:'madrasah', token:res.token});
     } catch(err) { setErr('Error: '+err.message); }
     finally { setLoading(false); }
   }
@@ -298,15 +301,10 @@ function HalamanLogin({onLogin}) {
   async function loginMadrasah(e) {
     e.preventDefault(); setErr(''); setLoading(true);
     try {
-      const {data:madList, error:e1} = await sb.from('supermad_madrasah')
-        .select('*').eq('npsn', npsn.trim()).eq('aktif', true);
+      const {data:res, error:e1} = await sb.rpc('supermad_login_madrasah', {p_npsn: npsn.trim(), p_kode: kode.trim()});
       if (e1) { setErr('Error: '+e1.message); return; }
-      if (!madList || madList.length === 0) { setErr('NPSN tidak ditemukan.'); return; }
-      const mad = madList[0];
-      if (mad.kode_akses.toLowerCase() !== kode.trim().toLowerCase()) { setErr('Kode akses salah.'); return; }
-      const {data:penggunaList} = await sb.from('supermad_pengguna')
-        .select('*').eq('madrasah_id', mad.id).eq('aktif', true).order('nama');
-      onLogin({mad, penggunaList, mode:'madrasah'});
+      if (!res) { setErr('NPSN atau kode akses salah.'); return; }
+      onLogin({mad:res.mad, penggunaList:res.pengguna||[], mode:'madrasah', token:res.token});
     } catch(err) { setErr('Koneksi gagal: '+err.message); }
     finally { setLoading(false); }
   }
@@ -314,13 +312,10 @@ function HalamanLogin({onLogin}) {
   async function loginGuru(e) {
     e.preventDefault(); setErr(''); setLoading(true);
     try {
-      const {data:madList} = await sb.from('supermad_madrasah').select('*').eq('npsn', npsn.trim());
-      if (!madList||!madList.length) { setErr('NPSN tidak ditemukan.'); return; }
-      const mad = madList[0];
-      const {data:guruList} = await sb.from('supermad_guru')
-        .select('*').eq('madrasah_id', mad.id).eq('token', token.trim()).eq('aktif', true);
-      if (!guruList||!guruList.length) { setErr('Token tidak valid.'); return; }
-      onLogin({mode:'guru', mad, guru:guruList[0]});
+      const {data:res, error:e1} = await sb.rpc('supermad_login_guru', {p_npsn: npsn.trim(), p_token: token.trim()});
+      if (e1) { setErr('Error: '+e1.message); return; }
+      if (!res) { setErr('NPSN atau token guru tidak valid.'); return; }
+      onLogin({mode:'guru', mad:res.mad, guru:res.guru, token:res.token});
     } catch(err) { setErr('Error: '+err.message); }
     finally { setLoading(false); }
   }
@@ -686,8 +681,8 @@ function App() {
       const saved = localStorage.getItem('supermad_sesi');
       if (!saved) return null;
       const parsed = JSON.parse(saved);
-      // Validasi: harus punya pengguna dan mode
-      if (!parsed.pengguna || !parsed.mode) return null;
+      // Validasi: harus punya pengguna, mode, dan token sesi (kecuali Kanwil)
+      if (!sesiValid(parsed)) { localStorage.removeItem('supermad_sesi'); return null; }
       return parsed;
     } catch(e) { return null; }
   });
@@ -696,7 +691,7 @@ function App() {
       const saved = localStorage.getItem('supermad_sesi');
       if (!saved) return 'login';
       const parsed = JSON.parse(saved);
-      if (!parsed.pengguna || !parsed.mode) return 'login';
+      if (!sesiValid(parsed)) return 'login';
       return 'app';
     } catch(e) { return 'login'; }
   });
@@ -709,12 +704,22 @@ function App() {
 
   // Refresh data madrasah dari DB saat restore dari localStorage
   React.useEffect(() => {
-    if (sesi && sesi.mad && sesi.mad.id) {
-      sb.from('supermad_madrasah').select('*').eq('id', sesi.mad.id).single()
-        .then(({data}) => {
-          if (data) setSesi(prev => ({...prev, mad: data}));
-        }).catch(()=>{});
+    if (sesi && sesi.mad && sesi.mad.id && sesi.token) {
+      rpcSesi('supermad_get_madrasah', sesi).then(({data}) => {
+        if (data) setSesi(prev => {
+          const s = {...prev, mad: data};
+          try { localStorage.setItem('supermad_sesi', JSON.stringify(s)); } catch(e) {}
+          return s;
+        });
+      });
     }
+  }, []);
+
+  // Sesi kedaluwarsa / tidak valid → kembali ke login
+  React.useEffect(() => {
+    const h = () => { showToast('Sesi berakhir, silakan login ulang.','warning'); logout(); };
+    window.addEventListener('supermad-sesi-habis', h);
+    return () => window.removeEventListener('supermad-sesi-habis', h);
   }, []);
 
   function handleLogin(data) {
@@ -726,7 +731,7 @@ function App() {
       else { setStep('app'); }
       try { localStorage.setItem('supermad_sesi', JSON.stringify(s)); } catch(e) {}
     } else if (data.mode === 'guru') {
-      const s = {pengguna: {...data.guru, role:'guru', nama:data.guru.nama}, mad: data.mad, mode: 'guru'};
+      const s = {pengguna: {...data.guru, role:'guru', nama:data.guru.nama}, mad: data.mad, mode: 'guru', token: data.token};
       setSesi(s); setStep('app');
       try { localStorage.setItem('supermad_sesi', JSON.stringify(s)); } catch(e) {}
     } else {
@@ -736,7 +741,7 @@ function App() {
   }
 
   function handlePilihPengguna(pengguna) {
-    const s = {pengguna, mad: loginData.mad, mode: pengguna.role};
+    const s = {pengguna, mad: loginData.mad, mode: pengguna.role, token: loginData.token};
     setSesi(s); setStep('app');
     try { localStorage.setItem('supermad_sesi', JSON.stringify(s)); } catch(e) {}
   }
@@ -744,6 +749,10 @@ function App() {
   async function logout() {
     // Sign out dari Supabase Auth jika ada session
     try { await sb.auth.signOut(); } catch(e) {}
+    try {
+      const saved = JSON.parse(localStorage.getItem('supermad_sesi')||'null');
+      if (saved && saved.token) await sb.rpc('supermad_logout', {p_sesi: saved.token});
+    } catch(e) {}
     setSesi(null); setLoginData(null); setStep('login');
     try { localStorage.removeItem('supermad_sesi'); } catch(e) {}
   }
@@ -928,8 +937,8 @@ function DashboardOperator({sesi, showToast, onSesiUpdate}) {
   async function loadData() {
     setLoading(true);
     const [g, p, s] = await Promise.all([
-      sb.from('supermad_guru').select('*').eq('madrasah_id', sesi.mad.id).order('nama'),
-      sb.from('supermad_pengguna').select('*').eq('madrasah_id', sesi.mad.id).order('nama'),
+      rpcSesi('supermad_list_guru', sesi),
+      rpcSesi('supermad_list_pengguna', sesi),
       sb.from('supermad_supervisi').select('guru_id,status,capaian_rata,predikat,tanggal_supervisi')
         .eq('madrasah_id', sesi.mad.id),
     ]);
@@ -3834,7 +3843,7 @@ function DashboardSupervisor({sesi, showToast}) {
     const useSmt = smt || filterSmt;
     const useTA  = ta  || filterTA;
     const [g, sAll, sFilter] = await Promise.all([
-      sb.from('supermad_guru').select('*').eq('madrasah_id', sesi.mad.id).eq('aktif',true).order('nama'),
+      rpcSesi('supermad_list_guru', sesi).then(r=>({...r, data:(r.data||[]).filter(x=>x.aktif)})),
       // Semua supervisi madrasah ini (untuk stats Total/Sudah/Belum & Riwayat)
       sb.from('supermad_supervisi').select('*')
         .eq('madrasah_id', sesi.mad.id)
@@ -10616,12 +10625,13 @@ async function getPenandatangan(sesi) {
   let mad = {...(sesi.mad||{})};
   let guru = {...(sesi.pengguna||{})};
   try {
-    const {data:m} = await sb.from('supermad_madrasah').select('*').eq('id', mad.id).maybeSingle();
+    const {data:m} = await rpcSesi('supermad_get_madrasah', sesi);
     if (m) mad = {...mad, ...m};
   } catch(e) {}
   try {
     if (guru.id) {
-      const {data:g} = await sb.from('supermad_guru').select('*').eq('id', guru.id).maybeSingle();
+      const {data:gl} = await rpcSesi('supermad_list_guru', sesi);
+      const g = (gl||[]).find(x=>x.id===guru.id);
       if (g) guru = {...guru, ...g};
     }
   } catch(e) {}
@@ -11668,7 +11678,7 @@ function TabPenugasan({sesi, showToast}) {
   async function loadData() {
     setLoading(true);
     const [pg, kl, pt] = await Promise.all([
-      sb.from('supermad_guru').select('id,nama,mapel,token')
+      sb.from('supermad_guru').select('id,nama,mapel')
         .eq('madrasah_id', sesi.mad.id).eq('aktif', true).order('nama'),
       sb.from('supermad_kelas').select('id,nama_kelas,tingkat,tahun_ajaran')
         .eq('madrasah_id', sesi.mad.id).order('tingkat').order('nama_kelas'),
