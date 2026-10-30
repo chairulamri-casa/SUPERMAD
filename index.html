@@ -9330,10 +9330,12 @@ function TabKelasSiswa({sesi, showToast}) {
     // Tambahkan 'sep=;' di baris pertama agar Excel otomatis pakai semicolon
     const csv = [
       'sep=;',
-      'Tingkat;Rombel;Nama Siswa;NISN;Gender (L/P)',
-      'VII;VII-A;NAMA SISWA CONTOH;3201234567;L',
-      'VII;VII-A;NAMA SISWA KEDUA;3201234568;P',
-      'VIII;VIII-B;NAMA SISWA KETIGA;3201234569;P',
+      'Tingkat;Rombel;Nama Siswa;NISN;Gender (L/P);Wali Kelas',
+      'VII;VII-A;NAMA SISWA CONTOH;3201234567;L;'+(guruOpsi[0]?.nama||'Nama Guru Wali VII-A'),
+      'VII;VII-A;NAMA SISWA KEDUA;3201234568;P;',
+      'VIII;VIII-B;NAMA SISWA KETIGA;3201234569;P;'+(guruOpsi[1]?.nama||'Nama Guru Wali VIII-B'),
+      '',
+      'PETUNJUK: Kolom Wali Kelas cukup diisi pada SATU baris per rombel (boleh juga semua baris). Tulis nama guru persis seperti di Daftar Guru SUPERMAD. Hapus baris contoh dan petunjuk ini sebelum diimpor.',
     ].join('\r\n');
     const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
     const url = URL.createObjectURL(blob);
@@ -9397,9 +9399,11 @@ function TabKelasSiswa({sesi, showToast}) {
 
       // Deteksi format header
       const header = rows[0].map(h=>String(h).toLowerCase().trim());
-      const iFormatBaru = header.findIndex(h=>h.includes('rombel')||h.includes('kelas'));
+      const iWali  = header.findIndex(h=>h.includes('wali'));
+      let iFormatBaru = header.findIndex(h=>h.includes('rombel'));
+      if (iFormatBaru === -1) iFormatBaru = header.findIndex(h=>h.includes('kelas') && !h.includes('wali'));
       const iFormatTingkat = header.findIndex(h=>h.includes('tingkat'));
-      const iNama  = header.findIndex(h=>h.includes('nama'));
+      const iNama  = header.findIndex(h=>h.includes('nama') && !h.includes('wali') && !h.includes('guru'));
       const iNisn  = header.findIndex(h=>h.includes('nisn')||h.includes('nis'));
       const iGender= header.findIndex(h=>h.includes('gender')||h.includes('jenis')||h.includes('l/p'));
 
@@ -9409,7 +9413,7 @@ function TabKelasSiswa({sesi, showToast}) {
       const kelasMap = {}; // nama_kelas -> [{nama, nisn, gender, tingkat}]
       rows.slice(1).forEach(r=>{
         const nama = String(r[iNama]||'').trim();
-        if (!nama) return;
+        if (!nama || nama.toUpperCase().startsWith('PETUNJUK')) return;
         let namaKelas = activeKelas ? activeKelas.nama_kelas : '';
         let tingkat = '';
         if (iFormatBaru > -1 && !activeKelas) {
@@ -9422,7 +9426,9 @@ function TabKelasSiswa({sesi, showToast}) {
           if (!namaKelas) namaKelas = tingkat;
         }
         if (!namaKelas) return;
-        if (!kelasMap[namaKelas]) kelasMap[namaKelas] = {tingkat, siswa:[]};
+        if (!kelasMap[namaKelas]) kelasMap[namaKelas] = {tingkat, siswa:[], wali:''};
+        const waliTxt = iWali > -1 ? String(r[iWali]||'').trim() : '';
+        if (waliTxt && !kelasMap[namaKelas].wali) kelasMap[namaKelas].wali = waliTxt;
         kelasMap[namaKelas].siswa.push({
           nama,
           nis: iNisn > -1 ? String(r[iNisn]||'').trim() : '',
@@ -9433,11 +9439,29 @@ function TabKelasSiswa({sesi, showToast}) {
       const namaKelasList = Object.keys(kelasMap);
       if (!namaKelasList.length) { setImportSiswaStatus('❌ Tidak ada data valid.'); return; }
 
-      let totalKelasNew = 0, totalSiswa = 0;
+      let totalKelasNew = 0, totalSiswa = 0, totalWali = 0;
+      const waliGagal = [];
+
+      // Cocokkan nama wali kelas ke daftar guru (abaikan huruf besar/kecil, tanda baca, dan gelar)
+      let daftarGuru = guruOpsi;
+      if (!daftarGuru.length) { const {data} = await rpcSesi('supermad_list_guru', sesi); daftarGuru = (data||[]).filter(g=>g.aktif!==false); }
+      const norm = t => String(t||'').toLowerCase().replace(/[.,'`]/g,' ').replace(/\s+/g,' ').trim();
+      const inti = t => norm(String(t||'').split(',')[0])
+        .replace(/^((drs|dra|dr|h|hj|ir|prof|tgk|teungku|ust|ustadz|ustazah|ustadzah)\s+)+/,'').trim();
+      function cariGuru(namaTxt) {
+        if (!namaTxt) return null;
+        let cocok = daftarGuru.filter(g=>norm(g.nama)===norm(namaTxt));
+        if (cocok.length===1) return cocok[0];
+        cocok = daftarGuru.filter(g=>inti(g.nama)===inti(namaTxt));
+        return cocok.length===1 ? cocok[0] : null;
+      }
 
       for (const namaKelas of namaKelasList) {
-        const {tingkat, siswa} = kelasMap[namaKelas];
-        // Auto-buat kelas kalau belum ada
+        const {tingkat, siswa, wali} = kelasMap[namaKelas];
+        const guruWali = cariGuru(wali);
+        if (wali && !guruWali) waliGagal.push(namaKelas+' ("'+wali+'")');
+        const dataWali = guruWali ? {wali_guru_id: guruWali.id, wali_kelas: guruWali.nama} : {};
+        // Auto-buat kelas kalau belum ada; perbarui wali bila kelas sudah ada
         const existing = kelasList.find(k=>k.nama_kelas===namaKelas);
         if (!existing) {
           const {error:ek} = await sb.from('supermad_kelas').insert({
@@ -9446,8 +9470,12 @@ function TabKelasSiswa({sesi, showToast}) {
             tingkat: tingkat||namaKelas,
             tahun_ajaran: filterTA,
             aktif: true,
+            ...dataWali,
           });
-          if (!ek) totalKelasNew++;
+          if (!ek) { totalKelasNew++; if (guruWali) totalWali++; }
+        } else if (guruWali) {
+          const {error:ew} = await sb.from('supermad_kelas').update(dataWali).eq('id', existing.id);
+          if (!ew) totalWali++;
         }
         // Insert siswa
         const rows2 = siswa.map(s=>({
@@ -9461,7 +9489,9 @@ function TabKelasSiswa({sesi, showToast}) {
         if (!es) totalSiswa += rows2.length;
       }
 
-      setImportSiswaStatus(`✅ Import selesai! ${totalKelasNew} kelas baru dibuat, ${totalSiswa} siswa ditambahkan.`);
+      setImportSiswaStatus(`✅ Import selesai! ${totalKelasNew} kelas baru dibuat, ${totalSiswa} siswa ditambahkan`
+        + (iWali>-1 ? `, ${totalWali} wali kelas ditetapkan.` : '.')
+        + (waliGagal.length ? ` ⚠️ Nama wali tidak dikenali (atur manual lewat ✏️ Edit): ${waliGagal.join(', ')}` : ''));
       loadKelas(filterTA);
     } catch(err) {
       setImportSiswaStatus('❌ '+err.message);
@@ -9745,7 +9775,7 @@ function TabKelasSiswa({sesi, showToast}) {
       <div style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap',alignItems:'center',
         padding:'10px 14px',background:'#f0fdf4',borderRadius:10,border:'1.5px solid #86efac'}}>
         <div style={{fontSize:'.8rem',color:'#166534',flex:1}}>
-          <b>📤 Import Massal</b> — Upload Excel berisi kolom: <i>Tingkat, Rombel, Nama Siswa, NISN, Gender (L/P)</i>
+          <b>📤 Import Massal</b> — Upload Excel berisi kolom: <i>Tingkat, Rombel, Nama Siswa, NISN, Gender (L/P), Wali Kelas</i>
           <br/>Kelas otomatis dibuat jika belum ada.
         </div>
         <button className="btn btn-outline btn-sm" onClick={downloadTemplateSiswa}>📥 Download Template</button>
