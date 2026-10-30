@@ -10608,6 +10608,52 @@ function TabNilai({sesi, showToast}) {
 }
 
 // ── TAB JURNAL MENGAJAR (GURU) ────────────────────────────────
+// ── HELPER CETAK: data penandatangan terbaru dari database ────
+function escHtml(v) {
+  return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+async function getPenandatangan(sesi) {
+  let mad = {...(sesi.mad||{})};
+  let guru = {...(sesi.pengguna||{})};
+  try {
+    const {data:m} = await sb.from('supermad_madrasah').select('*').eq('id', mad.id).maybeSingle();
+    if (m) mad = {...mad, ...m};
+  } catch(e) {}
+  try {
+    if (guru.id) {
+      const {data:g} = await sb.from('supermad_guru').select('*').eq('id', guru.id).maybeSingle();
+      if (g) guru = {...guru, ...g};
+    }
+  } catch(e) {}
+  let kepalaNama = mad.nama_kepala || '';
+  let kepalaNip  = mad.nip_kepala || '';
+  // Cadangan: ambil dari akun pengguna berjabatan Kepala Madrasah
+  if (!kepalaNama) {
+    try {
+      const {data:kp} = await sb.from('supermad_pengguna').select('nama,nip')
+        .eq('madrasah_id', mad.id).eq('jabatan','Kepala Madrasah').eq('aktif',true).limit(1);
+      if (kp && kp.length) { kepalaNama = kp[0].nama||''; kepalaNip = kepalaNip || kp[0].nip || ''; }
+    } catch(e) {}
+  }
+  const guruNip = guru.nip || guru.nuptk || '';
+  return {
+    mad,
+    kepalaNama, kepalaNip,
+    guruNama: guru.nama || '',
+    guruNipLabel: guru.nip ? 'NIP' : (guru.nuptk ? 'NUPTK' : 'NIP/NUPTK'),
+    guruNip,
+  };
+}
+function blokTtdHtml(ttd, labelKanan) {
+  const tgl = new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
+  return `<div class="ttd">
+  <div>Mengetahui,<br>Kepala Madrasah<div class="sp"></div>
+    <b>${escHtml(ttd.kepalaNama||'.............................')}</b><br>NIP. ${escHtml(ttd.kepalaNip||'—')}</div>
+  <div>${escHtml(ttd.mad.kota_kab||'..............')}, ${tgl}<br>${escHtml(labelKanan)}<div class="sp"></div>
+    <b>${escHtml(ttd.guruNama||'.............................')}</b><br>${ttd.guruNipLabel}. ${escHtml(ttd.guruNip||'—')}</div>
+</div>`;
+}
+
 // ── CONTOH PENGISIAN JURNAL MENGAJAR ─────────────────────────
 const CONTOH_JURNAL = [
   {hari:'Senin, 14 Juli 2026', kelas:'VII A', jam:'1 – 2',
@@ -10755,8 +10801,99 @@ function TabJurnal({sesi, showToast, mode='jurnal'}) {
   const [rekapMode, setRekapMode] = React.useState(false);
   const [bulanCetak, setBulanCetak] = React.useState('');
 
-  function cetakJurnalBulanan(rows, bulanKey) {
-    const mad = sesi.mad||{};
+  async function cetakRekapAbsensi(bulanKey, rowsAll) {
+    const w = window.open('','_blank');
+    if (!w) { showToast('Izinkan pop-up untuk mencetak','warning'); return; }
+    w.document.write('<p style="font-family:Arial;padding:20px">⏳ Menyiapkan rekap absensi...</p>');
+    const rows = rowsAll.filter(adaAbsensi);
+    const ttd = await getPenandatangan(sesi);
+    const mad = ttd.mad;
+    const blnLabel = new Date(bulanKey+'-01T00:00:00').toLocaleDateString('id-ID',{month:'long',year:'numeric'});
+    const ids = rows.map(r=>r.id);
+    let abs = [];
+    if (ids.length) {
+      const {data} = await sb.from('supermad_absensi').select('jurnal_id,siswa_id,status').in('jurnal_id', ids);
+      abs = data||[];
+    }
+    const amap = {}; abs.forEach(a=>{ amap[a.jurnal_id+'|'+a.siswa_id]=a.status; });
+    const groups = {};
+    rows.forEach(r=>{ const k=r.kelas+'||'+(r.mapel||''); (groups[k]=groups[k]||[]).push(r); });
+    const kode = {hadir:['H','#16a34a'],sakit:['S','#d97706'],izin:['I','#2563eb'],alpa:['A','#dc2626']};
+    let body = '', first = true;
+    for (const [k, list] of Object.entries(groups)) {
+      const [kelas, mapel] = k.split('||');
+      list.sort((a,b)=>a.tanggal>b.tanggal?1:a.tanggal<b.tanggal?-1:String(a.jam_ke).localeCompare(String(b.jam_ke)));
+      const {data:sw} = await sb.from('supermad_siswa').select('id,nama,nis,jenis_kelamin')
+        .eq('madrasah_id', sesi.mad.id).eq('kelas', kelas).eq('tahun_ajaran', filterTA).eq('aktif', true).order('nama');
+      const siswa = sw||[];
+      const head = list.map(j=>{
+        const d = new Date(j.tanggal+'T00:00:00');
+        return `<th class="tg">${d.getDate()}/${d.getMonth()+1}<br><span>jam ${escHtml(j.jam_ke)}</span></th>`;
+      }).join('');
+      const isi = siswa.map((s2,i)=>{
+        const t = {hadir:0,sakit:0,izin:0,alpa:0};
+        const sel = list.map(j=>{
+          const st = amap[j.id+'|'+s2.id];
+          if (!st) return '<td class="c"></td>';
+          t[st] = (t[st]||0)+1;
+          const [h,c] = kode[st]||['?','#111'];
+          return `<td class="c" style="color:${c};font-weight:700">${h}</td>`;
+        }).join('');
+        const tot = t.hadir+t.sakit+t.izin+t.alpa;
+        const pct = tot ? Math.round(t.hadir/tot*100)+'%' : '—';
+        return `<tr><td class="c">${i+1}</td><td>${escHtml(s2.nama)}</td><td class="c">${escHtml(s2.jenis_kelamin||'')}</td>${sel}
+          <td class="c b">${t.hadir}</td><td class="c b">${t.sakit}</td><td class="c b">${t.izin}</td><td class="c b">${t.alpa}</td><td class="c b">${pct}</td></tr>`;
+      }).join('');
+      const hadirPer = list.map(j=>`<td class="c b">${j.jumlah_hadir||0}</td>`).join('');
+      body += `<div class="${first?'':'pb'}">
+        <h1>REKAP DAFTAR HADIR SISWA</h1>
+        <div class="sub">${escHtml(mad.nama||'')}</div>
+        <div class="id">
+          <div><b>Mata Pelajaran</b><span>:</span><span>${escHtml(mapel||'—')}</span></div>
+          <div><b>Tahun Pelajaran</b><span>:</span><span>${escHtml(filterTA)}</span></div>
+          <div><b>Kelas</b><span>:</span><span>${escHtml(kelas)}</span></div>
+          <div><b>Semester</b><span>:</span><span>${escHtml(filterSmt)}</span></div>
+          <div><b>Guru</b><span>:</span><span>${escHtml(ttd.guruNama)}</span></div>
+          <div><b>Bulan</b><span>:</span><span>${escHtml(blnLabel)}</span></div>
+        </div>
+        <table><thead><tr><th style="width:26px">No</th><th>Nama Siswa</th><th style="width:28px">L/P</th>${head}
+          <th class="tg">H</th><th class="tg">S</th><th class="tg">I</th><th class="tg">A</th><th class="tg">% Hadir</th></tr></thead>
+        <tbody>${isi||`<tr><td colspan="${list.length+8}" class="c">Data siswa kelas ini tidak ditemukan</td></tr>`}
+          <tr style="background:#f1f5f9"><td colspan="3" class="b" style="text-align:right">Jumlah Hadir</td>${hadirPer}<td colspan="5"></td></tr>
+        </tbody></table>
+        <div class="ket">Keterangan: H = Hadir · S = Sakit · I = Izin · A = Alpa (tanpa keterangan)</div>
+        ${blokTtdHtml(ttd,'Guru Mata Pelajaran')}
+      </div>`;
+      first = false;
+    }
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Rekap Absensi — ${escHtml(blnLabel)}</title>
+<style>
+@page{size:A4 landscape;margin:10mm}
+*{box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:9pt;color:#111;margin:0;padding:10px}
+h1{text-align:center;font-size:14pt;margin:0}.sub{text-align:center;font-size:10pt;margin:2px 0 10px;font-weight:700}
+.id{display:grid;grid-template-columns:1fr 1fr;gap:5px 30px;border:1px solid #555;border-radius:6px;padding:8px 12px;margin-bottom:10px}
+.id div{display:grid;grid-template-columns:110px 10px 1fr}
+table{width:100%;border-collapse:collapse}th,td{border:1px solid #555;padding:4px 5px}
+th{background:#0f4238;color:#fff;font-size:8.5pt}th.tg{min-width:30px}th span{font-weight:400;font-size:7pt}
+td.c{text-align:center}td.b{font-weight:700}
+.ket{font-size:8pt;margin-top:5px;color:#444}
+.ttd{display:grid;grid-template-columns:1fr 1fr;margin-top:16px;text-align:center}.sp{height:55px}
+.pb{page-break-before:always;padding-top:6px}
+.no-print{margin-bottom:10px}@media print{.no-print{display:none}}
+</style></head><body>
+<div class="no-print"><button onclick="window.print()" style="padding:7px 18px;background:#0f4238;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">🖨️ Cetak / PDF</button>
+<button onclick="window.close()" style="padding:7px 14px;border:1px solid #ccc;border-radius:6px;cursor:pointer;margin-left:6px">✕ Tutup</button></div>
+${body||'<p>Belum ada data absensi pada bulan ini.</p>'}
+</body></html>`;
+    w.document.open(); w.document.write(html); w.document.close();
+  }
+
+  async function cetakJurnalBulanan(rows, bulanKey) {
+    const w = window.open('','_blank');
+    if (!w) { showToast('Izinkan pop-up untuk mencetak','warning'); return; }
+    w.document.write('<p style="font-family:Arial;padding:20px">⏳ Menyiapkan jurnal...</p>');
+    const ttd = await getPenandatangan(sesi);
+    const mad = ttd.mad;
     const esc = v => String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     const blnLabel = bulanKey ? new Date(bulanKey+'-01T00:00:00').toLocaleDateString('id-ID',{month:'long',year:'numeric'}) : 'Semua';
     const tglCetak = new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
@@ -10796,13 +10933,9 @@ th{background:#0f4238;color:#fff;font-size:9pt}td.c{text-align:center}
 <th style="width:42px">Jam Ke</th><th>Materi / Tujuan Pembelajaran (Materi/TP)</th><th>Kendala</th><th>Tindak Lanjut</th>
 <th>Refleksi Guru</th><th style="width:50px">Paraf</th></tr></thead>
 <tbody>${isi||'<tr><td colspan="9" class="c">Belum ada jurnal</td></tr>'}</tbody></table>
-<div class="ttd">
-  <div>Mengetahui,<br>Kepala Madrasah<div class="sp"></div><b>${esc(mad.nama_kepala||'.............................')}</b><br>NIP. ${esc(mad.nip_kepala||'—')}</div>
-  <div>${esc(mad.kota_kab||'..............')}, ${tglCetak}<br>Guru Mata Pelajaran<div class="sp"></div><b>${esc(sesi.pengguna.nama)}</b><br>NIP. ${esc(sesi.pengguna.nip||'—')}</div>
-</div></body></html>`;
-    const w = window.open('','_blank');
-    if (!w) { showToast('Izinkan pop-up untuk mencetak','warning'); return; }
-    w.document.write(html); w.document.close();
+${blokTtdHtml(ttd,'Guru Mata Pelajaran')}
+</body></html>`;
+    w.document.open(); w.document.write(html); w.document.close();
   }
 
   React.useEffect(()=>{ loadPenugasan(); }, [filterTA]);
@@ -11299,7 +11432,7 @@ th{background:#0f4238;color:#fff;font-size:9pt}td.c{text-align:center}
   if (rekapMode) {
     // Group by bulan
     const bulanMap = {};
-    jurnalList.forEach(j=>{
+    jurnalList.filter(adaAbsensi).forEach(j=>{
       const bln = j.tanggal ? j.tanggal.slice(0,7) : '—';
       if (!bulanMap[bln]) bulanMap[bln] = [];
       bulanMap[bln].push(j);
@@ -11309,7 +11442,6 @@ th{background:#0f4238;color:#fff;font-size:9pt}td.c{text-align:center}
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
           <button className="btn btn-outline btn-sm" onClick={()=>setRekapMode(false)}>← Kembali</button>
           <div style={{fontWeight:900,color:'var(--p3)',flex:1}}>📊 Rekap Absensi — {filterTA} {filterSmt}</div>
-          <button className="btn btn-outline btn-sm" onClick={()=>window.print()}>🖨️ Print</button>
         </div>
         {Object.entries(bulanMap).sort().map(([bln,juListBln])=>{
           const blnLabel = bln!=='—' ? new Date(bln+'-01').toLocaleDateString('id-ID',{month:'long',year:'numeric'}) : '—';
@@ -11319,12 +11451,19 @@ th{background:#0f4238;color:#fff;font-size:9pt}td.c{text-align:center}
           const totAlpa   = juListBln.reduce((a,j)=>a+(j.jumlah_alpa||0),0);
           return (
             <div key={bln} className="card" style={{marginBottom:12}}>
-              <div style={{fontWeight:800,color:'var(--p3)',marginBottom:10}}>📅 {blnLabel}</div>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10,flexWrap:'wrap'}}>
+                <div style={{fontWeight:800,color:'var(--p3)',flex:1}}>📅 {blnLabel}</div>
+                {bln!=='—' && (
+                  <button className="btn btn-outline btn-sm" onClick={()=>cetakRekapAbsensi(bln, juListBln)}>
+                    🖨️ Cetak Daftar Hadir
+                  </button>
+                )}
+              </div>
               <div style={{overflowX:'auto'}}>
                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.78rem',minWidth:500}}>
                   <thead>
                     <tr style={{background:'var(--p3)',color:'#fff'}}>
-                      {['Tgl','Kelas','Jam','Materi','Hadir','Sakit','Izin','Alpa'].map(h=>(
+                      {['Tgl','Kelas','Jam','Mapel','Hadir','Sakit','Izin','Alpa'].map(h=>(
                         <th key={h} style={{padding:'6px 8px',textAlign:'left',fontWeight:700}}>{h}</th>
                       ))}
                     </tr>
@@ -11335,7 +11474,7 @@ th{background:#0f4238;color:#fff;font-size:9pt}td.c{text-align:center}
                         <td style={{padding:'6px 8px',whiteSpace:'nowrap'}}>{j.tanggal}</td>
                         <td style={{padding:'6px 8px',fontWeight:600}}>{j.kelas}</td>
                         <td style={{padding:'6px 8px',textAlign:'center'}}>{j.jam_ke}</td>
-                        <td style={{padding:'6px 8px',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.materi}</td>
+                        <td style={{padding:'6px 8px',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.mapel||'—'}</td>
                         <td style={{padding:'6px 8px',textAlign:'center',color:'#16a34a',fontWeight:700}}>{j.jumlah_hadir||0}</td>
                         <td style={{padding:'6px 8px',textAlign:'center',color:'#d97706',fontWeight:700}}>{j.jumlah_sakit||0}</td>
                         <td style={{padding:'6px 8px',textAlign:'center',color:'#2563eb',fontWeight:700}}>{j.jumlah_izin||0}</td>
