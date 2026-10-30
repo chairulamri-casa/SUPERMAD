@@ -832,7 +832,7 @@ function App() {
       {/* KONTEN */}
       <div style={{padding:20,maxWidth:900,margin:'0 auto'}}>
         {sesi.mode === 'admin_kanwil' && <DashboardKanwil showToast={showToast} />}
-        {sesi.mode === 'operator' && <DashboardOperator sesi={sesi} showToast={showToast} />}
+        {sesi.mode === 'operator' && <DashboardOperator sesi={sesi} showToast={showToast} onSesiUpdate={mad=>setSesi(prev=>{ const s={...prev,mad}; try{localStorage.setItem('supermad_sesi',JSON.stringify(s));}catch(e){} return s; })} />}
         {sesi.mode === 'supervisor' && <DashboardSupervisor sesi={sesi} showToast={showToast} />}
         {sesi.mode === 'guru' && <DashboardGuru sesi={sesi} showToast={showToast} />}
       </div>
@@ -908,7 +908,7 @@ ${!slips ? '<div style="text-align:center;padding:40px;color:#999">Belum ada gur
 
 // ── DASHBOARD OPERATOR + KANWIL (LENGKAP) ──────────────────────
 // ── DASHBOARD OPERATOR (LENGKAP) ──────────────────────────────
-function DashboardOperator({sesi, showToast}) {
+function DashboardOperator({sesi, showToast, onSesiUpdate}) {
   const [tab, setTab]           = useState('guru');
   const [guruList, setGuruList] = useState([]);
   const [penggunaList, setPenggunaList] = useState([]);
@@ -1440,7 +1440,7 @@ function DashboardOperator({sesi, showToast}) {
 
       {tab==='profil' && (
         <ProfilMadrasah sesi={sesi} showToast={showToast} onUpdate={mad=>{
-          setSesi(prev=>({...prev,mad}));
+          if (onSesiUpdate) onSesiUpdate(mad);
           loadData();
         }}/>
       )}
@@ -1861,7 +1861,7 @@ function DashboardKanwil({showToast}) {
       const rekap = madrasahList.map((m,i) => {
         const s = stats[m.id]||{selesai:0,rata:[],p:[],l:[],a:[]};
         const avg = arr => arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1) : '—';
-        const pred = s.rata.length ? (avg(s.rata)>=87.5?'Sangat Baik':avg(s.rata)>=75?'Baik':avg(s.rata)>=62.5?'Cukup':'Kurang') : '—';
+        const pred = s.rata.length ? (avg(s.rata)>=91?'Sangat Baik':avg(s.rata)>=81?'Baik':avg(s.rata)>=71?'Cukup':'Kurang') : '—';
         return {
           'No': i+1,
           'Nama Madrasah': m.nama,
@@ -2446,7 +2446,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
           {icon:'🏆',label:'Aktif Laporan',val:madDenganData,color:'#16a34a'},
           {icon:'📊',label:'Rata-rata Kanwil',
             val:allRata.length?rataKanwil.toFixed(1)+'%':'—',
-            color:rataKanwil>=87.5?'#16a34a':rataKanwil>=75?'#2563eb':rataKanwil>=62.5?'#d97706':'#dc2626'},
+            color:rataKanwil>=91?'#16a34a':rataKanwil>=81?'#2563eb':rataKanwil>=71?'#d97706':'#dc2626'},
         ].map((k,i)=>(
           <div key={i} className="card" style={{textAlign:'center',padding:14}}>
             <div style={{fontSize:'1.4rem'}}>{k.icon}</div>
@@ -2532,9 +2532,9 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
                 {filteredList.map((m,i)=>{
                   const s = stats[m.id]||{selesai:0,rata:[],p:[],l:[],a:[]};
                   const rp=avg(s.p),rl=avg(s.l),ra=avg(s.a),rr=avg(s.rata);
-                  const w = v => v>=87.5?'#16a34a':v>=75?'#2563eb':v>=62.5?'#d97706':'#dc2626';
+                  const w = v => v>=91?'#16a34a':v>=81?'#2563eb':v>=71?'#d97706':'#dc2626';
                   const fmt = v => s.rata.length ? v.toFixed(1)+'%' : '—';
-                  const pred = s.rata.length ? (rr>=87.5?'Sangat Baik':rr>=75?'Baik':rr>=62.5?'Cukup':'Kurang') : null;
+                  const pred = s.rata.length ? (rr>=91?'Sangat Baik':rr>=81?'Baik':rr>=71?'Cukup':'Kurang') : null;
                   return (
                     <tr key={m.id} style={{borderBottom:'1px solid var(--border)',
                       background:!(stats[m.id]&&stats[m.id].selesai>0)?'#fffbeb':i%2?'var(--surface2)':'#fff'}}>
@@ -2561,8 +2561,8 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
                       ))}
                       <td style={{padding:'7px 8px'}}>
                         {pred && <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.68rem',fontWeight:700,
-                          background:rr>=87.5?'#d1fae5':rr>=75?'#dbeafe':rr>=62.5?'#fef3c7':'#fee2e2',
-                          color:rr>=87.5?'#065f46':rr>=75?'#1d4ed8':rr>=62.5?'#92400e':'#991b1b'}}>
+                          background:rr>=91?'#d1fae5':rr>=81?'#dbeafe':rr>=71?'#fef3c7':'#fee2e2',
+                          color:rr>=91?'#065f46':rr>=81?'#1d4ed8':rr>=71?'#92400e':'#991b1b'}}>
                           {pred}
                         </span>}
                       </td>
@@ -2592,7 +2592,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
         });
         const kabList2 = Object.values(kabMap).sort((a,b)=>b.madrasah.length-a.madrasah.length);
         const avg2 = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
-        const warna = v => v>=87.5?'#16a34a':v>=75?'#2563eb':v>=62.5?'#d97706':'#dc2626';
+        const warna = v => v>=91?'#16a34a':v>=81?'#2563eb':v>=71?'#d97706':'#dc2626';
         const totalMad = madrasahList.length;
         const totalSupAll = kabList2.reduce((s,k)=>s+k.totalSup,0);
         const allNilai = kabList2.flatMap(k=>k.nilaiList);
@@ -2632,7 +2632,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
                       <div style={{display:'flex',gap:8,alignItems:'center'}}>
                         {rata && (
                           <span style={{padding:'4px 14px',borderRadius:20,fontWeight:800,fontSize:'.85rem',
-                            background:rata>=87.5?'#d1fae5':rata>=75?'#dbeafe':rata>=62.5?'#fef3c7':'#fee2e2',
+                            background:rata>=91?'#d1fae5':rata>=81?'#dbeafe':rata>=71?'#fef3c7':'#fee2e2',
                             color:warna(rata)}}>
                             {rata.toFixed(1)}%
                           </span>
@@ -2698,7 +2698,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
                 const madTkt = madrasahList.filter(m=>m.tingkat===tkt);
                 const allR = madTkt.flatMap(m=>(stats[m.id]||{rata:[]}).rata);
                 const rataT = allR.length ? avg(allR) : null;
-                const warna = rataT ? (rataT>=87.5?'#16a34a':rataT>=75?'#2563eb':rataT>=62.5?'#d97706':'#dc2626') : '#e5e7eb';
+                const warna = rataT ? (rataT>=91?'#16a34a':rataT>=81?'#2563eb':rataT>=71?'#d97706':'#dc2626') : '#e5e7eb';
                 const supT  = madTkt.reduce((s,m)=>s+(stats[m.id]||{selesai:0}).selesai,0);
                 return (
                   <div key={tkt}>
@@ -2734,7 +2734,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
                 {kabList.map(kab => {
                   const s = kabStats[kab]||{madrasah:0,supervisi:0,rata:[]};
                   const rataK = s.rata.length ? avg(s.rata) : null;
-                  const warna = rataK ? (rataK>=87.5?'#16a34a':rataK>=75?'#2563eb':rataK>=62.5?'#d97706':'#dc2626') : '#e5e7eb';
+                  const warna = rataK ? (rataK>=91?'#16a34a':rataK>=81?'#2563eb':rataK>=71?'#d97706':'#dc2626') : '#e5e7eb';
                   return (
                     <div key={kab}>
                       <div style={{display:'flex',justifyContent:'space-between',marginBottom:3,fontSize:'.79rem'}}>
@@ -2751,8 +2751,8 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
                 })}
               </div>
               <div style={{marginTop:14,display:'flex',gap:12,flexWrap:'wrap',fontSize:'.72rem'}}>
-                {[['#16a34a','Sangat Baik (≥87.5%)'],['#2563eb','Baik (75-87.4%)'],
-                  ['#d97706','Cukup (62.5-74.9%)'],['#dc2626','Kurang (<62.5%)']].map(([c,l])=>(
+                {[['#16a34a','Sangat Baik (≥91%)'],['#2563eb','Baik (81-90%)'],
+                  ['#d97706','Cukup (71-80%)'],['#dc2626','Kurang (<71%)']].map(([c,l])=>(
                   <div key={l} style={{display:'flex',alignItems:'center',gap:5}}>
                     <div style={{width:14,height:14,borderRadius:3,background:c}}/>
                     <span style={{color:'var(--text2)'}}>{l}</span>
@@ -2771,10 +2771,10 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
               const allSups = Object.values(stats).flatMap(s=>s.rata);
               if (!allSups.length) return <div style={{color:'var(--text3)',textAlign:'center',padding:20}}>Belum ada data supervisi.</div>;
               const dist = {
-                'Sangat Baik': allSups.filter(v=>v>=87.5).length,
-                'Baik':        allSups.filter(v=>v>=75&&v<87.5).length,
-                'Cukup':       allSups.filter(v=>v>=62.5&&v<75).length,
-                'Kurang':      allSups.filter(v=>v<62.5).length,
+                'Sangat Baik': allSups.filter(v=>v>=91).length,
+                'Baik':        allSups.filter(v=>v>=81&&v<91).length,
+                'Cukup':       allSups.filter(v=>v>=71&&v<81).length,
+                'Kurang':      allSups.filter(v=>v<71).length,
               };
               const colors = {'Sangat Baik':'#16a34a','Baik':'#2563eb','Cukup':'#d97706','Kurang':'#dc2626'};
               return (
@@ -3155,7 +3155,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
                   </div>
                   <div style={{textAlign:'right'}}>
                     <div style={{fontWeight:900,fontSize:'1.1rem',
-                      color:rr===null?'var(--text3)':rr>=87.5?'#16a34a':rr>=75?'#2563eb':rr>=62.5?'#d97706':'#dc2626'}}>
+                      color:rr===null?'var(--text3)':rr>=91?'#16a34a':rr>=81?'#2563eb':rr>=71?'#d97706':'#dc2626'}}>
                       {rr!==null ? rr.toFixed(1)+'%' : '—'}
                     </div>
                     <div style={{fontSize:'.7rem',color:'var(--text3)'}}>
@@ -3220,7 +3220,6 @@ const FITUR_DEFS = [
 const FITUR_DEFAULT = Object.fromEntries(FITUR_DEFS.map(f=>[f.key, true]));
 
 function TabKelolaFitur({madrasahList, showToast, onReload}) {
-  const sb = window.supabase;
   const [saving, setSaving]         = React.useState({});
   const [localFitur, setLocalFitur] = React.useState({});
   const [filterKab, setFilterKab]   = React.useState('');
@@ -3816,6 +3815,7 @@ function DashboardSupervisor({sesi, showToast}) {
   const [loading, setLoading]     = useState(true);
   const [guruAktif, setGuruAktif]       = useState(null);
   const [jadwalAktif, setJadwalAktif]   = useState(null); // jadwal yang dipilih
+  const [supEdit, setSupEdit]           = useState(null); // supervisi yang sedang diedit ulang
   const [supAktifRTL, setSupAktifRTL] = useState(null);
   // Hitung tahun ajaran berjalan otomatis
   const now = new Date();
@@ -3873,8 +3873,9 @@ function DashboardSupervisor({sesi, showToast}) {
       guru={guruAktif} sesi={sesi} showToast={showToast}
       filterSmt={filterSmt} filterTA={filterTA}
       jadwal={jadwalAktif}
-      onBatal={()=>{ setGuruAktif(null); setJadwalAktif(null); }}
-      onSelesai={async()=>{ setGuruAktif(null); setJadwalAktif(null); await loadData(filterSmt, filterTA); setTab('sudah'); }}
+      supEdit={supEdit}
+      onBatal={()=>{ setGuruAktif(null); setJadwalAktif(null); setSupEdit(null); }}
+      onSelesai={async()=>{ setGuruAktif(null); setJadwalAktif(null); setSupEdit(null); await loadData(filterSmt, filterTA); setTab('sudah'); }}
     />
   );
 
@@ -4298,8 +4299,8 @@ function DashboardSupervisor({sesi, showToast}) {
                 const sesiIndex = sesiIndexMap[s.guru_id];
                 const totalSesi = sesiCountMap[s.guru_id]||1;
               const capaian = parseFloat(s.capaian_rata)||0;
-              const warna   = capaian>=87.5?'#16a34a':capaian>=75?'#2563eb':capaian>=62.5?'#d97706':'#dc2626';
-              const pred    = capaian>=87.5?'Sangat Baik':capaian>=75?'Baik':capaian>=62.5?'Cukup':'Kurang';
+              const warna   = capaian>=91?'#16a34a':capaian>=81?'#2563eb':capaian>=71?'#d97706':'#dc2626';
+              const pred    = capaian>=91?'Sangat Baik':capaian>=81?'Baik':capaian>=71?'Cukup':'Kurang';
               const guru    = guruList.find(g=>g.id===s.guru_id);
               const isDraft = s.status==='draft';
 
@@ -4359,8 +4360,8 @@ function DashboardSupervisor({sesi, showToast}) {
                         {capaian.toFixed(1)}%
                       </div>
                       <span style={{padding:'2px 10px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
-                        background:capaian>=87.5?'#d1fae5':capaian>=75?'#dbeafe':capaian>=62.5?'#fef3c7':'#fee2e2',
-                        color:capaian>=87.5?'#065f46':capaian>=75?'#1d4ed8':capaian>=62.5?'#92400e':'#991b1b'}}>
+                        background:capaian>=91?'#d1fae5':capaian>=81?'#dbeafe':capaian>=71?'#fef3c7':'#fee2e2',
+                        color:capaian>=91?'#065f46':capaian>=81?'#1d4ed8':capaian>=71?'#92400e':'#991b1b'}}>
                         {s.predikat||pred}
                       </span>
                     </div>
@@ -4374,7 +4375,7 @@ function DashboardSupervisor({sesi, showToast}) {
                         ✅ Tandai Selesai
                       </button>
                     )}
-                    <button onClick={()=>setGuruAktif(guru)}
+                    <button onClick={()=>{ setSupEdit(s); setGuruAktif(guru); }}
                       style={{padding:'5px 12px',background:'#fff',color:'var(--p)',
                         border:'1.5px solid var(--p)',borderRadius:7,cursor:'pointer',
                         fontSize:'.75rem',fontWeight:700}}>
@@ -4446,7 +4447,7 @@ function DashboardSupervisor({sesi, showToast}) {
                     const capP = parseFloat(s.capaian_perencanaan)||0;
                     const capL = parseFloat(s.capaian_pelaksanaan)||0;
                     const capA = parseFloat(s.capaian_asesmen)||0;
-                    const warna = cap>=87.5?'#16a34a':cap>=75?'#2563eb':cap>=62.5?'#d97706':'#dc2626';
+                    const warna = cap>=91?'#16a34a':cap>=81?'#2563eb':cap>=71?'#d97706':'#dc2626';
                     return (
                       <div key={s.id} style={{padding:'12px 14px',background:'var(--surface2)',borderRadius:10}}>
                         <div style={{display:'flex',justifyContent:'space-between',marginBottom:8,alignItems:'center'}}>
@@ -4476,8 +4477,8 @@ function DashboardSupervisor({sesi, showToast}) {
                         {/* Predikat */}
                         <div style={{marginTop:6,display:'flex',alignItems:'center',gap:8}}>
                           <span style={{padding:'2px 10px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
-                            background:cap>=87.5?'#d1fae5':cap>=75?'#dbeafe':cap>=62.5?'#fef3c7':'#fee2e2',
-                            color:cap>=87.5?'#065f46':cap>=75?'#1d4ed8':cap>=62.5?'#92400e':'#991b1b'}}>
+                            background:cap>=91?'#d1fae5':cap>=81?'#dbeafe':cap>=71?'#fef3c7':'#fee2e2',
+                            color:cap>=91?'#065f46':cap>=81?'#1d4ed8':cap>=71?'#92400e':'#991b1b'}}>
                             {s.predikat||'—'}
                           </span>
                           <span style={{fontSize:'.68rem',color:'var(--text3)'}}>
@@ -4498,10 +4499,10 @@ function DashboardSupervisor({sesi, showToast}) {
               {(()=>{
                 const selesai = supListFilter;
                 const dist = [
-                  {label:'Sangat Baik',count:selesai.filter(s=>(+s.capaian_rata||0)>=87.5).length,color:'#16a34a',bg:'#d1fae5'},
-                  {label:'Baik',       count:selesai.filter(s=>(+s.capaian_rata||0)>=75&&(+s.capaian_rata||0)<87.5).length,color:'#2563eb',bg:'#dbeafe'},
-                  {label:'Cukup',      count:selesai.filter(s=>(+s.capaian_rata||0)>=62.5&&(+s.capaian_rata||0)<75).length,color:'#d97706',bg:'#fef3c7'},
-                  {label:'Kurang',     count:selesai.filter(s=>(+s.capaian_rata||0)<62.5).length,color:'#dc2626',bg:'#fee2e2'},
+                  {label:'Sangat Baik',count:selesai.filter(s=>(+s.capaian_rata||0)>=91).length,color:'#16a34a',bg:'#d1fae5'},
+                  {label:'Baik',       count:selesai.filter(s=>(+s.capaian_rata||0)>=81&&(+s.capaian_rata||0)<91).length,color:'#2563eb',bg:'#dbeafe'},
+                  {label:'Cukup',      count:selesai.filter(s=>(+s.capaian_rata||0)>=71&&(+s.capaian_rata||0)<81).length,color:'#d97706',bg:'#fef3c7'},
+                  {label:'Kurang',     count:selesai.filter(s=>(+s.capaian_rata||0)<71).length,color:'#dc2626',bg:'#fee2e2'},
                 ];
                 return (
                   <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
@@ -4550,7 +4551,7 @@ function DashboardSupervisor({sesi, showToast}) {
             : <div style={{display:'flex',flexDirection:'column',gap:10}}>
                 {supList.map((s,i) => {
                   const capaian = parseFloat(s.capaian_rata)||0;
-                  const warna   = capaian>=87.5?'#16a34a':capaian>=75?'#2563eb':capaian>=62.5?'#d97706':'#dc2626';
+                  const warna   = capaian>=91?'#16a34a':capaian>=81?'#2563eb':capaian>=71?'#d97706':'#dc2626';
                   const guruData= guruList.find(g=>g.id===s.guru_id);
                   const tgl     = s.tanggal_supervisi
                     ? new Date(s.tanggal_supervisi).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'})
@@ -4569,8 +4570,8 @@ function DashboardSupervisor({sesi, showToast}) {
                         <div style={{textAlign:'right'}}>
                           <div style={{fontWeight:900,fontSize:'1.1rem',color:warna}}>{capaian.toFixed(1)}%</div>
                           <span style={{padding:'2px 10px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
-                            background:capaian>=87.5?'#d1fae5':capaian>=75?'#dbeafe':capaian>=62.5?'#fef3c7':'#fee2e2',
-                            color:capaian>=87.5?'#065f46':capaian>=75?'#1d4ed8':capaian>=62.5?'#92400e':'#991b1b'}}>
+                            background:capaian>=91?'#d1fae5':capaian>=81?'#dbeafe':capaian>=71?'#fef3c7':'#fee2e2',
+                            color:capaian>=91?'#065f46':capaian>=81?'#1d4ed8':capaian>=71?'#92400e':'#991b1b'}}>
                             {s.predikat||'—'}
                           </span>
                         </div>
@@ -4582,7 +4583,7 @@ function DashboardSupervisor({sesi, showToast}) {
                           {label:'Asesmen',    val:s.capaian_asesmen},
                         ].map((k,ki)=>{
                           const v = parseFloat(k.val)||0;
-                          const w = v>=87.5?'#16a34a':v>=75?'#2563eb':v>=62.5?'#d97706':'#dc2626';
+                          const w = v>=91?'#16a34a':v>=81?'#2563eb':v>=71?'#d97706':'#dc2626';
                           return (
                             <div key={ki} style={{background:'#fff',borderRadius:7,padding:'6px 8px',
                               border:'1px solid var(--border)',textAlign:'center'}}>
@@ -4971,7 +4972,7 @@ function TabPortofolioSupervisor({sesi, guruList, showToast, fiturAktif}) {
               : <div style={{display:'flex',flexDirection:'column',gap:10}}>
                   {analisisList.filter(a=>filterGuruA?a.guru_id===filterGuruA:true).map(item=>{
                     const guru = guruList.find(g=>g.id===item.guru_id);
-                    const warna = item.skor_total>=87.5?'#16a34a':item.skor_total>=75?'#2563eb':item.skor_total>=62.5?'#d97706':'#dc2626';
+                    const warna = item.skor_total>=91?'#16a34a':item.skor_total>=81?'#2563eb':item.skor_total>=71?'#d97706':'#dc2626';
                     const dist = {};
                     ['C1','C2','C3','C4','C5','C6'].forEach(b=>{
                       dist[b]=(item.butir_soal||[]).filter(s=>s.level_bloom===b).length;
@@ -5004,8 +5005,8 @@ function TabPortofolioSupervisor({sesi, guruList, showToast, fiturAktif}) {
                             <div style={{textAlign:'right'}}>
                               <div style={{fontSize:'1.3rem',fontWeight:900,color:warna}}>{item.skor_total}%</div>
                               <span style={{padding:'2px 10px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
-                                background:item.skor_total>=87.5?'#d1fae5':item.skor_total>=75?'#dbeafe':item.skor_total>=62.5?'#fef3c7':'#fee2e2',
-                                color:item.skor_total>=87.5?'#065f46':item.skor_total>=75?'#1d4ed8':item.skor_total>=62.5?'#92400e':'#991b1b'}}>
+                                background:item.skor_total>=91?'#d1fae5':item.skor_total>=81?'#dbeafe':item.skor_total>=71?'#fef3c7':'#fee2e2',
+                                color:item.skor_total>=91?'#065f46':item.skor_total>=81?'#1d4ed8':item.skor_total>=71?'#92400e':'#991b1b'}}>
                                 {item.predikat}
                               </span>
                             </div>
@@ -5192,7 +5193,7 @@ th{background:#f0f0f0;font-weight:700;text-align:center}
 .ttd-line{border-top:1.5px solid #000;margin-top:54px;padding-top:6px}
 .footer{text-align:center;font-size:8pt;color:#666;margin-top:16px;border-top:1px solid #ccc;padding-top:8px}
 </style></head><body>
-<divclass="no-print">
+<div class="no-print">
   <button onclick="window.print()" style="padding:8px 20px;background:#0f4238;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">🖨️ Cetak</button>
   <button onclick="(function(){var s=document.createElement('style');s.textContent='@page{size:A4;margin:15mm}';document.head.appendChild(s);window.print();document.head.removeChild(s);})()" style="padding:8px 16px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">📥 Simpan PDF</button>
   <button onclick="window.close()" style="padding:8px 14px;background:#eee;border:none;border-radius:6px;cursor:pointer">✕ Tutup</button>
@@ -5241,13 +5242,13 @@ ${['Perencanaan','Pelaksanaan','Asesmen'].map((komp,ki)=>{
 ${[{l:'Perencanaan',s:skorP,m:P_ITEMS.length*3,c:capP},{l:'Pelaksanaan',s:skorL,m:L_ITEMS.length*3,c:capL},{l:'Asesmen',s:skorA,m:A_ITEMS.length*3,c:capA}].map(r=>
   '<tr><td><b>'+r.l+'</b></td><td style="text-align:center">'+r.s.reduce((a,b)=>a+(+b||0),0)+'/'+r.m+'</td>'+
   '<td><div class="bar-wrap"><div class="bar-fill" style="width:'+r.c+'%;background:'+
-  (r.c>=87.5?'#16a34a':r.c>=75?'#2563eb':r.c>=62.5?'#d97706':'#dc2626')+'"></div></div></td>'+
-  '<td style="text-align:center;font-weight:700;color:'+(r.c>=87.5?'#16a34a':r.c>=75?'#2563eb':r.c>=62.5?'#d97706':'#dc2626')+'">'+r.c.toFixed(1)+'%</td>'+
+  (r.c>=91?'#16a34a':r.c>=81?'#2563eb':r.c>=71?'#d97706':'#dc2626')+'"></div></div></td>'+
+  '<td style="text-align:center;font-weight:700;color:'+(r.c>=91?'#16a34a':r.c>=81?'#2563eb':r.c>=71?'#d97706':'#dc2626')+'">'+r.c.toFixed(1)+'%</td>'+
   '<td style="text-align:center"><b>'+PREDIKAT(r.c)+'</b></td></tr>').join('')}
 <tr style="background:#f0fdf4;border-top:2px solid #0f4238">
   <td><b>RATA-RATA</b></td><td></td>
-  <td><div class="bar-wrap"><div class="bar-fill" style="width:${capRata}%;background:${capRata>=87.5?'#16a34a':capRata>=75?'#2563eb':capRata>=62.5?'#d97706':'#dc2626'}"></div></div></td>
-  <td style="text-align:center;font-weight:900;font-size:11pt;color:${capRata>=87.5?'#16a34a':capRata>=75?'#2563eb':capRata>=62.5?'#d97706':'#dc2626'}">${capRata.toFixed(1)}%</td>
+  <td><div class="bar-wrap"><div class="bar-fill" style="width:${capRata}%;background:${capRata>=91?'#16a34a':capRata>=81?'#2563eb':capRata>=71?'#d97706':'#dc2626'}"></div></div></td>
+  <td style="text-align:center;font-weight:900;font-size:11pt;color:${capRata>=91?'#16a34a':capRata>=81?'#2563eb':capRata>=71?'#d97706':'#dc2626'}">${capRata.toFixed(1)}%</td>
   <td style="text-align:center;font-weight:900;font-size:11pt">${PREDIKAT(capRata)}</td>
 </tr>
 </table>
@@ -5759,7 +5760,7 @@ th{background:#0f4238;color:#fff;font-weight:700;text-align:center}
 <tr><td><b>NIP/NUPTK</b></td><td>${guru?.nip||'—'}</td>
     <td><b>Tanggal Supervisi</b></td><td>${sup.tanggal_supervisi ? new Date(sup.tanggal_supervisi).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'}) : '—'}</td></tr>
 <tr><td><b>Supervisor</b></td><td>${sup.nama_supervisor||'—'}</td>
-    <td><b>Capaian Rata-rata</b></td><td><b style="color:${(+sup.capaian_rata||0)>=87.5?'#16a34a':(+sup.capaian_rata||0)>=75?'#2563eb':'#dc2626'}">${(+sup.capaian_rata||0).toFixed(1)}% — ${sup.predikat||'—'}</b></td></tr>
+    <td><b>Capaian Rata-rata</b></td><td><b style="color:${(+sup.capaian_rata||0)>=91?'#16a34a':(+sup.capaian_rata||0)>=81?'#2563eb':'#dc2626'}">${(+sup.capaian_rata||0).toFixed(1)}% — ${sup.predikat||'—'}</b></td></tr>
 </table>
 
 ${allRTL.length > 0 ? `
@@ -5837,7 +5838,7 @@ ${catUmum ? `<div class="section-title">C. CATATAN UMUM SUPERVISOR</div>
           {label:'Rata-rata',  val:sup.capaian_rata,       issues:totalIssues},
         ].map((k,i)=>{
           const v = parseFloat(k.val)||0;
-          const w = v>=87.5?'#16a34a':v>=75?'#2563eb':v>=62.5?'#d97706':'#dc2626';
+          const w = v>=91?'#16a34a':v>=81?'#2563eb':v>=71?'#d97706':'#dc2626';
           return (
             <div key={i} style={{background:'#fff',border:'1px solid var(--border)',borderRadius:10,
               padding:10,textAlign:'center',borderTop:'3px solid '+w}}>
@@ -6272,7 +6273,7 @@ function DashboardGuru({sesi, showToast}) {
             <div style={{display:'flex',flexDirection:'column',gap:10}}>
               {supList.map(s=>{
                 const cap = parseFloat(s.capaian_rata)||0;
-                const w = cap>=87.5?'#16a34a':cap>=75?'#2563eb':cap>=62.5?'#d97706':'#dc2626';
+                const w = cap>=91?'#16a34a':cap>=81?'#2563eb':cap>=71?'#d97706':'#dc2626';
                 const tgl = s.tanggal_supervisi
                   ? new Date(s.tanggal_supervisi).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'})
                   : '—';
@@ -6288,8 +6289,8 @@ function DashboardGuru({sesi, showToast}) {
                       <div style={{textAlign:'right'}}>
                         <div style={{fontWeight:900,fontSize:'1.2rem',color:w}}>{cap.toFixed(1)}%</div>
                         <span style={{padding:'2px 10px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
-                          background:cap>=87.5?'#d1fae5':cap>=75?'#dbeafe':cap>=62.5?'#fef3c7':'#fee2e2',
-                          color:cap>=87.5?'#065f46':cap>=75?'#1d4ed8':cap>=62.5?'#92400e':'#991b1b'}}>
+                          background:cap>=91?'#d1fae5':cap>=81?'#dbeafe':cap>=71?'#fef3c7':'#fee2e2',
+                          color:cap>=91?'#065f46':cap>=81?'#1d4ed8':cap>=71?'#92400e':'#991b1b'}}>
                           {s.predikat||'—'}
                         </span>
                       </div>
@@ -6411,7 +6412,6 @@ function DashboardGuru({sesi, showToast}) {
 
 // ── TAB ANALISIS ASESMEN ────────────────────────────────────────
 function TabAnalisisAsesmen({sesi, showToast}) {
-  const sb = window.supabase;
   const guruId = sesi.pengguna.id;
   const [list, setList]       = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -6988,7 +6988,7 @@ function TabAnalisisInstrumen({sesi, showToast}) {
 
     // Skor total gabungan (checklist 70% + HOTS 30%)
     const skorTotal = (pctC * 0.7) + (pctHOTS * 0.3);
-    const predikat = skorTotal>=87.5?'Sangat Baik':skorTotal>=75?'Baik':skorTotal>=62.5?'Cukup':'Perlu Perbaikan';
+    const predikat = skorTotal>=91?'Sangat Baik':skorTotal>=81?'Baik':skorTotal>=71?'Cukup':'Perlu Perbaikan';
 
     // Rekomendasi otomatis
     const rek = [];
@@ -7090,7 +7090,7 @@ function TabAnalisisInstrumen({sesi, showToast}) {
       <div style={{display:'flex',flexDirection:'column',gap:10}}>
         {list.map(item=>{
           const isDraft = item.status==='draft';
-          const warna = item.skor_total>=87.5?'#16a34a':item.skor_total>=75?'#2563eb':item.skor_total>=62.5?'#d97706':'#dc2626';
+          const warna = item.skor_total>=91?'#16a34a':item.skor_total>=81?'#2563eb':item.skor_total>=71?'#d97706':'#dc2626';
           return (
             <div key={item.id} className="card" style={{padding:'14px 16px',
               border:`1.5px solid ${isDraft?'#fbbf24':'#86efac'}`}}>
@@ -7117,8 +7117,8 @@ function TabAnalisisInstrumen({sesi, showToast}) {
                   <div style={{textAlign:'right'}}>
                     <div style={{fontSize:'1.3rem',fontWeight:900,color:warna}}>{item.skor_total}%</div>
                     <span style={{padding:'2px 10px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
-                      background:item.skor_total>=87.5?'#d1fae5':item.skor_total>=75?'#dbeafe':item.skor_total>=62.5?'#fef3c7':'#fee2e2',
-                      color:item.skor_total>=87.5?'#065f46':item.skor_total>=75?'#1d4ed8':item.skor_total>=62.5?'#92400e':'#991b1b'}}>
+                      background:item.skor_total>=91?'#d1fae5':item.skor_total>=81?'#dbeafe':item.skor_total>=71?'#fef3c7':'#fee2e2',
+                      color:item.skor_total>=91?'#065f46':item.skor_total>=81?'#1d4ed8':item.skor_total>=71?'#92400e':'#991b1b'}}>
                       {item.predikat}
                     </span>
                   </div>
@@ -7439,14 +7439,14 @@ function TabAnalisisInstrumen({sesi, showToast}) {
         <div style={{display:'flex',flexDirection:'column',gap:12}}>
           {/* Skor utama */}
           <div className="card" style={{textAlign:'center',padding:24,
-            borderTop:`4px solid ${hasil.skorTotal>=87.5?'#16a34a':hasil.skorTotal>=75?'#2563eb':hasil.skorTotal>=62.5?'#d97706':'#dc2626'}`}}>
+            borderTop:`4px solid ${hasil.skorTotal>=91?'#16a34a':hasil.skorTotal>=81?'#2563eb':hasil.skorTotal>=71?'#d97706':'#dc2626'}`}}>
             <div style={{fontSize:'3rem',fontWeight:900,
-              color:hasil.skorTotal>=87.5?'#16a34a':hasil.skorTotal>=75?'#2563eb':hasil.skorTotal>=62.5?'#d97706':'#dc2626'}}>
+              color:hasil.skorTotal>=91?'#16a34a':hasil.skorTotal>=81?'#2563eb':hasil.skorTotal>=71?'#d97706':'#dc2626'}}>
               {hasil.skorTotal}%
             </div>
             <span style={{padding:'4px 16px',borderRadius:20,fontSize:'.85rem',fontWeight:800,
-              background:hasil.skorTotal>=87.5?'#d1fae5':hasil.skorTotal>=75?'#dbeafe':hasil.skorTotal>=62.5?'#fef3c7':'#fee2e2',
-              color:hasil.skorTotal>=87.5?'#065f46':hasil.skorTotal>=75?'#1d4ed8':hasil.skorTotal>=62.5?'#92400e':'#991b1b'}}>
+              background:hasil.skorTotal>=91?'#d1fae5':hasil.skorTotal>=81?'#dbeafe':hasil.skorTotal>=71?'#fef3c7':'#fee2e2',
+              color:hasil.skorTotal>=91?'#065f46':hasil.skorTotal>=81?'#1d4ed8':hasil.skorTotal>=71?'#92400e':'#991b1b'}}>
               {hasil.predikat}
             </span>
             <div style={{marginTop:10,fontSize:'.8rem',color:'var(--text2)'}}>
@@ -7531,8 +7531,8 @@ function TabAnalitikKanwil({madrasahList, stats, filterSmt, filterTA, showToast}
   const [filterTkt2, setFilterTkt2] = React.useState('');
 
   const avg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
-  const warna = v => v>=87.5?'#16a34a':v>=75?'#2563eb':v>=62.5?'#d97706':'#dc2626';
-  const pred  = v => v>=87.5?'Sangat Baik':v>=75?'Baik':v>=62.5?'Cukup':'Kurang';
+  const warna = v => v>=91?'#16a34a':v>=81?'#2563eb':v>=71?'#d97706':'#dc2626';
+  const pred  = v => v>=91?'Sangat Baik':v>=81?'Baik':v>=71?'Cukup':'Kurang';
 
   const kabList = [...new Set(madrasahList.map(m=>m.kota_kab).filter(Boolean))].sort();
 
@@ -7581,9 +7581,9 @@ function TabAnalitikKanwil({madrasahList, stats, filterSmt, filterTA, showToast}
     const s = stats[m.id]||{rata:[]};
     if (!s.rata.length) { distrib.NA++; return; }
     const r = avg(s.rata);
-    if (r>=87.5) distrib.SB++;
-    else if (r>=75) distrib.B++;
-    else if (r>=62.5) distrib.C++;
+    if (r>=91) distrib.SB++;
+    else if (r>=81) distrib.B++;
+    else if (r>=71) distrib.C++;
     else distrib.K++;
   });
 
@@ -7627,10 +7627,10 @@ function TabAnalitikKanwil({madrasahList, stats, filterSmt, filterTA, showToast}
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8}}>
           {[
-            {label:'Sangat Baik',val:distrib.SB,color:'#16a34a',bg:'#d1fae5',min:'≥87.5%'},
-            {label:'Baik',       val:distrib.B, color:'#2563eb',bg:'#dbeafe',min:'≥75%'},
-            {label:'Cukup',      val:distrib.C, color:'#d97706',bg:'#fef3c7',min:'≥62.5%'},
-            {label:'Kurang',     val:distrib.K, color:'#dc2626',bg:'#fee2e2',min:'<62.5%'},
+            {label:'Sangat Baik',val:distrib.SB,color:'#16a34a',bg:'#d1fae5',min:'≥91%'},
+            {label:'Baik',       val:distrib.B, color:'#2563eb',bg:'#dbeafe',min:'≥81%'},
+            {label:'Cukup',      val:distrib.C, color:'#d97706',bg:'#fef3c7',min:'≥71%'},
+            {label:'Kurang',     val:distrib.K, color:'#dc2626',bg:'#fee2e2',min:'<71%'},
             {label:'Belum Data', val:distrib.NA,color:'#9ca3af',bg:'#f3f4f6',min:'—'},
           ].map((d,i)=>(
             <div key={i} style={{textAlign:'center',padding:'12px 8px',borderRadius:10,
@@ -7694,8 +7694,8 @@ function TabAnalitikKanwil({madrasahList, stats, filterSmt, filterTA, showToast}
                     <td style={{padding:'8px 10px'}}>
                       {s.len>0 && (
                         <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
-                          background:s.rata>=87.5?'#d1fae5':s.rata>=75?'#dbeafe':s.rata>=62.5?'#fef3c7':'#fee2e2',
-                          color:s.rata>=87.5?'#065f46':s.rata>=75?'#1d4ed8':s.rata>=62.5?'#92400e':'#991b1b'}}>
+                          background:s.rata>=91?'#d1fae5':s.rata>=81?'#dbeafe':s.rata>=71?'#fef3c7':'#fee2e2',
+                          color:s.rata>=91?'#065f46':s.rata>=81?'#1d4ed8':s.rata>=71?'#92400e':'#991b1b'}}>
                           {pred(s.rata)}
                         </span>
                       )}
@@ -11787,20 +11787,23 @@ function TabelPenilaian({items, prefix, skor, onChange, catatan, setCatatan, lab
   );
 }
 
-function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ganjil', filterTA='2025/2026', jadwal=null}) {
+function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ganjil', filterTA='2025/2026', jadwal=null, supEdit=null}) {
+  const se = supEdit || {};
+  const wPra = se.wawancara_pra || {};
+  const wPasca = se.wawancara_pasca || {};
   const [tab, setTab]   = useState('identitas');
   const [saving, setSaving] = useState(false);
 
   // Identitas
-  const [tanggal, setTanggal]   = useState(jadwal&&jadwal.tanggal ? jadwal.tanggal : new Date().toISOString().split('T')[0]);
-  const [kelas, setKelas]       = useState(jadwal?jadwal.kelas:'');
-  const [semester, setSemester]     = useState(filterSmt);
-  const [tahunAjaran, setTahunAjaran] = useState(filterTA);
-  const [jtm, setJtm]           = useState('');
-  const [jurusan, setJurusan]   = useState('');
-  const [namaSupervisor, setNamaSupervisor] = useState(sesi.pengguna.nama||'');
-  const [nipSupervisor, setNipSupervisor]   = useState(sesi.pengguna.nip||'');
-  const [jabatanSup, setJabatanSup]         = useState(sesi.pengguna.jabatan||'');
+  const [tanggal, setTanggal]   = useState(se.tanggal_supervisi || (jadwal&&jadwal.tanggal ? jadwal.tanggal : new Date().toISOString().split('T')[0]));
+  const [kelas, setKelas]       = useState(se.kelas_sem || (jadwal?jadwal.kelas:''));
+  const [semester, setSemester]     = useState(se.semester || filterSmt);
+  const [tahunAjaran, setTahunAjaran] = useState(se.tahun_ajaran || filterTA);
+  const [jtm, setJtm]           = useState(se.jtm ? String(se.jtm) : '');
+  const [jurusan, setJurusan]   = useState(se.jurusan || '');
+  const [namaSupervisor, setNamaSupervisor] = useState(se.nama_supervisor || sesi.pengguna.nama||'');
+  const [nipSupervisor, setNipSupervisor]   = useState(se.nip_supervisor || sesi.pengguna.nip||'');
+  const [jabatanSup, setJabatanSup]         = useState(se.jabatan_supervisor || sesi.pengguna.jabatan||'');
 
   // Skor
   // Gunakan instrumen custom jika ada, fallback ke default
@@ -11809,9 +11812,10 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
   const itemsL = instrumen.pelaksanaan && instrumen.pelaksanaan.length ? instrumen.pelaksanaan : L_ITEMS;
   const itemsA = instrumen.asesmen    && instrumen.asesmen.length    ? instrumen.asesmen    : A_ITEMS;
 
-  const [skorP, setSkorP] = useState(Array(itemsP.length).fill(0));
-  const [skorL, setSkorL] = useState(Array(itemsL.length).fill(0));
-  const [skorA, setSkorA] = useState(Array(itemsA.length).fill(0));
+  const fitSkor = (arr,n) => Array.from({length:n},(_,i)=>(Array.isArray(arr)&&arr[i]!=null)?(+arr[i]||0):0);
+  const [skorP, setSkorP] = useState(fitSkor(se.skor_perencanaan, itemsP.length));
+  const [skorL, setSkorL] = useState(fitSkor(se.skor_pelaksanaan, itemsL.length));
+  const [skorA, setSkorA] = useState(fitSkor(se.skor_asesmen, itemsA.length));
 
   // Daftar kelas dari DB
   const [daftarKelas, setDaftarKelas] = useState([]);
@@ -11825,9 +11829,9 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
   },[]);
 
   // Catatan
-  const [catP, setCatP] = useState({c:'',r:''});
-  const [catL, setCatL] = useState({c:'',r:''});
-  const [catA, setCatA] = useState({c:'',r:''});
+  const [catP, setCatP] = useState({c:se.catatan_p||'',r:se.rekomendasi_p||''});
+  const [catL, setCatL] = useState({c:se.catatan_l||'',r:se.rekomendasi_l||''});
+  const [catA, setCatA] = useState({c:se.catatan_a||'',r:se.rekomendasi_a||''});
 
   // Wawancara Pra Observasi (8 pertanyaan)
   const PRA_Q = [
@@ -11840,8 +11844,8 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
     'Kompetensi apa yang bias dimiliki siswa setelah mengikuti pembelajaran sesuai dengan harapan saudara?',
     'Apa yang perlu mendapat perhatian khusus pada pembelajaran kali ini?',
   ];
-  const [praJawab, setPraJawab]   = useState(PRA_Q.map(()=>''));
-  const [praLama,  setPraLama]    = useState('');
+  const [praJawab, setPraJawab]   = useState(PRA_Q.map((_,i)=>(wPra.jawaban&&wPra.jawaban[i])||''));
+  const [praLama,  setPraLama]    = useState(wPra.lama||'');
 
   // Wawancara Pasca Observasi (9 pertanyaan)
   const PASCA_Q = [
@@ -11855,10 +11859,10 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
     'Marilah bersama-sama kita identifikasi hal-hal yang telah mantap dan hal-hal yang peerlu peningkatan, berdasarkan kegiatan yang baru saja Saudara lakukan dan pengamatan saya.',
     'Dengan demikian, apa yang akan Saudara lakukan untuk pertemuan berikutnya?',
   ];
-  const [pascaJawab,  setPascaJawab]  = useState(PASCA_Q.map(()=>''));
-  const [pascaLama,   setPascaLama]   = useState('');
-  const [kesanUmum,   setKesanUmum]   = useState('');
-  const [saranMasukan,setSaranMasukan]= useState('');
+  const [pascaJawab,  setPascaJawab]  = useState(PASCA_Q.map((_,i)=>(wPasca.jawaban&&wPasca.jawaban[i])||''));
+  const [pascaLama,   setPascaLama]   = useState(wPasca.lama||'');
+  const [kesanUmum,   setKesanUmum]   = useState(wPasca.kesan_umum||'');
+  const [saranMasukan,setSaranMasukan]= useState(wPasca.saran_masukan||'');
 
   // Hitung capaian
   const capP = (skorP.reduce((a,b)=>a+b,0)/(itemsP.length*3)*100);
@@ -11884,11 +11888,11 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
     if (!kelas.trim()) { showToast('Kelas wajib diisi','warning'); setTab('identitas'); return; }
     setSaving(true);
     try {
-      const {error} = await sb.from('supermad_supervisi').insert({
+      const payloadSup = {
         madrasah_id:         sesi.mad.id,
         guru_id:             guru.id,
         supervisor_id:       sesi.pengguna.id,
-        tahun_ajaran:        sesi.mad.tahun_ajaran,
+        tahun_ajaran:        tahunAjaran,
         semester,
         tanggal_supervisi:   tanggal,
         kelas_sem:           kelas,
@@ -11918,12 +11922,20 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
         capaian_rata:        parseFloat(capRata.toFixed(2)),
         predikat:            PREDIKAT(capRata),
         status,
-      });
+      };
+      let newSup = null, error = null;
+      if (supEdit && supEdit.id) {
+        ({data:newSup, error} = await sb.from('supermad_supervisi')
+          .update(payloadSup).eq('id', supEdit.id).select('id').single());
+      } else {
+        ({data:newSup, error} = await sb.from('supermad_supervisi')
+          .insert(payloadSup).select('id').single());
+      }
       if (error) { 
         showToast('❌ Gagal simpan: '+error.message, 'error'); 
         return; 
       }
-      showToast('✅ Supervisi berhasil disimpan!');
+      showToast(supEdit ? '✅ Perubahan supervisi berhasil disimpan!' : '✅ Supervisi berhasil disimpan!');
     // Update status jadwal jika ada
     if (jadwal && jadwal.id) {
       await sb.from('supermad_jadwal').update({
@@ -11990,7 +12002,7 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
         'Memanfaatkan hasil asesmen untuk perbaikan pembelajaran':'Analisis data asesmen untuk merancang remedial, pengayaan, dan perbaikan strategi mengajar.'
       };
       var items = [];
-      [[P_ITEMS,skorP,'Perencanaan'],[L_ITEMS,skorL,'Pelaksanaan'],[A_ITEMS,skorA,'Asesmen']].forEach(function(x){
+      [[itemsP,skorP,'Perencanaan'],[itemsL,skorL,'Pelaksanaan'],[itemsA,skorA,'Asesmen']].forEach(function(x){
         x[0].forEach(function(s,i){ if((+x[1][i]||0)<=1 && x[0][i]) items.push({komp:x[2],aspek:x[0][i],skor:+x[1][i]||0}); });
       });
       if(!items.length) return '<p style="padding:10px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;font-size:10pt">' +
@@ -12103,9 +12115,9 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
     '<tr><td><b>Mata Pelajaran</b></td><td>'+(guru.mapel||'—')+'</td><td><b>JTM</b></td><td>'+jtm+' jam</td></tr>'+
     '<tr><td><b>Supervisor</b></td><td>'+(namaSupervisor||'—')+'</td><td><b>Jabatan</b></td><td>'+(jabatanSup||'—')+'</td></tr>'+
     '</table>'+
-    buildKomponen('Perencanaan', itemsP, skorP, capP, catatanP, rekomendasiP, 1)+
-    buildKomponen('Pelaksanaan', itemsL, skorL, capL, catatanL, rekomendasiL, 2)+
-    buildKomponen('Asesmen', itemsA, skorA, capA, catatanA, rekomendasiA, 3)+
+    buildKomponen('Perencanaan', itemsP, skorP, capP, catP.c, catP.r, 1)+
+    buildKomponen('Pelaksanaan', itemsL, skorL, capL, catL.c, catL.r, 2)+
+    buildKomponen('Asesmen', itemsA, skorA, capA, catA.c, catA.r, 3)+
     buildRekap()+
     '<div class="ttd">'+
     '<div><div style="margin-bottom:4px">Yang Disupervisi,</div><div class="ttd-line"><b>'+guru.nama+'</b><br>NIP. '+(guru.nip||'—')+'</div></div>'+
@@ -12345,11 +12357,11 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
             </thead>
             <tbody>
               {[
-                {label:'Perencanaan',tot:skorP.reduce((a,b)=>a+b,0),max:P_ITEMS.length*3,cap:capP},
-                {label:'Pelaksanaan',tot:skorL.reduce((a,b)=>a+b,0),max:L_ITEMS.length*3,cap:capL},
-                {label:'Asesmen',    tot:skorA.reduce((a,b)=>a+b,0),max:A_ITEMS.length*3,cap:capA},
+                {label:'Perencanaan',tot:skorP.reduce((a,b)=>a+b,0),max:itemsP.length*3,cap:capP},
+                {label:'Pelaksanaan',tot:skorL.reduce((a,b)=>a+b,0),max:itemsL.length*3,cap:capL},
+                {label:'Asesmen',    tot:skorA.reduce((a,b)=>a+b,0),max:itemsA.length*3,cap:capA},
               ].map((row,i)=>{
-                const w=row.cap>=87.5?'#16a34a':row.cap>=75?'#2563eb':row.cap>=62.5?'#d97706':'#dc2626';
+                const w=row.cap>=91?'#16a34a':row.cap>=81?'#2563eb':row.cap>=71?'#d97706':'#dc2626';
                 return (
                   <tr key={i} style={{borderBottom:'1px solid var(--border)'}}>
                     <td style={{padding:'9px 12px',fontWeight:600}}>{row.label}</td>
@@ -12357,8 +12369,8 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
                     <td style={{padding:'9px 12px',fontWeight:700,color:w}}>{row.cap.toFixed(1)}%</td>
                     <td style={{padding:'9px 12px'}}>
                       <span style={{padding:'2px 10px',borderRadius:20,fontSize:'.72rem',fontWeight:700,
-                        background:row.cap>=87.5?'#d1fae5':row.cap>=75?'#dbeafe':row.cap>=62.5?'#fef3c7':'#fee2e2',
-                        color:row.cap>=87.5?'#065f46':row.cap>=75?'#1d4ed8':row.cap>=62.5?'#92400e':'#991b1b'}}>
+                        background:row.cap>=91?'#d1fae5':row.cap>=81?'#dbeafe':row.cap>=71?'#fef3c7':'#fee2e2',
+                        color:row.cap>=91?'#065f46':row.cap>=81?'#1d4ed8':row.cap>=71?'#92400e':'#991b1b'}}>
                         {PREDIKAT(row.cap)}
                       </span>
                     </td>
@@ -12369,13 +12381,13 @@ function FormSupervisi({guru, sesi, showToast, onSelesai, onBatal, filterSmt='Ga
                 <td style={{padding:'10px 12px',fontWeight:800}}>Rata-rata</td>
                 <td></td>
                 <td style={{padding:'10px 12px',fontWeight:900,fontSize:'1.1rem',
-                  color:capRata>=87.5?'#16a34a':capRata>=75?'#2563eb':capRata>=62.5?'#d97706':'#dc2626'}}>
+                  color:capRata>=91?'#16a34a':capRata>=81?'#2563eb':capRata>=71?'#d97706':'#dc2626'}}>
                   {capRata.toFixed(1)}%
                 </td>
                 <td style={{padding:'10px 12px'}}>
                   <span style={{padding:'3px 12px',borderRadius:20,fontSize:'.78rem',fontWeight:800,
-                    background:capRata>=87.5?'#d1fae5':capRata>=75?'#dbeafe':capRata>=62.5?'#fef3c7':'#fee2e2',
-                    color:capRata>=87.5?'#065f46':capRata>=75?'#1d4ed8':capRata>=62.5?'#92400e':'#991b1b'}}>
+                    background:capRata>=91?'#d1fae5':capRata>=81?'#dbeafe':capRata>=71?'#fef3c7':'#fee2e2',
+                    color:capRata>=91?'#065f46':capRata>=81?'#1d4ed8':capRata>=71?'#92400e':'#991b1b'}}>
                     {PREDIKAT(capRata)}
                   </span>
                 </td>
