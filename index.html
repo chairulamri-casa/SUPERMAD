@@ -100,7 +100,22 @@ function cekPass(input, stored) {
 // ── SUPABASE CONFIG ────────────────────────────────────────────
 const SUPA_URL = 'https://djnbttyjyzknujrepdfe.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqbmJ0dHlqeXprbnVqcmVwZGZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1Mzc3MDksImV4cCI6MjEwMjExMzcwOX0.UfrTknQM7EU_3BiSGBy9bPtOeXh5u14X4ujRNxRlYcM';
-const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+// Setiap permintaan data (REST/RPC) membawa token sesi → database hanya melayani data madrasah sendiri
+function supermadFetch(url, opts) {
+  opts = opts || {};
+  try {
+    if (String(url).includes('/rest/v1/')) {
+      const sv = JSON.parse(localStorage.getItem('supermad_sesi')||'null');
+      if (sv && sv.token) {
+        const h = new Headers(opts.headers || {});
+        h.set('x-supermad-sesi', sv.token);
+        opts = {...opts, headers: h};
+      }
+    }
+  } catch(e) {}
+  return fetch(url, opts);
+}
+const sb = supabase.createClient(SUPA_URL, SUPA_KEY, {global: {fetch: supermadFetch}});
 
 // ── HEARTBEAT — Pengetuk Hati Supabase 💓 ──────────────────
 // Ping setiap 4 menit agar koneksi tetap hidup
@@ -293,7 +308,7 @@ function HalamanLogin({onLogin}) {
       });
       if (error) { setErr('Gagal daftar: '+error.message); return; }
       if (!res || res.error) { setErr(res?.error || 'Gagal daftar.'); return; }
-      onLogin({mad:res.mad, penggunaList:res.pengguna||[], mode:'madrasah', token:res.token});
+      onLogin({mad:res.mad, mode:'madrasah', token:res.token, penggunaTerpilih:res.pengguna_terpilih});
     } catch(err) { setErr('Error: '+err.message); }
     finally { setLoading(false); }
   }
@@ -303,7 +318,7 @@ function HalamanLogin({onLogin}) {
     try {
       const {data:res, error:e1} = await sb.rpc('supermad_login_madrasah', {p_npsn: npsn.trim(), p_kode: kode.trim()});
       if (e1) { setErr('Error: '+e1.message); return; }
-      if (!res) { setErr('NPSN atau kode akses salah.'); return; }
+      if (!res || res.error) { setErr(res?.error || 'NPSN atau kode akses salah.'); return; }
       onLogin({mad:res.mad, penggunaList:res.pengguna||[], mode:'madrasah', token:res.token});
     } catch(err) { setErr('Koneksi gagal: '+err.message); }
     finally { setLoading(false); }
@@ -314,7 +329,7 @@ function HalamanLogin({onLogin}) {
     try {
       const {data:res, error:e1} = await sb.rpc('supermad_login_guru', {p_npsn: npsn.trim(), p_token: token.trim()});
       if (e1) { setErr('Error: '+e1.message); return; }
-      if (!res) { setErr('NPSN atau token guru tidak valid.'); return; }
+      if (!res || res.error) { setErr(res?.error || 'NPSN atau token guru tidak valid.'); return; }
       onLogin({mode:'guru', mad:res.mad, guru:res.guru, token:res.token});
     } catch(err) { setErr('Error: '+err.message); }
     finally { setLoading(false); }
@@ -637,7 +652,26 @@ function HalamanLogin({onLogin}) {
   );
 }
 // ── PILIH PENGGUNA (setelah login madrasah) ────────────────────
-function PilihPengguna({mad, penggunaList, onPilih, onBack}) {
+function PilihPengguna({mad, penggunaList, token, onPilih, onBack}) {
+  const [dipilih, setDipilih] = React.useState(null);
+  const [pass, setPass]       = React.useState('');
+  const [err, setErr]         = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+
+  async function masuk(e) {
+    e.preventDefault();
+    if (!dipilih) return;
+    setErr(''); setLoading(true);
+    try {
+      const {data:res, error} = await sb.rpc('supermad_pilih_pengguna',
+        {p_sesi: token, p_pengguna_id: String(dipilih.id), p_password: pass});
+      if (error) { setErr('Error: '+error.message); return; }
+      if (!res || res.error) { setErr(res?.error || 'Password salah.'); return; }
+      onPilih(res.pengguna);
+    } catch(e2) { setErr('Koneksi gagal: '+e2.message); }
+    finally { setLoading(false); }
+  }
+
   return (
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',
       background:'linear-gradient(135deg,#063d35,#0e7c6e)',padding:16}}>
@@ -645,29 +679,61 @@ function PilihPengguna({mad, penggunaList, onPilih, onBack}) {
         boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
         <div style={{textAlign:'center',marginBottom:20}}>
           <div style={{fontWeight:900,fontSize:'1rem',color:'var(--p3)'}}>{mad.nama}</div>
-          <div style={{fontSize:'.76rem',color:'var(--text2)',marginTop:4}}>Pilih akun Anda</div>
+          <div style={{fontSize:'.76rem',color:'var(--text2)',marginTop:4}}>
+            {dipilih ? 'Masukkan password akun Anda' : 'Pilih akun Anda'}
+          </div>
         </div>
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {penggunaList.map(p => (
-            <button key={p.id} onClick={() => onPilih(p)}
-              style={{padding:'12px 16px',background:'var(--surface2)',border:'1.5px solid var(--border)',
-                borderRadius:10,cursor:'pointer',textAlign:'left',transition:'all .15s'}}
-              onMouseOver={e=>e.currentTarget.style.borderColor='var(--p)'}
-              onMouseOut={e=>e.currentTarget.style.borderColor='var(--border)'}>
-              <div style={{fontWeight:700,fontSize:'.88rem',color:'var(--text1)'}}>{p.nama}</div>
-              <div style={{fontSize:'.72rem',color:'var(--text2)',marginTop:2}}>
-                {p.jabatan} · {p.role === 'operator' ? 'Operator' : 'Supervisor'}
+
+        {!dipilih ? (
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {penggunaList.map(p => (
+              <button key={p.id} onClick={() => { setDipilih(p); setPass(''); setErr(''); }}
+                style={{padding:'12px 16px',background:'var(--surface2)',border:'1.5px solid var(--border)',
+                  borderRadius:10,cursor:'pointer',textAlign:'left',transition:'all .15s',fontFamily:'inherit'}}
+                onMouseOver={e=>e.currentTarget.style.borderColor='var(--p)'}
+                onMouseOut={e=>e.currentTarget.style.borderColor='var(--border)'}>
+                <div style={{fontWeight:700,fontSize:'.88rem',color:'var(--text1)'}}>{p.nama}</div>
+                <div style={{fontSize:'.72rem',color:'var(--text2)',marginTop:2}}>
+                  {p.jabatan} · {p.role === 'operator' ? 'Operator' : 'Supervisor'}
+                </div>
+              </button>
+            ))}
+            {!penggunaList.length && (
+              <div style={{textAlign:'center',color:'var(--text3)',fontSize:'.82rem',padding:20}}>
+                Belum ada pengguna terdaftar.<br/>Hubungi Admin Kanwil.
               </div>
-            </button>
-          ))}
-          {!penggunaList.length && (
-            <div style={{textAlign:'center',color:'var(--text3)',fontSize:'.82rem',padding:20}}>
-              Belum ada pengguna terdaftar.<br/>Hubungi Admin Kanwil.
+            )}
+          </div>
+        ) : (
+          <form onSubmit={masuk}>
+            <div style={{padding:'10px 14px',background:'#f0fdf4',border:'1px solid #86efac',borderRadius:10,marginBottom:12}}>
+              <div style={{fontWeight:700,fontSize:'.88rem'}}>{dipilih.nama}</div>
+              <div style={{fontSize:'.72rem',color:'var(--text2)'}}>
+                {dipilih.jabatan} · {dipilih.role === 'operator' ? 'Operator' : 'Supervisor'}
+              </div>
             </div>
-          )}
-        </div>
-        <button className="btn btn-outline" style={{width:'100%',justifyContent:'center',marginTop:14}}
-          onClick={onBack}>← Ganti Madrasah</button>
+            <div className="form-group">
+              <label>Password *</label>
+              <input type="password" value={pass} onChange={e=>setPass(e.target.value)}
+                placeholder="Password akun" required autoFocus/>
+            </div>
+            {err && <div style={{color:'var(--red)',fontSize:'.78rem',marginBottom:8}}>⚠️ {err}</div>}
+            <button className="btn btn-primary" type="submit" disabled={loading}
+              style={{width:'100%',justifyContent:'center'}}>
+              {loading ? '⏳ Memeriksa...' : '🔓 Masuk'}
+            </button>
+            <button type="button" className="btn btn-outline" style={{width:'100%',justifyContent:'center',marginTop:8}}
+              onClick={()=>{ setDipilih(null); setErr(''); }}>← Pilih Akun Lain</button>
+            <div style={{fontSize:'.7rem',color:'var(--text3)',textAlign:'center',marginTop:10}}>
+              Lupa password? Minta operator madrasah atau Admin Kanwil mereset password Anda.
+            </div>
+          </form>
+        )}
+
+        {!dipilih && (
+          <button className="btn btn-outline" style={{width:'100%',justifyContent:'center',marginTop:14}}
+            onClick={onBack}>← Ganti Madrasah</button>
+        )}
       </div>
     </div>
   );
@@ -734,6 +800,11 @@ function App() {
       const s = {pengguna: {...data.guru, role:'guru', nama:data.guru.nama}, mad: data.mad, mode: 'guru', token: data.token};
       setSesi(s); setStep('app');
       try { localStorage.setItem('supermad_sesi', JSON.stringify(s)); } catch(e) {}
+    } else if (data.penggunaTerpilih) {
+      // Registrasi operator baru: langsung masuk sebagai operator tersebut
+      const s = {pengguna: data.penggunaTerpilih, mad: data.mad, mode: data.penggunaTerpilih.role||'operator', token: data.token};
+      setSesi(s); setStep('app');
+      try { localStorage.setItem('supermad_sesi', JSON.stringify(s)); } catch(e) {}
     } else {
       setLoginData(data);
       setStep('pilih_pengguna');
@@ -771,6 +842,7 @@ function App() {
     <PilihPengguna
       mad={loginData.mad}
       penggunaList={loginData.penggunaList}
+      token={loginData.token}
       onPilih={handlePilihPengguna}
       onBack={() => setStep('login')}
     />
@@ -1638,6 +1710,15 @@ function KelolaPengguna({mad, showToast, onBack}) {
     loadList();
   }
 
+  async function resetPass(pg) {
+    const baru = window.prompt('Password baru untuk '+pg.nama+' ('+pg.username+'), minimal 6 karakter:');
+    if (baru===null) return;
+    if (baru.trim().length < 6) { showToast('Password minimal 6 karakter!','error'); return; }
+    const {error} = await sb.from('supermad_pengguna').update({password_hash: md5(baru.trim())}).eq('id', pg.id);
+    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    showToast('✅ Password '+pg.nama+' berhasil direset.');
+  }
+
   async function hapus(id, nama) {
     if (!confirm('Hapus pengguna "'+nama+'"?')) return;
     await sb.from('supermad_pengguna').delete().eq('id', id);
@@ -1730,6 +1811,11 @@ function KelolaPengguna({mad, showToast, onBack}) {
                   color:p.role==='supervisor'?'#065f46':'#1d4ed8'}}>
                   {p.role==='supervisor'?'Supervisor':'Operator'}
                 </span>
+                <button onClick={()=>resetPass(p)}
+                  style={{padding:'3px 8px',borderRadius:6,border:'1px solid #d97706',
+                    background:'#fffbeb',color:'#92400e',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
+                  🔑 Reset
+                </button>
                 <button onClick={()=>hapus(p.id, p.nama)}
                   style={{padding:'3px 8px',borderRadius:6,border:'1px solid #fca5a5',
                     background:'#fef2f2',color:'#dc2626',cursor:'pointer',fontSize:'.72rem'}}>
