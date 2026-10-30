@@ -100,7 +100,22 @@ function cekPass(input, stored) {
 // ── SUPABASE CONFIG ────────────────────────────────────────────
 const SUPA_URL = 'https://djnbttyjyzknujrepdfe.supabase.co';
 const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqbmJ0dHlqeXprbnVqcmVwZGZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1Mzc3MDksImV4cCI6MjEwMjExMzcwOX0.UfrTknQM7EU_3BiSGBy9bPtOeXh5u14X4ujRNxRlYcM';
-const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+// Setiap permintaan data (REST/RPC) membawa token sesi → database hanya melayani data madrasah sendiri
+function supermadFetch(url, opts) {
+  opts = opts || {};
+  try {
+    if (String(url).includes('/rest/v1/')) {
+      const sv = JSON.parse(localStorage.getItem('supermad_sesi')||'null');
+      if (sv && sv.token) {
+        const h = new Headers(opts.headers || {});
+        h.set('x-supermad-sesi', sv.token);
+        opts = {...opts, headers: h};
+      }
+    }
+  } catch(e) {}
+  return fetch(url, opts);
+}
+const sb = supabase.createClient(SUPA_URL, SUPA_KEY, {global: {fetch: supermadFetch}});
 
 // ── HEARTBEAT — Pengetuk Hati Supabase 💓 ──────────────────
 // Ping setiap 4 menit agar koneksi tetap hidup
@@ -293,7 +308,7 @@ function HalamanLogin({onLogin}) {
       });
       if (error) { setErr('Gagal daftar: '+error.message); return; }
       if (!res || res.error) { setErr(res?.error || 'Gagal daftar.'); return; }
-      onLogin({mad:res.mad, penggunaList:res.pengguna||[], mode:'madrasah', token:res.token});
+      onLogin({mad:res.mad, mode:'madrasah', token:res.token, penggunaTerpilih:res.pengguna_terpilih, kodeAkses:res.kode_akses});
     } catch(err) { setErr('Error: '+err.message); }
     finally { setLoading(false); }
   }
@@ -303,7 +318,7 @@ function HalamanLogin({onLogin}) {
     try {
       const {data:res, error:e1} = await sb.rpc('supermad_login_madrasah', {p_npsn: npsn.trim(), p_kode: kode.trim()});
       if (e1) { setErr('Error: '+e1.message); return; }
-      if (!res) { setErr('NPSN atau kode akses salah.'); return; }
+      if (!res || res.error) { setErr(res?.error || 'NPSN atau kode akses salah.'); return; }
       onLogin({mad:res.mad, penggunaList:res.pengguna||[], mode:'madrasah', token:res.token});
     } catch(err) { setErr('Koneksi gagal: '+err.message); }
     finally { setLoading(false); }
@@ -314,7 +329,7 @@ function HalamanLogin({onLogin}) {
     try {
       const {data:res, error:e1} = await sb.rpc('supermad_login_guru', {p_npsn: npsn.trim(), p_token: token.trim()});
       if (e1) { setErr('Error: '+e1.message); return; }
-      if (!res) { setErr('NPSN atau token guru tidak valid.'); return; }
+      if (!res || res.error) { setErr(res?.error || 'NPSN atau token guru tidak valid.'); return; }
       onLogin({mode:'guru', mad:res.mad, guru:res.guru, token:res.token});
     } catch(err) { setErr('Error: '+err.message); }
     finally { setLoading(false); }
@@ -388,6 +403,15 @@ function HalamanLogin({onLogin}) {
               {loading?'⏳ Memeriksa...':'🔓 Masuk'}</button>
             <button type="button" className="btn btn-outline" style={{width:'100%',justifyContent:'center',marginTop:8}}
               onClick={()=>{setMode('pilih');setErr('')}}>← Kembali</button>
+            <div style={{marginTop:14,padding:'10px 12px',background:'#eef2ff',border:'1px solid #c7d2fe',
+              borderRadius:9,fontSize:'.76rem',color:'#3730a3',textAlign:'center'}}>
+              Madrasah baru & sudah punya <b>token registrasi</b>?<br/>
+              <button type="button" onClick={()=>{setMode('daftar');setRegStep('token');setRegToken('');setErr('');}}
+                style={{marginTop:6,background:'#6366f1',color:'#fff',border:'none',borderRadius:7,padding:'6px 14px',
+                  fontWeight:700,fontSize:'.78rem',cursor:'pointer',fontFamily:'inherit'}}>
+                📝 Daftar Akun Operator
+              </button>
+            </div>
           </form>
         )}
 
@@ -413,7 +437,7 @@ function HalamanLogin({onLogin}) {
 
         {mode === 'kanwil' && (
           <form onSubmit={loginKanwil}>
-            <div style={{fontWeight:800,color:'var(--p3)',marginBottom:14,fontSize:'.9rem'}}>🏛️ Login Admin Kanwil</div>
+            <div style={{fontWeight:800,color:'var(--p3)',marginBottom:14,fontSize:'.9rem'}}>🏛️ Login Admin SUPERMAD</div>
             <div className="form-group">
               <label>Username *</label>
               <input value={user} onChange={e=>setUser(e.target.value)} placeholder="Username admin" required/>
@@ -571,6 +595,14 @@ function HalamanLogin({onLogin}) {
               👨‍🏫 Login Guru
             </button>
           </div>
+          <div style={{marginTop:12,fontSize:'.82rem',color:'#4a6b63'}}>
+            Madrasah baru bergabung?{' '}
+            <button onClick={()=>{bukaLogin('daftar');setRegStep('token');setRegToken('');}}
+              style={{background:'none',border:'none',color:'#6366f1',fontWeight:800,cursor:'pointer',
+                fontSize:'.82rem',padding:0,fontFamily:'inherit',textDecoration:'underline'}}>
+              📝 Daftar dengan token registrasi →
+            </button>
+          </div>
           <div style={{marginTop:28,display:'flex',gap:28}}>
             {[['187+','Madrasah Terdaftar'],['3.800+','Guru Aktif'],['PM-KBC','KMA 1503/2025']].map(([v,l])=>(
               <div key={l}>
@@ -637,7 +669,26 @@ function HalamanLogin({onLogin}) {
   );
 }
 // ── PILIH PENGGUNA (setelah login madrasah) ────────────────────
-function PilihPengguna({mad, penggunaList, onPilih, onBack}) {
+function PilihPengguna({mad, penggunaList, token, onPilih, onBack}) {
+  const [dipilih, setDipilih] = React.useState(null);
+  const [pass, setPass]       = React.useState('');
+  const [err, setErr]         = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+
+  async function masuk(e) {
+    e.preventDefault();
+    if (!dipilih) return;
+    setErr(''); setLoading(true);
+    try {
+      const {data:res, error} = await sb.rpc('supermad_pilih_pengguna',
+        {p_sesi: token, p_pengguna_id: String(dipilih.id), p_password: pass});
+      if (error) { setErr('Error: '+error.message); return; }
+      if (!res || res.error) { setErr(res?.error || 'Password salah.'); return; }
+      onPilih(res.pengguna);
+    } catch(e2) { setErr('Koneksi gagal: '+e2.message); }
+    finally { setLoading(false); }
+  }
+
   return (
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',
       background:'linear-gradient(135deg,#063d35,#0e7c6e)',padding:16}}>
@@ -645,29 +696,61 @@ function PilihPengguna({mad, penggunaList, onPilih, onBack}) {
         boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
         <div style={{textAlign:'center',marginBottom:20}}>
           <div style={{fontWeight:900,fontSize:'1rem',color:'var(--p3)'}}>{mad.nama}</div>
-          <div style={{fontSize:'.76rem',color:'var(--text2)',marginTop:4}}>Pilih akun Anda</div>
+          <div style={{fontSize:'.76rem',color:'var(--text2)',marginTop:4}}>
+            {dipilih ? 'Masukkan password akun Anda' : 'Pilih akun Anda'}
+          </div>
         </div>
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {penggunaList.map(p => (
-            <button key={p.id} onClick={() => onPilih(p)}
-              style={{padding:'12px 16px',background:'var(--surface2)',border:'1.5px solid var(--border)',
-                borderRadius:10,cursor:'pointer',textAlign:'left',transition:'all .15s'}}
-              onMouseOver={e=>e.currentTarget.style.borderColor='var(--p)'}
-              onMouseOut={e=>e.currentTarget.style.borderColor='var(--border)'}>
-              <div style={{fontWeight:700,fontSize:'.88rem',color:'var(--text1)'}}>{p.nama}</div>
-              <div style={{fontSize:'.72rem',color:'var(--text2)',marginTop:2}}>
-                {p.jabatan} · {p.role === 'operator' ? 'Operator' : 'Supervisor'}
+
+        {!dipilih ? (
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {penggunaList.map(p => (
+              <button key={p.id} onClick={() => { setDipilih(p); setPass(''); setErr(''); }}
+                style={{padding:'12px 16px',background:'var(--surface2)',border:'1.5px solid var(--border)',
+                  borderRadius:10,cursor:'pointer',textAlign:'left',transition:'all .15s',fontFamily:'inherit'}}
+                onMouseOver={e=>e.currentTarget.style.borderColor='var(--p)'}
+                onMouseOut={e=>e.currentTarget.style.borderColor='var(--border)'}>
+                <div style={{fontWeight:700,fontSize:'.88rem',color:'var(--text1)'}}>{p.nama}</div>
+                <div style={{fontSize:'.72rem',color:'var(--text2)',marginTop:2}}>
+                  {p.jabatan} · {p.role === 'operator' ? 'Operator' : 'Supervisor'}
+                </div>
+              </button>
+            ))}
+            {!penggunaList.length && (
+              <div style={{textAlign:'center',color:'var(--text3)',fontSize:'.82rem',padding:20}}>
+                Belum ada pengguna terdaftar.<br/>Hubungi Admin SUPERMAD.
               </div>
-            </button>
-          ))}
-          {!penggunaList.length && (
-            <div style={{textAlign:'center',color:'var(--text3)',fontSize:'.82rem',padding:20}}>
-              Belum ada pengguna terdaftar.<br/>Hubungi Admin Kanwil.
+            )}
+          </div>
+        ) : (
+          <form onSubmit={masuk}>
+            <div style={{padding:'10px 14px',background:'#f0fdf4',border:'1px solid #86efac',borderRadius:10,marginBottom:12}}>
+              <div style={{fontWeight:700,fontSize:'.88rem'}}>{dipilih.nama}</div>
+              <div style={{fontSize:'.72rem',color:'var(--text2)'}}>
+                {dipilih.jabatan} · {dipilih.role === 'operator' ? 'Operator' : 'Supervisor'}
+              </div>
             </div>
-          )}
-        </div>
-        <button className="btn btn-outline" style={{width:'100%',justifyContent:'center',marginTop:14}}
-          onClick={onBack}>← Ganti Madrasah</button>
+            <div className="form-group">
+              <label>Password *</label>
+              <input type="password" value={pass} onChange={e=>setPass(e.target.value)}
+                placeholder="Password akun" required autoFocus/>
+            </div>
+            {err && <div style={{color:'var(--red)',fontSize:'.78rem',marginBottom:8}}>⚠️ {err}</div>}
+            <button className="btn btn-primary" type="submit" disabled={loading}
+              style={{width:'100%',justifyContent:'center'}}>
+              {loading ? '⏳ Memeriksa...' : '🔓 Masuk'}
+            </button>
+            <button type="button" className="btn btn-outline" style={{width:'100%',justifyContent:'center',marginTop:8}}
+              onClick={()=>{ setDipilih(null); setErr(''); }}>← Pilih Akun Lain</button>
+            <div style={{fontSize:'.7rem',color:'var(--text3)',textAlign:'center',marginTop:10}}>
+              Lupa password? Minta operator madrasah atau Admin SUPERMAD mereset password Anda.
+            </div>
+          </form>
+        )}
+
+        {!dipilih && (
+          <button className="btn btn-outline" style={{width:'100%',justifyContent:'center',marginTop:14}}
+            onClick={onBack}>← Ganti Madrasah</button>
+        )}
       </div>
     </div>
   );
@@ -697,6 +780,7 @@ function App() {
   });
   const [loginData, setLoginData] = useState(null);
   const [toast, setToast] = useState(null);
+  const [infoKode, setInfoKode] = useState(null); // tampil sekali setelah registrasi operator
 
   function showToast(msg, type='success') {
     setToast({msg, type, key: Date.now()});
@@ -733,6 +817,12 @@ function App() {
     } else if (data.mode === 'guru') {
       const s = {pengguna: {...data.guru, role:'guru', nama:data.guru.nama}, mad: data.mad, mode: 'guru', token: data.token};
       setSesi(s); setStep('app');
+      try { localStorage.setItem('supermad_sesi', JSON.stringify(s)); } catch(e) {}
+    } else if (data.penggunaTerpilih) {
+      // Registrasi operator baru: langsung masuk sebagai operator tersebut
+      const s = {pengguna: data.penggunaTerpilih, mad: data.mad, mode: data.penggunaTerpilih.role||'operator', token: data.token};
+      setSesi(s); setStep('app');
+      if (data.kodeAkses) setInfoKode({kode: data.kodeAkses, npsn: data.mad?.npsn, nama: data.mad?.nama});
       try { localStorage.setItem('supermad_sesi', JSON.stringify(s)); } catch(e) {}
     } else {
       setLoginData(data);
@@ -771,6 +861,7 @@ function App() {
     <PilihPengguna
       mad={loginData.mad}
       penggunaList={loginData.penggunaList}
+      token={loginData.token}
       onPilih={handlePilihPengguna}
       onBack={() => setStep('login')}
     />
@@ -801,7 +892,7 @@ function App() {
             <div style={{fontWeight:800,fontSize:'.82rem'}}>
               {sesi.mad
                 ? sesi.mad.nama.toUpperCase()
-                : 'KANTOR WILAYAH PROVINSI ACEH'}
+                : 'ADMIN SUPERMAD'}
             </div>
             {sesi.mad && sesi.mad.kota_kab && (
               <div style={{fontSize:'.65rem',opacity:.7}}>
@@ -846,6 +937,40 @@ function App() {
       </div>
 
       {toast && <Toast key={toast.key} msg={toast.msg} type={toast.type} onClose={()=>setToast(null)} />}
+
+      {infoKode && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',display:'flex',alignItems:'center',
+          justifyContent:'center',zIndex:2000,padding:16}}>
+          <div style={{background:'#fff',borderRadius:16,padding:'26px 24px',maxWidth:420,width:'100%',textAlign:'center',
+            boxShadow:'0 20px 60px rgba(0,0,0,.35)'}}>
+            <div style={{fontSize:'2.2rem'}}>🎉</div>
+            <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1.05rem',margin:'6px 0 4px'}}>Pendaftaran Berhasil!</div>
+            <div style={{fontSize:'.82rem',color:'var(--text2)',marginBottom:14}}>
+              Catat data berikut untuk <b>login berikutnya</b> lewat menu <b>🏫 Login Madrasah</b>:
+            </div>
+            <div style={{background:'#f0fdf4',border:'2px solid #86efac',borderRadius:12,padding:'12px 16px',textAlign:'left',marginBottom:12}}>
+              <div style={{fontSize:'.75rem',color:'var(--text2)'}}>Madrasah</div>
+              <div style={{fontWeight:800,marginBottom:6}}>{infoKode.nama}</div>
+              <div style={{fontSize:'.75rem',color:'var(--text2)'}}>NPSN</div>
+              <div style={{fontWeight:800,fontFamily:'monospace',fontSize:'1.05rem',marginBottom:6}}>{infoKode.npsn}</div>
+              <div style={{fontSize:'.75rem',color:'var(--text2)'}}>Kode Akses Madrasah</div>
+              <div style={{fontWeight:900,fontFamily:'monospace',fontSize:'1.3rem',letterSpacing:2,color:'#065f46'}}>{infoKode.kode}</div>
+            </div>
+            <div style={{fontSize:'.74rem',color:'#92400e',background:'#fffbeb',border:'1px solid #fcd34d',
+              borderRadius:9,padding:'8px 10px',textAlign:'left',marginBottom:14}}>
+              Cara login berikutnya: <b>NPSN + Kode Akses</b> → pilih akun Anda → masukkan <b>password</b> yang tadi Anda buat.
+              Kode akses juga bisa dilihat kembali di tab <b>⚙️ Profil</b>.
+            </div>
+            <div style={{display:'flex',gap:8,justifyContent:'center'}}>
+              <button className="btn btn-outline btn-sm" onClick={()=>{
+                navigator.clipboard?.writeText('NPSN: '+infoKode.npsn+' | Kode Akses: '+infoKode.kode);
+                showToast('📋 NPSN & kode akses disalin');
+              }}>📋 Salin</button>
+              <button className="btn btn-primary btn-sm" onClick={()=>setInfoKode(null)}>✓ Sudah Saya Catat</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1098,7 +1223,7 @@ function DashboardOperator({sesi, showToast, onSesiUpdate}) {
 
       {/* Tab */}
       <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
-        {[['guru','👨‍🏫 Daftar Guru'],['pengguna','👤 Pengguna'],['penugasan','📌 Penugasan'],['kelas','🏫 Kelas & Siswa'],['rekap','📊 Rekap Nilai'],['instrumen','📋 Instrumen'],['profil','⚙️ Profil']].map(([key,label])=>(
+        {[['guru','👨‍🏫 Daftar Guru'],['pengguna','👤 Pengguna'],['penugasan','📌 Penugasan'],['kelas','🏫 Kelas & Siswa'],['rekap','📊 Rekap Nilai'],['kepatuhan','📈 Kepatuhan Guru'],['instrumen','📋 Instrumen'],['profil','⚙️ Profil']].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',
               fontWeight:700,fontSize:'.8rem',fontFamily:'inherit',
@@ -1436,6 +1561,10 @@ function DashboardOperator({sesi, showToast, onSesiUpdate}) {
         <TabRekapNilai sesi={sesi} showToast={showToast} />
       )}
 
+      {tab==='kepatuhan' && (
+        <TabKepatuhanGuru sesi={sesi} guruList={guruList} showToast={showToast} />
+      )}
+
       {/* TAB INSTRUMEN */}
       {tab==='instrumen' && (
         <TabInstrumen sesi={sesi} showToast={showToast} />
@@ -1470,6 +1599,7 @@ function ProfilMadrasah({sesi, showToast, onUpdate}) {
   const [saving, setSaving]       = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoUrl, setLogoUrl]     = useState(sesi.mad.logo_url||'');
+  const [kodeAkses, setKodeAkses] = useState('');
 
   async function uploadLogo(e) {
     const file = e.target.files[0];
@@ -1515,6 +1645,30 @@ function ProfilMadrasah({sesi, showToast, onUpdate}) {
   return (
     <div className="card">
       <div style={{fontWeight:800,color:'var(--p3)',marginBottom:16}}>🏫 Profil Madrasah</div>
+
+      {sesi.mode==='operator' && (
+        <div style={{marginBottom:16,padding:'12px 16px',background:'#f0fdf4',border:'1.5px solid #86efac',
+          borderRadius:10,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+          <div style={{flex:1,minWidth:180}}>
+            <div style={{fontWeight:700,fontSize:'.85rem'}}>🔐 Kode Akses Madrasah</div>
+            <div style={{fontSize:'.72rem',color:'var(--text2)'}}>Dipakai bersama NPSN untuk Login Madrasah. Jangan dibagikan ke luar madrasah.</div>
+          </div>
+          <div style={{fontFamily:'monospace',fontWeight:900,fontSize:'1.1rem',letterSpacing:2,color:'#065f46'}}>
+            {kodeAkses || '••••••••'}
+          </div>
+          {!kodeAkses ? (
+            <button className="btn btn-outline btn-sm" onClick={async()=>{
+              const {data, error} = await sb.rpc('supermad_kode_akses', {p_sesi: sesi.token});
+              if (error || !data) { showToast('Gagal memuat kode akses'+(error?': '+error.message:''),'error'); return; }
+              setKodeAkses(data);
+            }}>👁️ Tampilkan</button>
+          ) : (
+            <button className="btn btn-outline btn-sm" onClick={()=>{
+              navigator.clipboard?.writeText(kodeAkses); showToast('📋 Kode akses disalin');
+            }}>📋 Salin</button>
+          )}
+        </div>
+      )}
 
       {/* Upload Logo Madrasah */}
       <div style={{marginBottom:16,padding:'14px 16px',background:'var(--surface2)',
@@ -1611,8 +1765,34 @@ function KelolaPengguna({mad, showToast, onBack}) {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({nama:'',nip:'',jabatan:'Kepala Madrasah',role:'supervisor',username:'',password:''});
+  const [editP, setEditP]   = useState(null);   // pengguna yang sedang diedit
+  const [formE, setFormE]   = useState({});
+  const [savingE, setSavingE] = useState(false);
 
   useEffect(()=>{ loadList(); }, []);
+
+  async function simpanEdit(e) {
+    e.preventDefault();
+    if (!formE.nama?.trim() || !formE.username?.trim()) { showToast('Nama dan username wajib diisi!','error'); return; }
+    setSavingE(true);
+    // Username harus unik
+    const {data:dup} = await sb.from('supermad_pengguna').select('id')
+      .eq('username', formE.username.trim()).neq('id', editP.id).limit(1);
+    if (dup && dup.length) { setSavingE(false); showToast('Username sudah dipakai akun lain!','error'); return; }
+    const payload = {
+      nama: formE.nama.trim(), nip: (formE.nip||'').trim(), jabatan: formE.jabatan,
+      role: formE.role, username: formE.username.trim(), aktif: !!formE.aktif,
+    };
+    if (formE.password_baru) {
+      if (formE.password_baru.length < 6) { setSavingE(false); showToast('Password minimal 6 karakter!','error'); return; }
+      payload.password_hash = md5(formE.password_baru);
+    }
+    const {error} = await sb.from('supermad_pengguna').update(payload).eq('id', editP.id);
+    setSavingE(false);
+    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    showToast('✅ Data '+payload.nama+' diperbarui'+(formE.password_baru?' (password diganti)':''));
+    setEditP(null); loadList();
+  }
 
   async function loadList() {
     setLoading(true);
@@ -1636,6 +1816,15 @@ function KelolaPengguna({mad, showToast, onBack}) {
     setShowForm(false);
     setForm({nama:'',nip:'',jabatan:'Kepala Madrasah',role:'supervisor',username:'',password:''});
     loadList();
+  }
+
+  async function resetPass(pg) {
+    const baru = window.prompt('Password baru untuk '+pg.nama+' ('+pg.username+'), minimal 6 karakter:');
+    if (baru===null) return;
+    if (baru.trim().length < 6) { showToast('Password minimal 6 karakter!','error'); return; }
+    const {error} = await sb.from('supermad_pengguna').update({password_hash: md5(baru.trim())}).eq('id', pg.id);
+    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    showToast('✅ Password '+pg.nama+' berhasil direset.');
   }
 
   async function hapus(id, nama) {
@@ -1730,6 +1919,21 @@ function KelolaPengguna({mad, showToast, onBack}) {
                   color:p.role==='supervisor'?'#065f46':'#1d4ed8'}}>
                   {p.role==='supervisor'?'Supervisor':'Operator'}
                 </span>
+                {p.aktif===false && (
+                  <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.68rem',fontWeight:700,
+                    background:'#f3f4f6',color:'#6b7280'}}>Nonaktif</span>
+                )}
+                <button onClick={()=>{ setEditP(p); setFormE({nama:p.nama||'',nip:p.nip||'',jabatan:p.jabatan||'Operator TU',
+                    role:p.role||'operator',username:p.username||'',aktif:p.aktif!==false,password_baru:''}); }}
+                  style={{padding:'3px 8px',borderRadius:6,border:'1px solid var(--p)',
+                    background:'#fff',color:'var(--p)',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
+                  ✏️ Edit
+                </button>
+                <button onClick={()=>resetPass(p)}
+                  style={{padding:'3px 8px',borderRadius:6,border:'1px solid #d97706',
+                    background:'#fffbeb',color:'#92400e',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>
+                  🔑 Reset
+                </button>
                 <button onClick={()=>hapus(p.id, p.nama)}
                   style={{padding:'3px 8px',borderRadius:6,border:'1px solid #fca5a5',
                     background:'#fef2f2',color:'#dc2626',cursor:'pointer',fontSize:'.72rem'}}>
@@ -1738,6 +1942,63 @@ function KelolaPengguna({mad, showToast, onBack}) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {editP && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.5)',display:'flex',alignItems:'center',
+          justifyContent:'center',zIndex:1000,padding:16}}>
+          <div style={{background:'#fff',borderRadius:16,padding:22,width:'100%',maxWidth:480,
+            maxHeight:'90vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
+            <div style={{fontWeight:900,color:'var(--p3)',marginBottom:4}}>✏️ Edit Pengguna</div>
+            <div style={{fontSize:'.76rem',color:'var(--text2)',marginBottom:14}}>{mad.nama}</div>
+            <form onSubmit={simpanEdit}>
+              <div className="grid2">
+                <div className="form-group">
+                  <label>Nama Lengkap *</label>
+                  <input value={formE.nama} onChange={e=>setFormE({...formE,nama:e.target.value})} required/>
+                </div>
+                <div className="form-group">
+                  <label>NIP</label>
+                  <input value={formE.nip} onChange={e=>setFormE({...formE,nip:e.target.value})}/>
+                </div>
+                <div className="form-group">
+                  <label>Jabatan</label>
+                  <select value={formE.jabatan} onChange={e=>setFormE({...formE,jabatan:e.target.value})}>
+                    {[...new Set(['Kepala Madrasah','Wakil Kepala Madrasah','Pengawas','Operator TU','Staf TU','Bendahara','Kepala Tata Usaha',formE.jabatan].filter(Boolean))]
+                      .map(j=><option key={j}>{j}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Role</label>
+                  <select value={formE.role} onChange={e=>setFormE({...formE,role:e.target.value})}>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="operator">Operator</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Username *</label>
+                  <input value={formE.username} onChange={e=>setFormE({...formE,username:e.target.value})} required/>
+                </div>
+                <div className="form-group">
+                  <label>Password Baru <span style={{fontWeight:400,color:'var(--text3)'}}>(kosongkan jika tidak diganti)</span></label>
+                  <input type="password" value={formE.password_baru} placeholder="Min. 6 karakter"
+                    onChange={e=>setFormE({...formE,password_baru:e.target.value})}/>
+                </div>
+              </div>
+              <label style={{display:'flex',alignItems:'center',gap:8,fontSize:'.82rem',marginBottom:14,cursor:'pointer'}}>
+                <input type="checkbox" checked={!!formE.aktif} style={{width:'auto'}}
+                  onChange={e=>setFormE({...formE,aktif:e.target.checked})}/>
+                Akun aktif (bisa dipilih saat login)
+              </label>
+              <div style={{display:'flex',gap:8}}>
+                <button className="btn btn-primary" type="submit" disabled={savingE}>
+                  {savingE?'⏳ Menyimpan...':'💾 Simpan Perubahan'}
+                </button>
+                <button type="button" className="btn btn-outline" onClick={()=>setEditP(null)}>Batal</button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
@@ -1958,7 +2219,7 @@ function DashboardKanwil({showToast}) {
     const tgl = new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
     const win = window.open('','_blank');
     win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-<title>RTL Kanwil — Supervisi Madrasah</title>
+<title>RTL Lintas Madrasah — SUPERMAD</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Times New Roman',serif;font-size:11pt;padding:20mm;color:#000}
@@ -1984,11 +2245,11 @@ th{background:#0f4238;color:#fff;font-weight:700;text-align:center}
   <button onclick="window.close()" style="padding:8px 14px;background:#eee;border:none;border-radius:6px;cursor:pointer">✕ Tutup</button>
 </div>
 <div class="kop">
-  <div class="nama">Kantor Wilayah Kementerian Agama Provinsi Aceh</div>
-  <div class="sub">Bidang Pendidikan Madrasah</div>
+  <div class="nama">SUPERMAD — Supervisi Pembelajaran Madrasah</div>
+  <div class="sub">Rekap Lintas Madrasah Pengguna SUPERMAD · supermad.my.id</div>
 </div>
 <h2>Rekomendasi Tindak Lanjut (RTL) Supervisi Pembelajaran</h2>
-<div class="sub-h">Tingkat Provinsi Aceh · PM-KBC · KMA 1503/2025 · Dirjenpendis 6077/2025</div>
+<div class="sub-h">Lintas Madrasah Pengguna SUPERMAD · PM-KBC · KMA 1503/2025 · Dirjenpendis 6077/2025</div>
 
 <table>
 <tr><th colspan="4">RINGKASAN ANALISIS</th></tr>
@@ -1998,7 +2259,7 @@ th{background:#0f4238;color:#fff;font-weight:700;text-align:center}
     <td><b>Tanggal Analisis</b></td><td>${tgl}</td></tr>
 </table>
 
-<h3 style="margin:14px 0 8px;font-size:11pt">A. PRIORITAS MASALAH PROVINSI (Semua Aspek dengan Frekuensi > 0)</h3>
+<h3 style="margin:14px 0 8px;font-size:11pt">A. PRIORITAS MASALAH LINTAS MADRASAH (Semua Aspek dengan Frekuensi > 0)</h3>
 <table>
 <tr><th width="4%">No</th><th width="15%">Komponen</th><th>Aspek Bermasalah</th>
     <th width="12%" style="text-align:center">Frekuensi</th><th width="10%" style="text-align:center">% Guru</th><th width="12%">Prioritas</th></tr>
@@ -2026,24 +2287,16 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
 </table>
 
 <div class="ttd">
-  <div style="text-align:left">
-    <div style="font-weight:700;margin-bottom:8px">Ditetapkan oleh:</div>
-    <div>Kepala Bidang Pendidikan Madrasah</div>
-    <div class="ttd-line">
-      <b>.....................................</b><br>
-      NIP. —
-    </div>
-  </div>
+  <div></div>
   <div style="text-align:left">
     <div style="font-weight:700;margin-bottom:8px">Banda Aceh, ${tgl}</div>
-    <div>Admin Kanwil / Penelaah Kebijakan</div>
+    <div>Disusun oleh,<br>Admin SUPERMAD</div>
     <div class="ttd-line">
-      <b>.....................................</b><br>
-      NIP. —
+      <b>.....................................</b>
     </div>
   </div>
 </div>
-<div class="footer">SUPERMAD — RTL Supervisi Pembelajaran Madrasah PM-KBC · Kanwil Kemenag Provinsi Aceh</div>
+<div class="footer">SUPERMAD — RTL Supervisi Pembelajaran Madrasah PM-KBC · Dokumen ini dihasilkan otomatis dari data supervisi madrasah pengguna SUPERMAD</div>
 </body></html>`);
     win.document.close();
   }
@@ -2328,7 +2581,8 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
           <b>Cara penggunaan:</b><br/>
           1. Berikan token ini ke operator madrasah<br/>
           2. Operator buka <b>supermad.my.id</b> → klik <b>"Daftar Akun"</b><br/>
-          3. Masukkan token, isi data diri, akun langsung aktif
+          3. Masukkan token, isi data diri, akun langsung aktif<br/>
+          4. Kode akses madrasah ditampilkan setelah daftar — wajib dicatat untuk login berikutnya
         </div>
         <div style={{display:'flex',gap:10,justifyContent:'center'}}>
           <button onClick={()=>{
@@ -2439,7 +2693,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}}>
         <h2 style={{fontWeight:900,color:'var(--p3)',fontSize:'1.1rem'}}>
-          🏛️ Admin Kanwil — Supervisi Pembelajaran Madrasah
+          🏛️ Admin SUPERMAD — Supervisi Pembelajaran Madrasah
         </h2>
         <button className="btn btn-outline btn-sm" onClick={exportExcel} disabled={exporting}>
           {exporting ? '⏳ Mengekspor...' : '📥 Export Excel'}
@@ -2452,7 +2706,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
           {icon:'🏫',label:'Total Madrasah',val:madrasahList.length,color:'var(--p)'},
           {icon:'📋',label:'Total Supervisi',val:totalSup,color:'#2563eb'},
           {icon:'🏆',label:'Aktif Laporan',val:madDenganData,color:'#16a34a'},
-          {icon:'📊',label:'Rata-rata Kanwil',
+          {icon:'📊',label:'Rata-rata Semua',
             val:allRata.length?rataKanwil.toFixed(1)+'%':'—',
             color:rataKanwil>=91?'#16a34a':rataKanwil>=81?'#2563eb':rataKanwil>=71?'#d97706':'#dc2626'},
         ].map((k,i)=>(
@@ -2466,7 +2720,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
 
       {/* Tab */}
       <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
-        {[['dashboard','📊 Dashboard'],['wilayah','🗺️ Per Wilayah'],['grafik','📈 Grafik'],['analitik','🔬 Analitik'],['rtl','📋 RTL Kanwil'],['tindaklanjut','✍️ Tindak Lanjut'],['madrasah','🏫 Madrasah'],['fitur','⚙️ Kelola Fitur']].map(([key,label])=>(
+        {[['dashboard','📊 Dashboard'],['wilayah','🗺️ Per Wilayah'],['grafik','📈 Grafik'],['analitik','🔬 Analitik'],['rtl','📋 RTL Lintas Madrasah'],['tindaklanjut','✍️ Tindak Lanjut'],['madrasah','🏫 Madrasah'],['fitur','⚙️ Kelola Fitur']].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',
               fontWeight:700,fontSize:'.8rem',fontFamily:'inherit',
@@ -2584,6 +2838,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
       )}
 
       {/* TAB WILAYAH */}
+      {tab==='wilayah' && <PetaSebaranWilayah madrasahList={madrasahList} stats={stats} />}
       {tab==='wilayah' && (()=>{
         // Agregat per kota_kab
         const kabMap = {};
@@ -2612,7 +2867,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
               {[
                 {label:'Total Madrasah',val:totalMad,ico:'🏫',warna:'#1a6b5c'},
                 {label:'Total Supervisi Selesai',val:totalSupAll,ico:'✅',warna:'#2563eb'},
-                {label:'Rata-rata Nilai Provinsi',val:rataAll?rataAll.toFixed(1)+'%':'—',ico:'📊',warna:rataAll?warna(rataAll):'#8aada6'},
+                {label:'Rata-rata Semua Madrasah',val:rataAll?rataAll.toFixed(1)+'%':'—',ico:'📊',warna:rataAll?warna(rataAll):'#8aada6'},
                 {label:'Wilayah Terdaftar',val:kabList2.length,ico:'🗺️',warna:'#7c3aed'},
               ].map(({label,val,ico,warna:w})=>(
                 <div key={label} className="card" style={{textAlign:'center',padding:'16px 12px'}}>
@@ -2811,7 +3066,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
           {!rtlKanwil.issues ? (
             <div style={{textAlign:'center',padding:32}}>
               <button className="btn btn-primary" onClick={loadRTLKanwil} disabled={loadingRTL}>
-                {loadingRTL ? '⏳ Menganalisis...' : '🔍 Analisis RTL Provinsi'}
+                {loadingRTL ? '⏳ Menganalisis...' : '🔍 Analisis RTL Lintas Madrasah'}
               </button>
               <div style={{marginTop:12,fontSize:'.8rem',color:'var(--text2)'}}>
                 Klik untuk menganalisis aspek yang paling banyak bermasalah di seluruh madrasah
@@ -2836,11 +3091,11 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
 
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}}>
                 <div style={{fontWeight:800,color:'var(--p3)'}}>
-                  📊 Prioritas Pembinaan — Tingkat Provinsi
+                  📊 Prioritas Pembinaan — Lintas Madrasah
                 </div>
                 <div style={{display:'flex',gap:8}}>
                   <button className="btn btn-outline btn-sm" onClick={()=>cetakRTLKanwil()}>
-                    🖨️ Cetak RTL Kanwil
+                    🖨️ Cetak RTL Lintas Madrasah
                   </button>
                   <button className="btn btn-outline btn-sm" onClick={()=>{setRtlKanwil([]);loadRTLKanwil();}}>
                     🔄 Refresh
@@ -2898,7 +3153,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
               {rtlKanwil.issues.length > 0 && (
                 <div className="card" style={{marginTop:14,background:'#fff8f0',border:'1.5px solid #fed7aa'}}>
                   <div style={{fontWeight:800,color:'#92400e',marginBottom:12}}>
-                    🎯 Top 5 Prioritas Pembinaan Provinsi
+                    🎯 Top 5 Prioritas Pembinaan Lintas Madrasah
                   </div>
                   {rtlKanwil.issues.slice(0,5).map((r,i)=>(
                     <div key={i} style={{display:'flex',alignItems:'flex-start',gap:10,
@@ -4186,7 +4441,7 @@ function DashboardSupervisor({sesi, showToast}) {
         return (
           <div style={{marginBottom:12,padding:'9px 14px',borderRadius:9,
             background:'#fffbeb',border:'1.5px solid #fcd34d',fontSize:'.78rem',color:'#92400e'}}>
-            <b>⚙️ Fitur dinonaktifkan Kanwil:</b>{' '}
+            <b>⚙️ Fitur dinonaktifkan Admin:</b>{' '}
             {mati.map(k=>labelMap[k]||k).join(', ')}
           </div>
         );
@@ -4233,6 +4488,7 @@ function DashboardSupervisor({sesi, showToast}) {
       {/* Tab */}
       <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
         {[
+          ['kepatuhan',  '📈 Kepatuhan Guru',     true],
           ['jadwal',     '🗓️ Jadwal',            fiturAktif.jadwal !== false],
           ['daftar',     '📋 Belum Supervisi',    fiturAktif.supervisi !== false],
           ['sudah',      '✅ Sudah Supervisi',     fiturAktif.supervisi !== false],
@@ -4406,6 +4662,13 @@ function DashboardSupervisor({sesi, showToast}) {
                         border:'none',borderRadius:7,cursor:'pointer',fontSize:'.75rem',fontWeight:700}}>
                       📋 RTL
                     </button>
+                    {!isDraft && capaian>=91 && guru && (
+                      <button onClick={()=>cetakPiagam(sesi, s, guru, showToast)}
+                        style={{padding:'5px 12px',background:'#fffbeb',color:'#92400e',
+                          border:'1.5px solid #d4a017',borderRadius:7,cursor:'pointer',fontSize:'.75rem',fontWeight:700}}>
+                        🏅 Piagam
+                      </button>
+                    )}
                     <button onClick={hapusSupervisi}
                       style={{padding:'5px 12px',background:'#fff',color:'#dc2626',
                         border:'1.5px solid #fca5a5',borderRadius:7,cursor:'pointer',
@@ -4546,6 +4809,11 @@ function DashboardSupervisor({sesi, showToast}) {
       )}
 
       {/* TAB REKAP NILAI */}
+      {tab === 'kepatuhan' && (
+        <TabKepatuhanGuru sesi={sesi} guruList={guruList} showToast={showToast}
+          defaultTA={filterTA} defaultSmt={filterSmt} />
+      )}
+
       {tab === 'rekap' && (
         <TabRekapNilai sesi={sesi} showToast={showToast} />
       )}
@@ -6158,6 +6426,8 @@ function DashboardGuru({sesi, showToast}) {
   const [catatanGuru, setCatatanGuru] = useState('');
   const [saving, setSaving]     = useState(false);
   const [penugasanGuru, setPenugasanGuru] = useState({list:[], ta:''});
+  const [kelasWali, setKelasWali] = useState([]);
+  const [waliAktif, setWaliAktif] = useState(null);
 
   useEffect(()=>{ loadData(); }, []);
 
@@ -6166,6 +6436,8 @@ function DashboardGuru({sesi, showToast}) {
     // Guru login via token - id guru langsung dari sesi.pengguna.id
     const guruId = sesi.pengguna.id;
     fetchPenugasanGuru(guruId, getTASekarang()).then(r=>setPenugasanGuru(r));
+    sb.from('supermad_kelas').select('*').eq('wali_guru_id', guruId).order('tahun_ajaran',{ascending:false})
+      .then(({data})=>{ setKelasWali(data||[]); if (data && data.length===1) setWaliAktif(data[0]); });
     const {data:sups} = await sb.from('supermad_supervisi')
       .select('*').eq('madrasah_id', sesi.mad.id)
       .eq('guru_id', guruId)
@@ -6316,6 +6588,11 @@ function DashboardGuru({sesi, showToast}) {
         );
       })()}
 
+      {/* Tugas Saya */}
+      <TugasSaya sesi={sesi}
+        rtlBelum={rtlList.filter(r=>(r.konfirmasi_guru||'belum')==='belum').length}
+        onBuka={t=>setTab(t)} />
+
       {/* Kelas & Mapel yang diampu (dari Penugasan operator) */}
       <div className="card" style={{marginBottom:12,padding:'12px 16px'}}>
         <div style={{fontWeight:800,color:'var(--p3)',fontSize:'.85rem',marginBottom:8}}>
@@ -6354,6 +6631,7 @@ function DashboardGuru({sesi, showToast}) {
           ['portofolio','🗂️ e-Portofolio',         fiturAktif.portofolio !== false],
           ['asesmen',   '📈 Analisis Asesmen',       fiturAktif.analisis_asesmen !== false],
           ['analisis',  '🔬 Analisis Instrumen',     fiturAktif.analisis_instrumen !== false],
+          ['wali',      '🏫 Wali Kelas',               kelasWali.length > 0],
         ].filter(([,,t])=>t).map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',
@@ -6416,6 +6694,31 @@ function DashboardGuru({sesi, showToast}) {
                         </div>
                       ))}
                     </div>
+                    {cap>=91 && (
+                      <div style={{marginTop:12,padding:'10px 12px',borderRadius:10,background:'#fffbeb',
+                        border:'1.5px solid #d4a017',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                        <span style={{fontSize:'1.4rem'}}>🏅</span>
+                        <div style={{flex:1,fontSize:'.78rem',color:'#92400e'}}>
+                          <b>Selamat!</b> Predikat Sangat Baik — Anda berhak atas piagam penghargaan.
+                        </div>
+                        <button className="btn btn-sm" style={{background:'#0f4238',color:'#fff'}}
+                          onClick={()=>cetakPiagam(sesi, s, sesi.pengguna, showToast)}>🖨️ Cetak Piagam</button>
+                        <button className="btn btn-outline btn-sm" onClick={async()=>{
+                          const judul = 'Piagam Predikat Sangat Baik Supervisi Pembelajaran — '+(s.semester||'')+' '+(s.tahun_ajaran||'');
+                          const {data:ada} = await sb.from('supermad_portofolio').select('id')
+                            .eq('guru_id', sesi.pengguna.id).eq('judul', judul).limit(1);
+                          if (ada && ada.length) { showToast('Piagam ini sudah ada di e-Portofolio Anda.','warning'); return; }
+                          const {error} = await sb.from('supermad_portofolio').insert({
+                            guru_id: sesi.pengguna.id, madrasah_id: sesi.mad.id, judul, kategori:'Penghargaan',
+                            tanggal: s.tanggal_supervisi || null, penyelenggara: sesi.mad.nama,
+                            deskripsi: 'Capaian supervisi pembelajaran PM-KBC '+cap.toFixed(1)+'% (Sangat Baik). Supervisor: '+(s.nama_supervisor||'—')+'.',
+                            link_bukti: '',
+                          });
+                          if (error) { showToast('Gagal: '+error.message,'error'); return; }
+                          showToast('✅ Piagam ditambahkan ke e-Portofolio PKB');
+                        }}>🗂️ Simpan ke e-Portofolio</button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -6484,6 +6787,28 @@ function DashboardGuru({sesi, showToast}) {
       )}
       {tab==='jurnal' && (
         <TabJurnal key="jurnal" mode="jurnal" sesi={sesi} showToast={showToast} />
+      )}
+
+      {/* TAB WALI KELAS */}
+      {tab==='wali' && (
+        waliAktif ? (
+          <RekapKehadiranKelas sesi={sesi} kelas={waliAktif} ta={waliAktif.tahun_ajaran} showToast={showToast}
+            onBack={kelasWali.length>1 ? ()=>setWaliAktif(null) : null} />
+        ) : (
+          <div>
+            <div style={{fontWeight:900,color:'var(--p3)',marginBottom:10}}>🏫 Kelas Perwalian Saya</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:10}}>
+              {kelasWali.map(k=>(
+                <div key={k.id} className="card" style={{cursor:'pointer',borderTop:'3px solid var(--p)'}}
+                  onClick={()=>setWaliAktif(k)}>
+                  <div style={{fontWeight:900,fontSize:'1.05rem',color:'var(--p3)'}}>🏫 {k.nama_kelas}</div>
+                  <div style={{fontSize:'.75rem',color:'var(--text2)',margin:'3px 0 8px'}}>TA {k.tahun_ajaran} · Tingkat {k.tingkat}</div>
+                  <span className="btn btn-outline btn-sm">📊 Rekap Kehadiran</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
       )}
 
       {/* TAB NILAI SISWA */}
@@ -7750,7 +8075,7 @@ function TabAnalitikKanwil({madrasahList, stats, filterSmt, filterTA, showToast}
         {allRataAll.length > 0 && (
           <div style={{marginTop:12,padding:'8px 12px',background:'var(--surface2)',borderRadius:8,
             fontSize:'.8rem',display:'flex',gap:20,flexWrap:'wrap'}}>
-            <span>📊 Rata-rata Provinsi: <b style={{color:warna(avg(allRataAll))}}>{avg(allRataAll).toFixed(1)}%</b></span>
+            <span>📊 Rata-rata Semua Madrasah: <b style={{color:warna(avg(allRataAll))}}>{avg(allRataAll).toFixed(1)}%</b></span>
             <span>📈 Tertinggi: <b style={{color:'#16a34a'}}>{Math.max(...allRataAll).toFixed(1)}%</b></span>
             <span>📉 Terendah: <b style={{color:'#dc2626'}}>{Math.min(...allRataAll).toFixed(1)}%</b></span>
           </div>
@@ -7932,7 +8257,7 @@ function TabTindakLanjutKanwil({madrasahList, showToast}) {
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:8}}>
         <div>
-          <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1rem'}}>✍️ Tindak Lanjut Kanwil per Madrasah</div>
+          <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1rem'}}>✍️ Tindak Lanjut Pembinaan per Madrasah</div>
           <div style={{fontSize:'.75rem',color:'var(--text3)',marginTop:2}}>
             Catat hasil pembinaan lanjutan kanwil untuk setiap madrasah
           </div>
@@ -8595,7 +8920,7 @@ function TabPortofolio({sesi, showToast}) {
               <div className="form-group">
                 <label>Penyelenggara</label>
                 <input value={form.penyelenggara} onChange={e=>setForm({...form,penyelenggara:e.target.value})}
-                  placeholder="Contoh: Kanwil Kemenag Aceh"/>
+                  placeholder="Contoh: Balai Diklat Keagamaan Aceh"/>
               </div>
               <div className="form-group">
                 <label>Link Bukti (URL)</label>
@@ -8710,6 +9035,771 @@ function TabPortofolio({sesi, showToast}) {
   );
 }
 
+// ── PENCOCOKAN NAMA GURU (abaikan huruf besar/kecil, tanda baca, gelar) ──
+function normNama(t) { return String(t||'').toLowerCase().replace(/[.,'`]/g,' ').replace(/\s+/g,' ').trim(); }
+function intiNama(t) {
+  return normNama(String(t||'').split(',')[0])
+    .replace(/^((drs|dra|dr|h|hj|ir|prof|tgk|teungku|ust|ustadz|ustazah|ustadzah)\s+)+/,'').trim();
+}
+function cocokkanGuru(daftar, nama) {
+  if (!nama) return null;
+  let c = (daftar||[]).filter(g=>normNama(g.nama)===normNama(nama));
+  if (c.length===1) return c[0];
+  c = (daftar||[]).filter(g=>intiNama(g.nama)===intiNama(nama));
+  return c.length===1 ? c[0] : null;
+}
+
+// ── PIAGAM PENGHARGAAN SUPERVISI (predikat Sangat Baik) ──
+async function cetakPiagam(sesi, sup, guru, showToast) {
+  const w = window.open('','_blank');
+  if (!w) { showToast && showToast('Izinkan pop-up untuk mencetak','warning'); return; }
+  w.document.write('<p style="font-family:Arial;padding:20px">⏳ Menyiapkan piagam...</p>');
+  const ttd = await getPenandatangan(sesi);
+  const mad = ttd.mad;
+  const cap = parseFloat(sup.capaian_rata)||0;
+  const tglSup = sup.tanggal_supervisi ? new Date(sup.tanggal_supervisi+'T00:00:00').toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'}) : '';
+  const tgl = new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
+  const kode = String(sup.id||'').replace(/-/g,'').slice(0,8).toUpperCase();
+  const nipG = guru.nip ? 'NIP. '+guru.nip : (guru.nuptk ? 'NUPTK. '+guru.nuptk : '');
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Piagam — ${escHtml(guru.nama)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Great+Vibes&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+@page{size:A4 landscape;margin:0}*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#f3f4f6}
+.hal{width:297mm;height:210mm;margin:0 auto;background:#fffdf7;position:relative;overflow:hidden;font-family:'Lora',Georgia,serif;color:#1f2937}
+.bingkai{position:absolute;inset:9mm;border:3px solid #0f4238;outline:1.5px solid #c9a227;outline-offset:-7px}
+.sudut{position:absolute;width:26mm;height:26mm;border:3px solid #c9a227}
+.s1{top:13mm;left:13mm;border-right:none;border-bottom:none}.s2{top:13mm;right:13mm;border-left:none;border-bottom:none}
+.s3{bottom:13mm;left:13mm;border-right:none;border-top:none}.s4{bottom:13mm;right:13mm;border-left:none;border-top:none}
+.isi{position:absolute;inset:22mm 28mm;text-align:center;display:flex;flex-direction:column;align-items:center}
+.mad{font-family:'Cinzel',serif;font-weight:700;font-size:13pt;letter-spacing:2px;color:#0f4238;text-transform:uppercase}
+.almt{font-size:8.5pt;color:#6b7280;margin-top:2px}
+.judul{font-family:'Cinzel',serif;font-weight:900;font-size:34pt;letter-spacing:6px;color:#0f4238;margin-top:8mm;line-height:1}
+.subj{font-size:11pt;letter-spacing:4px;color:#a16207;margin-top:3mm;text-transform:uppercase}
+.diberikan{font-size:11pt;margin-top:8mm;color:#374151}
+.nama{font-family:'Great Vibes',cursive;font-size:40pt;color:#0f4238;margin-top:2mm;line-height:1.1}
+.nip{font-size:10pt;color:#4b5563;margin-top:1mm}
+.garis{width:150mm;height:1.5px;background:linear-gradient(90deg,transparent,#c9a227,transparent);margin:3mm auto}
+.teks{font-size:11.5pt;line-height:1.65;max-width:210mm;color:#374151}
+.teks b{color:#0f4238}
+.ttd{position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:1fr 1fr;font-size:10pt;text-align:center}
+.sp{height:20mm}
+.kode{position:absolute;bottom:12mm;left:0;right:0;text-align:center;font-size:7.5pt;color:#9ca3af;letter-spacing:1px}
+.no-print{position:fixed;top:10px;left:10px;z-index:9}
+@media print{.no-print{display:none}html,body{background:#fff}}
+</style></head><body>
+<div class="no-print"><button onclick="window.print()" style="padding:8px 18px;background:#0f4238;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">🖨️ Cetak / PDF</button>
+<button onclick="window.close()" style="padding:8px 14px;border:1px solid #ccc;border-radius:6px;cursor:pointer;margin-left:6px;background:#fff">✕ Tutup</button></div>
+<div class="hal">
+  <div class="bingkai"></div><div class="sudut s1"></div><div class="sudut s2"></div><div class="sudut s3"></div><div class="sudut s4"></div>
+  <div class="isi">
+    <div class="mad">${escHtml(mad.nama||'')}</div>
+    <div class="almt">${escHtml([mad.alamat,[mad.kota_kab,mad.provinsi].filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</div>
+    <div class="judul">PIAGAM</div>
+    <div class="subj">Penghargaan</div>
+    <div class="diberikan">diberikan kepada</div>
+    <div class="nama">${escHtml(guru.nama||'')}</div>
+    <div class="nip">${escHtml(nipG)}${guru.mapel?' · Guru '+escHtml(guru.mapel):''}</div>
+    <div class="garis"></div>
+    <div class="teks">atas capaian predikat <b>SANGAT BAIK</b> (<b>${cap.toFixed(1)}%</b>) dalam Supervisi Pembelajaran
+      berbasis Kurikulum Berbasis Cinta dan Pembelajaran Mendalam (PM-KBC) yang dilaksanakan pada ${escHtml(tglSup)},
+      Semester ${escHtml(sup.semester||'')} Tahun Pelajaran ${escHtml(sup.tahun_ajaran||'')}.
+      Semoga menjadi teladan dan terus menginspirasi peningkatan mutu pembelajaran.</div>
+    <div class="ttd">
+      <div>Supervisor,<br>${escHtml(sup.jabatan_supervisor||'')}<div class="sp"></div><b>${escHtml(sup.nama_supervisor||'.............................')}</b>${sup.nip_supervisor?'<br>NIP. '+escHtml(sup.nip_supervisor):''}</div>
+      <div>${escHtml(mad.kota_kab||'..............')}, ${tgl}<br>Kepala Madrasah<div class="sp"></div><b>${escHtml(ttd.kepalaNama||'.............................')}</b><br>NIP. ${escHtml(ttd.kepalaNip||'—')}</div>
+    </div>
+  </div>
+  <div class="kode">Kode verifikasi: SPMD-${kode} · dihasilkan oleh SUPERMAD</div>
+</div></body></html>`;
+  w.document.open(); w.document.write(html); w.document.close();
+}
+
+// ── PETA SKEMATIS SEBARAN MADRASAH PER KABUPATEN/KOTA (Aceh) ──
+const PETA_ACEH = [
+  ['Kota Sabang',0,0],['Kota Banda Aceh',1,0],
+  ['Aceh Besar',1,1],['Pidie',2,1],['Pidie Jaya',3,1],['Bireuen',4,1],['Kota Lhokseumawe',5,1],['Aceh Utara',6,1],['Aceh Timur',7,1],['Kota Langsa',8,1],
+  ['Aceh Jaya',1,2],['Aceh Barat',2,2],['Aceh Tengah',4,2],['Bener Meriah',5,2],['Aceh Tamiang',8,2],
+  ['Nagan Raya',2,3],['Aceh Barat Daya',3,3],['Gayo Lues',5,3],['Aceh Tenggara',6,3],
+  ['Simeulue',1,4],['Aceh Selatan',3,4],['Kota Subulussalam',4,4],['Aceh Singkil',5,4],
+];
+function normKab(t) {
+  return String(t||'').toLowerCase().replace(/kabupaten|kab\.?|pemerintah/g,'').replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
+}
+function PetaSebaranWilayah({madrasahList, stats}) {
+  const [metrik, setMetrik] = React.useState('aktif');
+  const [pilih, setPilih]   = React.useState(null);
+  const [rtlKab, setRtlKab] = React.useState({});
+  React.useEffect(()=>{ (async()=>{
+    try {
+      const sups = await ambilSemua(()=>sb.from('supermad_supervisi')
+        .select('madrasah_id,skor_perencanaan,skor_pelaksanaan,skor_asesmen').eq('status','selesai').order('madrasah_id'));
+      const kabMad = {}; madrasahList.forEach(m=>{ kabMad[m.id]=normKab(m.kota_kab); });
+      const hasil = {};
+      sups.forEach(su=>{
+        const kab = kabMad[su.madrasah_id]; if (!kab) return;
+        const h = hasil[kab] = hasil[kab] || {};
+        [['p',su.skor_perencanaan],['l',su.skor_pelaksanaan],['a',su.skor_asesmen]].forEach(([k,arr])=>{
+          (arr||[]).forEach((v,i)=>{ if ((+v||0)<=1 && RTL_DB[k][i]) { const lb=RTL_DB[k][i].aspek; h[lb]=(h[lb]||0)+1; } });
+        });
+      });
+      setRtlKab(hasil);
+    } catch(e) { console.error(e); }
+  })(); }, [madrasahList.length]);
+
+  const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
+  const dataKab = {};
+  madrasahList.forEach(m=>{
+    const k = normKab(m.kota_kab); if (!k) return;
+    const d = dataKab[k] = dataKab[k] || {mad:[], aktif:0, sup:0, rata:[]};
+    d.mad.push(m);
+    const st = stats[m.id];
+    if (st && st.selesai>0) { d.aktif++; d.sup += st.selesai; d.rata.push(...st.rata); }
+  });
+  const nilaiMetrik = d => {
+    if (!d) return null;
+    if (metrik==='jumlah') return d.mad.length;
+    if (metrik==='aktif') return d.mad.length ? d.aktif/d.mad.length*100 : null;
+    return avg(d.rata);
+  };
+  const maksJumlah = Math.max(1, ...Object.values(dataKab).map(d=>d.mad.length));
+  const warna = v => {
+    if (v==null) return '#e5e7eb';
+    if (metrik==='jumlah') { const t=v/maksJumlah; return `rgba(15,66,56,${0.15+t*0.8})`; }
+    return v>=91?'#16a34a':v>=81?'#2563eb':v>=71?'#d97706':'#dc2626';
+  };
+  const tidakDikenal = Object.keys(dataKab).filter(k=>!PETA_ACEH.some(([n])=>normKab(n)===k));
+  const dPilih = pilih ? dataKab[normKab(pilih)] : null;
+  const topRtl = pilih ? Object.entries(rtlKab[normKab(pilih)]||{}).sort((a,b)=>b[1]-a[1]).slice(0,3) : [];
+
+  return (
+    <div className="card" style={{marginBottom:16}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}}>
+        <div style={{fontWeight:800,color:'var(--p3)',flex:1}}>🗺️ Peta Sebaran Madrasah Pengguna SUPERMAD</div>
+        {[['aktif','% madrasah aktif supervisi'],['rata','Rata-rata capaian'],['jumlah','Jumlah madrasah']].map(([k,l])=>(
+          <button key={k} onClick={()=>setMetrik(k)}
+            style={{padding:'5px 11px',borderRadius:20,border:'1.5px solid '+(metrik===k?'var(--p)':'var(--border)'),
+              background:metrik===k?'var(--p)':'#fff',color:metrik===k?'#fff':'var(--text2)',
+              cursor:'pointer',fontSize:'.72rem',fontWeight:700,fontFamily:'inherit'}}>{l}</button>
+        ))}
+      </div>
+      <div style={{overflowX:'auto'}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(9,minmax(74px,1fr))',gridAutoRows:'66px',gap:5,minWidth:700}}>
+          {PETA_ACEH.map(([nama,c,r])=>{
+            const d = dataKab[normKab(nama)];
+            const v = nilaiMetrik(d);
+            const bg = warna(v);
+            const gelap = v!=null && (metrik!=='jumlah' || v/maksJumlah>0.4);
+            return (
+              <button key={nama} onClick={()=>setPilih(nama===pilih?null:nama)} title={nama}
+                style={{gridColumn:c+1,gridRow:r+1,background:bg,border:pilih===nama?'3px solid #c9a227':'1px solid rgba(0,0,0,.08)',
+                  borderRadius:10,cursor:'pointer',padding:'5px 4px',fontFamily:'inherit',color:gelap?'#fff':'#374151',
+                  display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:1}}>
+                <span style={{fontSize:'.6rem',fontWeight:700,lineHeight:1.15,textAlign:'center',overflowWrap:'anywhere',maxWidth:'100%'}}>{nama}</span>
+                <span style={{fontSize:'.85rem',fontWeight:900}}>
+                  {v==null ? '—' : metrik==='jumlah' ? v : v.toFixed(0)+'%'}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:10,fontSize:'.7rem',color:'var(--text2)'}}>
+        {metrik==='jumlah'
+          ? <span>Warna makin gelap = makin banyak madrasah pengguna. Abu-abu = belum ada.</span>
+          : [['#16a34a','≥ 91%'],['#2563eb','81–90%'],['#d97706','71–80%'],['#dc2626','< 71%'],['#e5e7eb','belum ada data']].map(([c,l])=>(
+            <span key={l} style={{display:'flex',alignItems:'center',gap:4}}>
+              <span style={{width:12,height:12,borderRadius:3,background:c,display:'inline-block'}}/>{l}</span>))}
+        <span style={{marginLeft:'auto'}}>Peta skematis (bukan skala). Klik kotak untuk detail.</span>
+      </div>
+      {tidakDikenal.length>0 && (
+        <div style={{marginTop:8,fontSize:'.72rem',color:'#92400e'}}>
+          ⚠️ Nama kab/kota tidak dikenali (periksa penulisan di data madrasah): {tidakDikenal.join(', ')}
+        </div>
+      )}
+      {pilih && (
+        <div style={{marginTop:12,padding:'12px 14px',borderRadius:10,background:'var(--surface2)',border:'1px solid var(--border)'}}>
+          <div style={{fontWeight:800,color:'var(--p3)',marginBottom:6}}>📍 {pilih}</div>
+          {!dPilih ? <div style={{fontSize:'.8rem',color:'var(--text3)'}}>Belum ada madrasah pengguna SUPERMAD di wilayah ini.</div> : (
+            <>
+              <div style={{display:'flex',gap:14,flexWrap:'wrap',fontSize:'.8rem',marginBottom:8}}>
+                <span>🏫 <b>{dPilih.mad.length}</b> madrasah</span>
+                <span>✅ <b>{dPilih.aktif}</b> aktif supervisi</span>
+                <span>📋 <b>{dPilih.sup}</b> supervisi selesai</span>
+                <span>📊 Rata-rata <b>{avg(dPilih.rata)==null?'—':avg(dPilih.rata).toFixed(1)+'%'}</b></span>
+              </div>
+              {topRtl.length>0 && (
+                <div style={{fontSize:'.76rem',marginBottom:8}}>
+                  <b>Aspek paling sering perlu pembinaan:</b>
+                  <ol style={{margin:'4px 0 0 18px',padding:0}}>
+                    {topRtl.map(([a,n])=><li key={a}>{a} <span style={{color:'var(--text3)'}}>({n}×)</span></li>)}
+                  </ol>
+                </div>
+              )}
+              <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                {dPilih.mad.map(m=>(
+                  <span key={m.id} style={{padding:'2px 9px',borderRadius:20,fontSize:'.7rem',fontWeight:600,
+                    background:(stats[m.id]?.selesai>0)?'#dcfce7':'#fef3c7',color:(stats[m.id]?.selesai>0)?'#166534':'#92400e'}}>{m.nama}</span>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── HELPER PEMANTAUAN TUGAS GURU (dipakai Tugas Saya & Kepatuhan Guru) ──
+const JURNAL_BELUM = '(belum diisi)';
+function semesterSekarang() {
+  const b = new Date().getMonth()+1;
+  return b >= 7 ? 'Ganjil' : 'Genap';
+}
+function smtKeAngka(nama) { return nama === 'Genap' ? '2' : '1'; }
+function hariSejak(tgl) {
+  if (!tgl) return null;
+  return Math.floor((new Date() - new Date(tgl+'T00:00:00')) / 86400000);
+}
+async function muatPenugasanMadrasah(madId, ta) {
+  const {data:pt} = await sb.from('supermad_penugasan').select('id,guru_id,mapel,kelas_id,aktif,tahun_ajaran')
+    .eq('madrasah_id', madId).eq('tahun_ajaran', ta).eq('aktif', true);
+  const ids = [...new Set((pt||[]).map(p=>p.kelas_id).filter(Boolean))];
+  const kmap = {};
+  if (ids.length) {
+    const {data:ks} = await sb.from('supermad_kelas').select('id,nama_kelas').in('id', ids);
+    (ks||[]).forEach(k=>{ kmap[k.id]=k.nama_kelas; });
+  }
+  return (pt||[]).map(p=>({...p, kelas: kmap[p.kelas_id]||''})).filter(p=>p.kelas);
+}
+// Kelengkapan nilai per penugasan (mapel+kelas): jumlah siswa yang sudah punya nilai per jenis
+async function hitungKelengkapanNilai(madId, ta, smtNama, penugasan) {
+  if (!penugasan.length) return [];
+  const kelasSet = [...new Set(penugasan.map(p=>p.kelas))];
+  const siswa = await ambilSemua(()=>sb.from('supermad_siswa').select('id,kelas')
+    .eq('madrasah_id', madId).eq('tahun_ajaran', ta).eq('aktif', true).in('kelas', kelasSet).order('id'));
+  const jmlSiswa = {}; siswa.forEach(x=>{ jmlSiswa[x.kelas]=(jmlSiswa[x.kelas]||0)+1; });
+  const nilai = await ambilSemua(()=>sb.from('supermad_nilai').select('siswa_id,kelas,mapel,jenis_nilai')
+    .eq('madrasah_id', madId).eq('tahun_ajaran', ta).eq('semester', smtKeAngka(smtNama))
+    .in('kelas', kelasSet).order('siswa_id'));
+  const terisi = {};
+  nilai.forEach(n=>{
+    const k = n.mapel+'|'+n.kelas+'|'+n.jenis_nilai;
+    (terisi[k] = terisi[k] || new Set()).add(n.siswa_id);
+  });
+  return penugasan.map(p=>{
+    const j = {};
+    ['formatif','sts','sas','proyek'].forEach(jn=>{ j[jn] = (terisi[p.mapel+'|'+p.kelas+'|'+jn]||new Set()).size; });
+    return {...p, siswa: jmlSiswa[p.kelas]||0, jenis: j};
+  });
+}
+
+// ── KARTU "TUGAS SAYA" (dashboard guru) ──
+function TugasSaya({sesi, rtlBelum, onBuka}) {
+  const [data, setData] = React.useState(null);
+  const smt = semesterSekarang();
+  React.useEffect(()=>{ muat(); }, []);
+  async function muat() {
+    try {
+      const guruId = sesi.pengguna.id;
+      const pen = await fetchPenugasanGuru(guruId, getTASekarang());
+      const ta = pen.ta || getTASekarang();
+      const jurnal = await ambilSemua(()=>sb.from('supermad_jurnal')
+        .select('id,tanggal,materi,jumlah_hadir,jumlah_sakit,jumlah_izin,jumlah_alpa')
+        .eq('guru_id', guruId).eq('tahun_ajaran', ta).eq('semester', smt).order('tanggal'));
+      const absen = j => ((j.jumlah_hadir||0)+(j.jumlah_sakit||0)+(j.jumlah_izin||0)+(j.jumlah_alpa||0))>0;
+      const isiJurnal = j => j.materi && j.materi !== JURNAL_BELUM;
+      const nilai = await hitungKelengkapanNilai(sesi.mad.id, ta, smt,
+        pen.list.map(p=>({...p, kelas: p.supermad_kelas?.nama_kelas||''})).filter(p=>p.kelas));
+      setData({
+        ta,
+        jurnalTertunda: jurnal.filter(j=>absen(j) && !isiJurnal(j)).length,
+        absenTertunda:  jurnal.filter(j=>isiJurnal(j) && !absen(j)).length,
+        terakhir: jurnal.length ? jurnal[jurnal.length-1].tanggal : null,
+        nilai,
+      });
+    } catch(e) { console.error('Tugas Saya:', e); setData({error:true, nilai:[]}); }
+  }
+  if (!data) return (
+    <div className="card" style={{marginBottom:12,padding:'12px 16px',fontSize:'.8rem',color:'var(--text3)'}}>⏳ Memeriksa tugas Anda...</div>
+  );
+  const nilaiSebagian = data.nilai.filter(n=>['sts','sas'].some(j=>n.jenis[j]>0 && n.jenis[j]<n.siswa));
+  const jumlahTugas = data.jurnalTertunda + data.absenTertunda + (rtlBelum||0) + nilaiSebagian.length;
+  const hari = hariSejak(data.terakhir);
+  const item = (ikon, teks, warna, tab) => (
+    <button type="button" onClick={()=>onBuka(tab)}
+      style={{display:'flex',alignItems:'center',gap:8,width:'100%',textAlign:'left',padding:'8px 12px',
+        borderRadius:9,border:'1.5px solid '+warna+'55',background:warna+'12',cursor:'pointer',fontFamily:'inherit',
+        fontSize:'.8rem',color:'var(--text1)'}}>
+      <span style={{fontSize:'1rem'}}>{ikon}</span><span style={{flex:1}}>{teks}</span>
+      <span style={{color:warna,fontWeight:800}}>Buka →</span>
+    </button>
+  );
+  const chip = (lbl, n, tot) => {
+    const c = tot===0 ? '#9ca3af' : n===0 ? '#9ca3af' : n>=tot ? '#16a34a' : '#d97706';
+    return <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.68rem',fontWeight:700,color:c,
+      background:c+'18',border:'1px solid '+c+'55'}}>{lbl} {n}/{tot}</span>;
+  };
+  return (
+    <div className="card" style={{marginBottom:12,padding:'12px 16px',
+      border:'1.5px solid '+(jumlahTugas?'#fcd34d':'#86efac'),background:jumlahTugas?'#fffdf5':'#f7fef9'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:jumlahTugas||data.nilai.length?10:0,flexWrap:'wrap'}}>
+        <div style={{fontWeight:800,color:'var(--p3)',fontSize:'.88rem',flex:1}}>
+          ✅ Tugas Saya · Semester {smt} {data.ta}
+        </div>
+        {hari!=null && (
+          <span style={{fontSize:'.72rem',color: hari>14?'#dc2626':hari>7?'#d97706':'var(--text2)'}}>
+            Pertemuan terakhir tercatat: {hari===0?'hari ini':hari+' hari lalu'}
+          </span>
+        )}
+      </div>
+      {jumlahTugas===0 && (
+        <div style={{fontSize:'.8rem',color:'#166534',marginBottom:data.nilai.length?10:0}}>
+          🎉 Tidak ada tugas yang tertunda. Terima kasih!
+        </div>
+      )}
+      <div style={{display:'flex',flexDirection:'column',gap:6}}>
+        {data.jurnalTertunda>0 && item('📓', <><b>{data.jurnalTertunda}</b> pertemuan sudah diabsen tetapi jurnalnya belum diisi</>, '#d97706', 'jurnal')}
+        {data.absenTertunda>0 && item('🙋', <><b>{data.absenTertunda}</b> jurnal belum diabsen siswanya</>, '#0891b2', 'absensi')}
+        {(rtlBelum||0)>0 && item('📋', <><b>{rtlBelum}</b> RTL supervisi belum Anda tanggapi</>, '#7c3aed', 'rtl')}
+        {nilaiSebagian.length>0 && item('📝', <><b>{nilaiSebagian.length}</b> kelas dengan nilai STS/SAS yang baru terisi sebagian</>, '#dc2626', 'nilai')}
+      </div>
+      {data.nilai.length>0 && (
+        <div style={{marginTop:10,paddingTop:8,borderTop:'1px dashed var(--border)'}}>
+          <div style={{fontSize:'.72rem',fontWeight:700,color:'var(--text2)',marginBottom:5}}>Kelengkapan nilai (siswa terisi / jumlah siswa):</div>
+          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+            {data.nilai.map(n=>(
+              <div key={n.id} style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',fontSize:'.76rem'}}>
+                <span style={{minWidth:150,fontWeight:600}}>{n.mapel} · {n.kelas}</span>
+                {chip('Formatif', n.jenis.formatif, n.siswa)}
+                {chip('STS', n.jenis.sts, n.siswa)}
+                {chip('Proyek', n.jenis.proyek, n.siswa)}
+                {chip('SAS', n.jenis.sas, n.siswa)}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── TAB KEPATUHAN GURU (kepala madrasah / supervisor / operator) ──
+function TabKepatuhanGuru({sesi, guruList, showToast, defaultTA, defaultSmt}) {
+  const [ta, setTa]   = React.useState(defaultTA || getTASekarang());
+  const [smt, setSmt] = React.useState(defaultSmt || semesterSekarang());
+  const [rows, setRows] = React.useState(null);
+  const [urut, setUrut] = React.useState('status');
+  React.useEffect(()=>{ muat(); }, [ta, smt]);
+
+  async function muat() {
+    setRows(null);
+    try {
+      const madId = sesi.mad.id;
+      const [jurnal, pen, rtl] = await Promise.all([
+        ambilSemua(()=>sb.from('supermad_jurnal')
+          .select('id,guru_id,tanggal,materi,jumlah_hadir,jumlah_sakit,jumlah_izin,jumlah_alpa')
+          .eq('madrasah_id', madId).eq('tahun_ajaran', ta).eq('semester', smt).order('id')),
+        muatPenugasanMadrasah(madId, ta),
+        ambilSemua(()=>sb.from('supermad_rtl').select('id,guru_id,konfirmasi_guru').eq('madrasah_id', madId).order('id')),
+      ]);
+      const nilai = await hitungKelengkapanNilai(madId, ta, smt, pen);
+      const absen = j => ((j.jumlah_hadir||0)+(j.jumlah_sakit||0)+(j.jumlah_izin||0)+(j.jumlah_alpa||0))>0;
+      const isiJurnal = j => j.materi && j.materi !== JURNAL_BELUM;
+      const hasil = (guruList||[]).filter(g=>g.aktif!==false).map(g=>{
+        const gid = String(g.id);
+        const jg = jurnal.filter(j=>String(j.guru_id)===gid);
+        const ng = nilai.filter(n=>String(n.guru_id)===gid);
+        const persen = jn => {
+          const tot = ng.reduce((a,n)=>a+n.siswa,0);
+          return tot ? Math.round(ng.reduce((a,n)=>a+Math.min(n.jenis[jn],n.siswa),0)/tot*100) : null;
+        };
+        const terakhir = jg.reduce((m,j)=>(!m||j.tanggal>m)?j.tanggal:m, null);
+        const hari = hariSejak(terakhir);
+        const status = hari==null ? 'tidak' : hari<=7 ? 'aktif' : hari<=14 ? 'kurang' : 'tidak';
+        return {
+          id: g.id, nama: g.nama, mapel: g.mapel,
+          kelasDiampu: ng.length,
+          diabsen: jg.filter(absen).length,
+          jurnal: jg.filter(isiJurnal).length,
+          jurnalTertunda: jg.filter(j=>absen(j) && !isiJurnal(j)).length,
+          formatif: persen('formatif'), sts: persen('sts'), sas: persen('sas'),
+          rtlBelum: rtl.filter(r=>String(r.guru_id)===gid && (r.konfirmasi_guru||'belum')==='belum').length,
+          terakhir, hari, status,
+        };
+      });
+      setRows(hasil);
+    } catch(e) {
+      console.error(e); showToast('Gagal memuat data kepatuhan: '+(e.message||e),'error'); setRows([]);
+    }
+  }
+
+  const stInfo = {
+    aktif:  {l:'Aktif',        c:'#16a34a', bg:'#dcfce7', o:2},
+    kurang: {l:'Kurang aktif', c:'#d97706', bg:'#fef3c7', o:1},
+    tidak:  {l:'Tidak aktif',  c:'#dc2626', bg:'#fee2e2', o:0},
+  };
+  const urutkan = r => [...r].sort((a,b)=>{
+    if (urut==='nama') return a.nama.localeCompare(b.nama);
+    if (urut==='jurnal') return b.jurnal-a.jurnal;
+    return stInfo[a.status].o - stInfo[b.status].o || a.nama.localeCompare(b.nama);
+  });
+  const pctCell = v => (
+    <span style={{fontWeight:700,color: v==null?'var(--text3)': v>=90?'#16a34a': v>=50?'#d97706':'#dc2626'}}>
+      {v==null?'—':v+'%'}
+    </span>
+  );
+
+  async function cetak() {
+    if (!rows) return;
+    const w = window.open('','_blank');
+    if (!w) { showToast('Izinkan pop-up untuk mencetak','warning'); return; }
+    w.document.write('<p style="font-family:Arial;padding:20px">⏳ Menyiapkan laporan...</p>');
+    const ttd = await getPenandatangan(sesi);
+    const tgl = new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
+    const isi = urutkan(rows).map((r,i)=>`<tr>
+      <td class="c">${i+1}</td><td>${escHtml(r.nama)}<br><span class="sm">${escHtml(r.mapel||'')}</span></td>
+      <td class="c">${r.kelasDiampu}</td><td class="c">${r.diabsen}</td><td class="c">${r.jurnal}</td><td class="c">${r.jurnalTertunda}</td>
+      <td class="c">${r.formatif==null?'—':r.formatif+'%'}</td><td class="c">${r.sts==null?'—':r.sts+'%'}</td><td class="c">${r.sas==null?'—':r.sas+'%'}</td>
+      <td class="c">${r.rtlBelum}</td>
+      <td class="c">${r.terakhir?escHtml(new Date(r.terakhir+'T00:00:00').toLocaleDateString('id-ID',{day:'numeric',month:'short'})):'—'}</td>
+      <td class="c"><b style="color:${stInfo[r.status].c}">${stInfo[r.status].l}</b></td></tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Kepatuhan Administrasi Guru</title>
+<style>@page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:9pt;margin:0;padding:10px}
+h1{text-align:center;font-size:13pt;margin:0}.sub{text-align:center;font-size:9.5pt;margin:3px 0 10px}
+table{width:100%;border-collapse:collapse}th,td{border:1px solid #555;padding:4px 5px}th{background:#0f4238;color:#fff;font-size:8.5pt}
+td.c{text-align:center}.sm{font-size:8pt;color:#555}.ket{font-size:8pt;color:#444;margin-top:6px}
+.ttd{display:grid;grid-template-columns:1fr 1fr;margin-top:16px;text-align:center}.sp{height:55px}
+.no-print{margin-bottom:10px}@media print{.no-print{display:none}}</style></head><body>
+<div class="no-print"><button onclick="window.print()" style="padding:7px 18px;background:#0f4238;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">🖨️ Cetak / PDF</button>
+<button onclick="window.close()" style="padding:7px 14px;border:1px solid #ccc;border-radius:6px;cursor:pointer;margin-left:6px">✕ Tutup</button></div>
+<h1>LAPORAN KEPATUHAN ADMINISTRASI PEMBELAJARAN GURU</h1>
+<div class="sub"><b>${escHtml(ttd.mad.nama||'')}</b> · Semester ${escHtml(smt)} · Tahun Pelajaran ${escHtml(ta)} · Per ${tgl}</div>
+<table><thead><tr><th>No</th><th>Nama Guru</th><th>Kelas Diampu</th><th>Pertemuan Diabsen</th><th>Jurnal Terisi</th><th>Jurnal Tertunda</th>
+<th>Nilai Formatif</th><th>Nilai STS</th><th>Nilai SAS</th><th>RTL Belum Ditanggapi</th><th>Aktivitas Terakhir</th><th>Status</th></tr></thead>
+<tbody>${isi||'<tr><td colspan="12" class="c">Belum ada data</td></tr>'}</tbody></table>
+<div class="ket">Status: Aktif = ada pertemuan tercatat ≤ 7 hari terakhir · Kurang aktif = 8–14 hari · Tidak aktif = lebih dari 14 hari / belum ada.
+Persentase nilai = siswa yang sudah dinilai dibanding jumlah siswa pada kelas-kelas yang diampu (berdasarkan Penugasan).</div>
+<div class="ttd"><div></div><div>${escHtml(ttd.mad.kota_kab||'..............')}, ${tgl}<br>Kepala Madrasah<div class="sp"></div>
+<b>${escHtml(ttd.kepalaNama||'.............................')}</b><br>NIP. ${escHtml(ttd.kepalaNip||'—')}</div></div>
+</body></html>`;
+    w.document.open(); w.document.write(html); w.document.close();
+  }
+
+  const ringkas = rows ? {
+    aktif: rows.filter(r=>r.status==='aktif').length,
+    kurang: rows.filter(r=>r.status==='kurang').length,
+    tidak: rows.filter(r=>r.status==='tidak').length,
+    tertunda: rows.reduce((a,r)=>a+r.jurnalTertunda,0),
+    rtl: rows.reduce((a,r)=>a+r.rtlBelum,0),
+  } : null;
+  const th = {padding:'7px 8px',fontWeight:700,textAlign:'center',whiteSpace:'nowrap',fontSize:'.72rem'};
+  const td = {padding:'7px 8px',textAlign:'center',borderBottom:'1px solid var(--border)'};
+
+  return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}}>
+        <div style={{flex:1,minWidth:200}}>
+          <div style={{fontWeight:900,color:'var(--p3)'}}>📈 Kepatuhan Administrasi Guru</div>
+          <div style={{fontSize:'.74rem',color:'var(--text2)'}}>Jurnal, absensi, nilai, dan tanggapan RTL setiap guru</div>
+        </div>
+        <select value={ta} onChange={e=>setTa(e.target.value)}
+          style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit',width:'auto'}}>
+          {(()=>{const y=new Date().getFullYear();const l=[];for(let i=y-2;i<=y+1;i++)l.push(i+'/'+(i+1));return l.map(t=><option key={t}>{t}</option>);})()}
+        </select>
+        <select value={smt} onChange={e=>setSmt(e.target.value)}
+          style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit',width:'auto'}}>
+          <option value="Ganjil">Ganjil</option><option value="Genap">Genap</option>
+        </select>
+        <select value={urut} onChange={e=>setUrut(e.target.value)}
+          style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit',width:'auto'}}>
+          <option value="status">Urut: perlu perhatian dulu</option>
+          <option value="nama">Urut: nama</option>
+          <option value="jurnal">Urut: jurnal terbanyak</option>
+        </select>
+        <button className="btn btn-primary btn-sm" onClick={cetak} disabled={!rows||!rows.length}>🖨️ Cetak</button>
+      </div>
+
+      {!rows ? <Loading text="Menghitung kepatuhan guru..." /> : (
+        <>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:8,marginBottom:12}}>
+            {[
+              ['🟢 Aktif', ringkas.aktif, '#16a34a'],
+              ['🟡 Kurang aktif', ringkas.kurang, '#d97706'],
+              ['🔴 Tidak aktif', ringkas.tidak, '#dc2626'],
+              ['📓 Jurnal tertunda', ringkas.tertunda, '#7c3aed'],
+              ['📋 RTL belum ditanggapi', ringkas.rtl, '#2563eb'],
+            ].map(([l,v,c])=>(
+              <div key={l} className="card" style={{padding:'10px 12px',textAlign:'center',borderTop:'3px solid '+c}}>
+                <div style={{fontSize:'1.3rem',fontWeight:900,color:c}}>{v}</div>
+                <div style={{fontSize:'.7rem',color:'var(--text2)'}}>{l}</div>
+              </div>
+            ))}
+          </div>
+          <div className="card" style={{padding:0,overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.78rem',minWidth:860}}>
+              <thead>
+                <tr style={{background:'var(--p3)',color:'#fff'}}>
+                  <th style={{...th,textAlign:'left'}}>Guru</th><th style={th}>Kelas<br/>diampu</th>
+                  <th style={th}>Pertemuan<br/>diabsen</th><th style={th}>Jurnal<br/>terisi</th><th style={th}>Jurnal<br/>tertunda</th>
+                  <th style={th}>Nilai<br/>Formatif</th><th style={th}>Nilai<br/>STS</th><th style={th}>Nilai<br/>SAS</th>
+                  <th style={th}>RTL belum<br/>ditanggapi</th><th style={th}>Aktivitas<br/>terakhir</th><th style={th}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {urutkan(rows).map((r,i)=>(
+                  <tr key={r.id} style={{background:i%2?'var(--surface2)':'#fff'}}>
+                    <td style={{...td,textAlign:'left'}}>
+                      <div style={{fontWeight:700}}>{r.nama}</div>
+                      <div style={{fontSize:'.7rem',color:'var(--text3)'}}>{r.mapel||'—'}</div>
+                    </td>
+                    <td style={td}>{r.kelasDiampu || <span style={{color:'#dc2626',fontSize:'.7rem'}}>belum ada penugasan</span>}</td>
+                    <td style={td}>{r.diabsen}</td>
+                    <td style={td}>{r.jurnal}</td>
+                    <td style={{...td,fontWeight:700,color:r.jurnalTertunda?'#d97706':'var(--text3)'}}>{r.jurnalTertunda}</td>
+                    <td style={td}>{pctCell(r.formatif)}</td>
+                    <td style={td}>{pctCell(r.sts)}</td>
+                    <td style={td}>{pctCell(r.sas)}</td>
+                    <td style={{...td,fontWeight:700,color:r.rtlBelum?'#2563eb':'var(--text3)'}}>{r.rtlBelum}</td>
+                    <td style={{...td,fontSize:'.72rem'}}>
+                      {r.terakhir ? new Date(r.terakhir+'T00:00:00').toLocaleDateString('id-ID',{day:'numeric',month:'short'}) : '—'}
+                      {r.hari!=null && <div style={{color:'var(--text3)'}}>{r.hari===0?'hari ini':r.hari+' hr lalu'}</div>}
+                    </td>
+                    <td style={td}>
+                      <span style={{padding:'2px 9px',borderRadius:20,fontSize:'.7rem',fontWeight:700,
+                        background:stInfo[r.status].bg,color:stInfo[r.status].c,whiteSpace:'nowrap'}}>{stInfo[r.status].l}</span>
+                    </td>
+                  </tr>
+                ))}
+                {!rows.length && <tr><td colSpan={11} style={{...td,padding:24,color:'var(--text3)'}}>Belum ada data guru.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div style={{fontSize:'.72rem',color:'var(--text3)',marginTop:8,lineHeight:1.5}}>
+            💡 Status dihitung dari pertemuan terakhir yang tercatat (absensi/jurnal): Aktif ≤ 7 hari, Kurang aktif 8–14 hari, Tidak aktif &gt; 14 hari.
+            Persentase nilai = siswa yang sudah dinilai dibanding jumlah siswa di kelas-kelas yang diampu (dari menu Penugasan).
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── REKAP KEHADIRAN SEMESTER PER SISWA (operator & wali kelas) ──
+async function ambilSemua(buatQuery) {
+  // Ambil semua baris (melewati batas 1000 baris per permintaan)
+  const hasil = []; const step = 1000;
+  for (let from = 0; ; from += step) {
+    const {data, error} = await buatQuery().range(from, from + step - 1);
+    if (error) throw error;
+    hasil.push(...(data||[]));
+    if (!data || data.length < step) break;
+  }
+  return hasil;
+}
+
+function RekapKehadiranKelas({sesi, kelas, ta, showToast, onBack}) {
+  const blnNow = new Date().getMonth()+1;
+  const [smt, setSmt]         = React.useState(blnNow>=7 ? 'Ganjil' : 'Genap');
+  const [loading, setLoading] = React.useState(true);
+  const [rows, setRows]       = React.useState([]);
+  const [info, setInfo]       = React.useState({hari:0, pertemuan:0});
+  const [err, setErr]         = React.useState('');
+
+  React.useEffect(()=>{ muat(); }, [smt]);
+
+  async function muat() {
+    setLoading(true); setErr('');
+    try {
+      const {data:sw} = await sb.from('supermad_siswa').select('id,nama,nis,jenis_kelamin')
+        .eq('madrasah_id', sesi.mad.id).eq('kelas', kelas.nama_kelas).eq('tahun_ajaran', ta)
+        .eq('aktif', true).order('nama');
+      const siswa = sw||[];
+      const jurnal = await ambilSemua(()=>sb.from('supermad_jurnal').select('id,tanggal,mapel')
+        .eq('madrasah_id', sesi.mad.id).eq('kelas', kelas.nama_kelas)
+        .eq('tahun_ajaran', ta).eq('semester', smt).order('tanggal'));
+      const tglJurnal = {}; jurnal.forEach(j=>{ tglJurnal[j.id]=j.tanggal; });
+      let absensi = [];
+      const ids = jurnal.map(j=>j.id);
+      for (let i=0; i<ids.length; i+=60) {
+        const potong = ids.slice(i, i+60);
+        const part = await ambilSemua(()=>sb.from('supermad_absensi').select('jurnal_id,siswa_id,status')
+          .in('jurnal_id', potong).order('jurnal_id'));
+        absensi = absensi.concat(part);
+      }
+      // Per siswa: hitung per pertemuan & per hari
+      const perSiswa = {};
+      absensi.forEach(a=>{
+        const tgl = tglJurnal[a.jurnal_id]; if (!tgl) return;
+        const ps = perSiswa[a.siswa_id] = perSiswa[a.siswa_id] || {p:{hadir:0,sakit:0,izin:0,alpa:0}, hari:{}};
+        ps.p[a.status] = (ps.p[a.status]||0)+1;
+        (ps.hari[tgl] = ps.hari[tgl] || []).push(a.status);
+      });
+      const hariSet = new Set(Object.values(tglJurnal));
+      const hasil = siswa.map(s2=>{
+        const ps = perSiswa[s2.id] || {p:{hadir:0,sakit:0,izin:0,alpa:0}, hari:{}};
+        const h = {hadir:0,sakit:0,izin:0,alpa:0};
+        Object.values(ps.hari).forEach(list=>{
+          // Satu hari dianggap hadir bila hadir di salah satu pertemuan;
+          // jika tidak hadir sama sekali: sakit > izin > alpa
+          const st = list.includes('hadir') ? 'hadir' : list.includes('sakit') ? 'sakit' : list.includes('izin') ? 'izin' : 'alpa';
+          h[st]++;
+        });
+        const totHari = h.hadir+h.sakit+h.izin+h.alpa;
+        return {...s2, p: ps.p, h, totHari, pct: totHari ? h.hadir/totHari*100 : null};
+      });
+      setRows(hasil);
+      setInfo({hari: hariSet.size, pertemuan: jurnal.length});
+    } catch(e) {
+      setErr(e.message||String(e));
+    }
+    setLoading(false);
+  }
+
+  async function cetak() {
+    const w = window.open('','_blank');
+    if (!w) { showToast('Izinkan pop-up untuk mencetak','warning'); return; }
+    w.document.write('<p style="font-family:Arial;padding:20px">⏳ Menyiapkan rekap...</p>');
+    const ttd = await getPenandatangan(sesi);
+    const {data:gl} = await rpcSesi('supermad_list_guru', sesi);
+    const wali = (gl||[]).find(g=>String(g.id)===String(kelas.wali_guru_id)) || {};
+    const waliNama = wali.nama || kelas.wali_kelas || '';
+    const waliNip  = wali.nip || wali.nuptk || '';
+    const waliLbl  = wali.nip ? 'NIP' : (wali.nuptk ? 'NUPTK' : 'NIP');
+    const tgl = new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
+    const isi = rows.map((r,i)=>`<tr>
+      <td class="c">${i+1}</td><td>${escHtml(r.nama)}</td><td class="c">${escHtml(r.nis||'')}</td><td class="c">${escHtml(r.jenis_kelamin||'')}</td>
+      <td class="c b">${r.h.sakit}</td><td class="c b">${r.h.izin}</td><td class="c b">${r.h.alpa}</td>
+      <td class="c">${r.h.hadir}/${r.totHari}</td><td class="c b">${r.pct==null?'—':r.pct.toFixed(1)+'%'}</td>
+      <td class="c sm">${r.p.hadir}</td><td class="c sm">${r.p.sakit}</td><td class="c sm">${r.p.izin}</td><td class="c sm">${r.p.alpa}</td>
+    </tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Rekap Kehadiran ${escHtml(kelas.nama_kelas)}</title>
+<style>
+@page{size:A4 portrait;margin:12mm}
+*{box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:9.5pt;color:#111;margin:0;padding:10px}
+h1{text-align:center;font-size:13.5pt;margin:0}.sub{text-align:center;font-size:10pt;margin:2px 0 10px;font-weight:700}
+.id{display:grid;grid-template-columns:1fr 1fr;gap:5px 24px;border:1px solid #555;border-radius:6px;padding:8px 12px;margin-bottom:10px}
+.id div{display:grid;grid-template-columns:105px 10px 1fr}
+table{width:100%;border-collapse:collapse}th,td{border:1px solid #555;padding:4px 5px}
+th{background:#0f4238;color:#fff;font-size:8.5pt}td.c{text-align:center}td.b{font-weight:700}td.sm{color:#555;font-size:8.5pt}
+.ket{font-size:8pt;margin-top:6px;color:#444;line-height:1.4}
+.ttd{display:grid;grid-template-columns:1fr 1fr;margin-top:16px;text-align:center}.sp{height:55px}
+.no-print{margin-bottom:10px}@media print{.no-print{display:none}}
+</style></head><body>
+<div class="no-print"><button onclick="window.print()" style="padding:7px 18px;background:#0f4238;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">🖨️ Cetak / PDF</button>
+<button onclick="window.close()" style="padding:7px 14px;border:1px solid #ccc;border-radius:6px;cursor:pointer;margin-left:6px">✕ Tutup</button></div>
+<h1>REKAP KEHADIRAN SISWA</h1><div class="sub">${escHtml(ttd.mad.nama||'')}</div>
+<div class="id">
+  <div><b>Kelas</b><span>:</span><span>${escHtml(kelas.nama_kelas)}</span></div>
+  <div><b>Tahun Pelajaran</b><span>:</span><span>${escHtml(ta)}</span></div>
+  <div><b>Wali Kelas</b><span>:</span><span>${escHtml(waliNama||'—')}</span></div>
+  <div><b>Semester</b><span>:</span><span>${escHtml(smt)}</span></div>
+  <div><b>Hari tercatat</b><span>:</span><span>${info.hari} hari</span></div>
+  <div><b>Pertemuan</b><span>:</span><span>${info.pertemuan} pertemuan</span></div>
+</div>
+<table><thead>
+<tr><th rowspan="2" style="width:24px">No</th><th rowspan="2">Nama Siswa</th><th rowspan="2" style="width:70px">NIS</th><th rowspan="2" style="width:26px">L/P</th>
+<th colspan="5">Ketidakhadiran per Hari (untuk Rapor)</th><th colspan="4">Rincian per Pertemuan</th></tr>
+<tr><th>Sakit</th><th>Izin</th><th>Alpa</th><th>Hadir</th><th>%</th><th>H</th><th>S</th><th>I</th><th>A</th></tr>
+</thead><tbody>${isi||'<tr><td colspan="13" class="c">Belum ada data</td></tr>'}</tbody></table>
+<div class="ket">Keterangan: Satu hari dihitung <b>hadir</b> bila siswa hadir di salah satu pertemuan pada hari itu. Bila tidak hadir sama sekali,
+status hari mengikuti urutan Sakit → Izin → Alpa. Rincian per pertemuan menghitung seluruh pertemuan dari semua mata pelajaran.</div>
+<div class="ttd">
+  <div>Mengetahui,<br>Kepala Madrasah<div class="sp"></div><b>${escHtml(ttd.kepalaNama||'.............................')}</b><br>NIP. ${escHtml(ttd.kepalaNip||'—')}</div>
+  <div>${escHtml(ttd.mad.kota_kab||'..............')}, ${tgl}<br>Wali Kelas<div class="sp"></div><b>${escHtml(waliNama||'.............................')}</b><br>${waliLbl}. ${escHtml(waliNip||'—')}</div>
+</div></body></html>`;
+    w.document.open(); w.document.write(html); w.document.close();
+  }
+
+  const warnaPct = v => v==null ? 'var(--text3)' : v>=90 ? '#16a34a' : v>=75 ? '#d97706' : '#dc2626';
+  const th = {padding:'7px 8px',fontWeight:700,textAlign:'center',whiteSpace:'nowrap'};
+  const td = {padding:'6px 8px',textAlign:'center',borderBottom:'1px solid var(--border)'};
+  return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12,flexWrap:'wrap'}}>
+        {onBack && <button className="btn btn-outline btn-sm" onClick={onBack}>← Kembali</button>}
+        <div style={{flex:1}}>
+          <div style={{fontWeight:900,color:'var(--p3)'}}>📊 Rekap Kehadiran Semester — Kelas {kelas.nama_kelas}</div>
+          <div style={{fontSize:'.74rem',color:'var(--text2)'}}>
+            TA {ta} · Wali Kelas: {kelas.wali_kelas || '—'}
+          </div>
+        </div>
+        <select value={smt} onChange={e=>setSmt(e.target.value)}
+          style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit',width:'auto'}}>
+          <option value="Ganjil">Semester Ganjil</option>
+          <option value="Genap">Semester Genap</option>
+        </select>
+        <button className="btn btn-primary btn-sm" onClick={cetak} disabled={loading||!rows.length}>🖨️ Cetak Rekap</button>
+      </div>
+
+      {err && <div style={{padding:'10px 14px',borderRadius:9,background:'#fef2f2',border:'1px solid #fca5a5',color:'#991b1b',fontSize:'.8rem',marginBottom:10}}>⚠️ {err}</div>}
+
+      {loading ? <Loading text="Menghitung kehadiran..." /> : (
+        <>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:8,marginBottom:12}}>
+            {[
+              ['👥 Siswa', rows.length, '#2563eb'],
+              ['📅 Hari tercatat', info.hari, '#0891b2'],
+              ['📝 Pertemuan', info.pertemuan, '#7c3aed'],
+              ['✅ Rata-rata hadir', (()=>{const v=rows.filter(r=>r.pct!=null);return v.length?(v.reduce((a,r)=>a+r.pct,0)/v.length).toFixed(1)+'%':'—';})(), '#16a34a'],
+            ].map(([l,v,c])=>(
+              <div key={l} className="card" style={{padding:'10px 12px',textAlign:'center',borderTop:'3px solid '+c}}>
+                <div style={{fontSize:'1.2rem',fontWeight:900,color:c}}>{v}</div>
+                <div style={{fontSize:'.7rem',color:'var(--text2)'}}>{l}</div>
+              </div>
+            ))}
+          </div>
+          {info.pertemuan===0 ? (
+            <div className="card" style={{textAlign:'center',padding:28,color:'var(--text3)'}}>
+              Belum ada absensi untuk kelas ini di semester {smt} TA {ta}.<br/>
+              <small>Rekap terisi otomatis dari menu 🙋 Absensi Siswa yang diisi para guru mapel.</small>
+            </div>
+          ) : (
+            <div className="card" style={{padding:0,overflowX:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.78rem',minWidth:620}}>
+                <thead>
+                  <tr style={{background:'var(--p3)',color:'#fff'}}>
+                    <th style={th} rowSpan={2}>No</th>
+                    <th style={{...th,textAlign:'left'}} rowSpan={2}>Nama Siswa</th>
+                    <th style={th} rowSpan={2}>L/P</th>
+                    <th style={{...th,background:'#155a4c'}} colSpan={5}>Per Hari (untuk Rapor)</th>
+                    <th style={{...th,background:'#3f5f58'}} colSpan={4}>Per Pertemuan</th>
+                  </tr>
+                  <tr style={{background:'var(--surface2)',color:'var(--text2)'}}>
+                    {['Sakit','Izin','Alpa','Hadir','%','H','S','I','A'].map(h=><th key={h} style={{...th,fontSize:'.7rem'}}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r,i)=>(
+                    <tr key={r.id} style={{background:i%2?'var(--surface2)':'#fff'}}>
+                      <td style={td}>{i+1}</td>
+                      <td style={{...td,textAlign:'left',fontWeight:600}}>{r.nama}</td>
+                      <td style={td}>{r.jenis_kelamin||'—'}</td>
+                      <td style={{...td,fontWeight:700,color:'#d97706'}}>{r.h.sakit}</td>
+                      <td style={{...td,fontWeight:700,color:'#2563eb'}}>{r.h.izin}</td>
+                      <td style={{...td,fontWeight:700,color:'#dc2626'}}>{r.h.alpa}</td>
+                      <td style={td}>{r.h.hadir}/{r.totHari}</td>
+                      <td style={{...td,fontWeight:800,color:warnaPct(r.pct)}}>{r.pct==null?'—':r.pct.toFixed(1)+'%'}</td>
+                      <td style={{...td,color:'var(--text2)'}}>{r.p.hadir}</td>
+                      <td style={{...td,color:'var(--text2)'}}>{r.p.sakit}</td>
+                      <td style={{...td,color:'var(--text2)'}}>{r.p.izin}</td>
+                      <td style={{...td,color:'var(--text2)'}}>{r.p.alpa}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div style={{fontSize:'.72rem',color:'var(--text3)',marginTop:8,lineHeight:1.5}}>
+            💡 Satu hari dihitung <b>hadir</b> bila siswa hadir di salah satu pertemuan hari itu. Bila tidak hadir sama sekali,
+            status hari mengikuti urutan Sakit → Izin → Alpa. Kolom "Per Hari" inilah yang dipakai untuk rapor.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── TAB KELAS & SISWA (OPERATOR) ─────────────────────────────
 function TabKelasSiswa({sesi, showToast}) {
   const [kelasList, setKelasList]   = React.useState([]);
@@ -8720,7 +9810,10 @@ function TabKelasSiswa({sesi, showToast}) {
   const [filterTA, setFilterTA]     = React.useState(getTASekarang());
   const [showFormKelas, setShowFormKelas] = React.useState(false);
   const [editKelas, setEditKelas]   = React.useState(null);
-  const [formKelas, setFormKelas]   = React.useState({nama_kelas:'',tingkat:'VII',wali_kelas:''});
+  const [formKelas, setFormKelas]   = React.useState({nama_kelas:'',tingkat:'VII',wali_kelas:'',wali_guru_id:''});
+  const [guruOpsi, setGuruOpsi]     = React.useState([]);
+  const [rekapKelas, setRekapKelas] = React.useState(null);
+  React.useEffect(()=>{ rpcSesi('supermad_list_guru', sesi).then(({data})=>setGuruOpsi((data||[]).filter(g=>g.aktif!==false))); }, []);
   const [showFormSiswa, setShowFormSiswa] = React.useState(false);
   const [editSiswa, setEditSiswa]   = React.useState(null);
   const [formSiswa, setFormSiswa]   = React.useState({nama:'',nis:'',jenis_kelamin:'L'});
@@ -8773,17 +9866,23 @@ function TabKelasSiswa({sesi, showToast}) {
 
   async function simpanKelas(e) {
     e.preventDefault();
-    const payload = {...formKelas, madrasah_id: sesi.mad.id, tahun_ajaran: filterTA, aktif: true};
+    const payload = {...formKelas, wali_guru_id: formKelas.wali_guru_id || null,
+      madrasah_id: sesi.mad.id, tahun_ajaran: filterTA, aktif: true};
     let error;
     if (editKelas) {
       ({error} = await sb.from('supermad_kelas').update(payload).eq('id', editKelas.id));
     } else {
       ({error} = await sb.from('supermad_kelas').insert(payload));
     }
-    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    if (error) {
+      showToast(String(error.message).includes('wali_guru_id')
+        ? 'Kolom wali kelas belum tersedia. Jalankan SQL supermad_wali_kelas.sql terlebih dahulu.'
+        : 'Gagal: '+error.message,'error');
+      return;
+    }
     showToast('✅ Kelas '+(editKelas?'diperbarui':'ditambahkan')+'!');
     setShowFormKelas(false); setEditKelas(null);
-    setFormKelas({nama_kelas:'',tingkat:'VII',wali_kelas:''});
+    setFormKelas({nama_kelas:'',tingkat:'VII',wali_kelas:'',wali_guru_id:''});
     loadKelas(filterTA);
   }
 
@@ -8829,10 +9928,12 @@ function TabKelasSiswa({sesi, showToast}) {
     // Tambahkan 'sep=;' di baris pertama agar Excel otomatis pakai semicolon
     const csv = [
       'sep=;',
-      'Tingkat;Rombel;Nama Siswa;NISN;Gender (L/P)',
-      'VII;VII-A;NAMA SISWA CONTOH;3201234567;L',
-      'VII;VII-A;NAMA SISWA KEDUA;3201234568;P',
-      'VIII;VIII-B;NAMA SISWA KETIGA;3201234569;P',
+      'Tingkat;Rombel;Nama Siswa;NISN;Gender (L/P);Wali Kelas',
+      'VII;VII-A;NAMA SISWA CONTOH;3201234567;L;'+(guruOpsi[0]?.nama||'Nama Guru Wali VII-A'),
+      'VII;VII-A;NAMA SISWA KEDUA;3201234568;P;',
+      'VIII;VIII-B;NAMA SISWA KETIGA;3201234569;P;'+(guruOpsi[1]?.nama||'Nama Guru Wali VIII-B'),
+      '',
+      'PETUNJUK: Kolom Wali Kelas cukup diisi pada SATU baris per rombel (boleh juga semua baris). Tulis nama guru persis seperti di Daftar Guru SUPERMAD. Hapus baris contoh dan petunjuk ini sebelum diimpor.',
     ].join('\r\n');
     const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
     const url = URL.createObjectURL(blob);
@@ -8896,9 +9997,11 @@ function TabKelasSiswa({sesi, showToast}) {
 
       // Deteksi format header
       const header = rows[0].map(h=>String(h).toLowerCase().trim());
-      const iFormatBaru = header.findIndex(h=>h.includes('rombel')||h.includes('kelas'));
+      const iWali  = header.findIndex(h=>h.includes('wali'));
+      let iFormatBaru = header.findIndex(h=>h.includes('rombel'));
+      if (iFormatBaru === -1) iFormatBaru = header.findIndex(h=>h.includes('kelas') && !h.includes('wali'));
       const iFormatTingkat = header.findIndex(h=>h.includes('tingkat'));
-      const iNama  = header.findIndex(h=>h.includes('nama'));
+      const iNama  = header.findIndex(h=>h.includes('nama') && !h.includes('wali') && !h.includes('guru'));
       const iNisn  = header.findIndex(h=>h.includes('nisn')||h.includes('nis'));
       const iGender= header.findIndex(h=>h.includes('gender')||h.includes('jenis')||h.includes('l/p'));
 
@@ -8908,7 +10011,7 @@ function TabKelasSiswa({sesi, showToast}) {
       const kelasMap = {}; // nama_kelas -> [{nama, nisn, gender, tingkat}]
       rows.slice(1).forEach(r=>{
         const nama = String(r[iNama]||'').trim();
-        if (!nama) return;
+        if (!nama || nama.toUpperCase().startsWith('PETUNJUK')) return;
         let namaKelas = activeKelas ? activeKelas.nama_kelas : '';
         let tingkat = '';
         if (iFormatBaru > -1 && !activeKelas) {
@@ -8921,7 +10024,9 @@ function TabKelasSiswa({sesi, showToast}) {
           if (!namaKelas) namaKelas = tingkat;
         }
         if (!namaKelas) return;
-        if (!kelasMap[namaKelas]) kelasMap[namaKelas] = {tingkat, siswa:[]};
+        if (!kelasMap[namaKelas]) kelasMap[namaKelas] = {tingkat, siswa:[], wali:''};
+        const waliTxt = iWali > -1 ? String(r[iWali]||'').trim() : '';
+        if (waliTxt && !kelasMap[namaKelas].wali) kelasMap[namaKelas].wali = waliTxt;
         kelasMap[namaKelas].siswa.push({
           nama,
           nis: iNisn > -1 ? String(r[iNisn]||'').trim() : '',
@@ -8932,11 +10037,29 @@ function TabKelasSiswa({sesi, showToast}) {
       const namaKelasList = Object.keys(kelasMap);
       if (!namaKelasList.length) { setImportSiswaStatus('❌ Tidak ada data valid.'); return; }
 
-      let totalKelasNew = 0, totalSiswa = 0;
+      let totalKelasNew = 0, totalSiswa = 0, totalWali = 0;
+      const waliGagal = [];
+
+      // Cocokkan nama wali kelas ke daftar guru (abaikan huruf besar/kecil, tanda baca, dan gelar)
+      let daftarGuru = guruOpsi;
+      if (!daftarGuru.length) { const {data} = await rpcSesi('supermad_list_guru', sesi); daftarGuru = (data||[]).filter(g=>g.aktif!==false); }
+      const norm = t => String(t||'').toLowerCase().replace(/[.,'`]/g,' ').replace(/\s+/g,' ').trim();
+      const inti = t => norm(String(t||'').split(',')[0])
+        .replace(/^((drs|dra|dr|h|hj|ir|prof|tgk|teungku|ust|ustadz|ustazah|ustadzah)\s+)+/,'').trim();
+      function cariGuru(namaTxt) {
+        if (!namaTxt) return null;
+        let cocok = daftarGuru.filter(g=>norm(g.nama)===norm(namaTxt));
+        if (cocok.length===1) return cocok[0];
+        cocok = daftarGuru.filter(g=>inti(g.nama)===inti(namaTxt));
+        return cocok.length===1 ? cocok[0] : null;
+      }
 
       for (const namaKelas of namaKelasList) {
-        const {tingkat, siswa} = kelasMap[namaKelas];
-        // Auto-buat kelas kalau belum ada
+        const {tingkat, siswa, wali} = kelasMap[namaKelas];
+        const guruWali = cariGuru(wali);
+        if (wali && !guruWali) waliGagal.push(namaKelas+' ("'+wali+'")');
+        const dataWali = guruWali ? {wali_guru_id: guruWali.id, wali_kelas: guruWali.nama} : {};
+        // Auto-buat kelas kalau belum ada; perbarui wali bila kelas sudah ada
         const existing = kelasList.find(k=>k.nama_kelas===namaKelas);
         if (!existing) {
           const {error:ek} = await sb.from('supermad_kelas').insert({
@@ -8945,8 +10068,12 @@ function TabKelasSiswa({sesi, showToast}) {
             tingkat: tingkat||namaKelas,
             tahun_ajaran: filterTA,
             aktif: true,
+            ...dataWali,
           });
-          if (!ek) totalKelasNew++;
+          if (!ek) { totalKelasNew++; if (guruWali) totalWali++; }
+        } else if (guruWali) {
+          const {error:ew} = await sb.from('supermad_kelas').update(dataWali).eq('id', existing.id);
+          if (!ew) totalWali++;
         }
         // Insert siswa
         const rows2 = siswa.map(s=>({
@@ -8960,7 +10087,9 @@ function TabKelasSiswa({sesi, showToast}) {
         if (!es) totalSiswa += rows2.length;
       }
 
-      setImportSiswaStatus(`✅ Import selesai! ${totalKelasNew} kelas baru dibuat, ${totalSiswa} siswa ditambahkan.`);
+      setImportSiswaStatus(`✅ Import selesai! ${totalKelasNew} kelas baru dibuat, ${totalSiswa} siswa ditambahkan`
+        + (iWali>-1 ? `, ${totalWali} wali kelas ditetapkan.` : '.')
+        + (waliGagal.length ? ` ⚠️ Nama wali tidak dikenali (atur manual lewat ✏️ Edit): ${waliGagal.join(', ')}` : ''));
       loadKelas(filterTA);
     } catch(err) {
       setImportSiswaStatus('❌ '+err.message);
@@ -9006,6 +10135,10 @@ function TabKelasSiswa({sesi, showToast}) {
     ? ['Kelas 1','Kelas 2','Kelas 3','Kelas 4','Kelas 5','Kelas 6']
     : ['VII','VIII','IX','X','XI','XII'];
 
+  if (rekapKelas) return (
+    <RekapKehadiranKelas sesi={sesi} kelas={rekapKelas} ta={filterTA} showToast={showToast}
+      onBack={()=>setRekapKelas(null)} />
+  );
   if (loading) return <Loading text="Memuat kelas..." />;
 
   // VIEW DAFTAR SISWA
@@ -9143,7 +10276,7 @@ function TabKelasSiswa({sesi, showToast}) {
         </select>
         <button className="btn btn-primary btn-sm" onClick={()=>{
           setShowFormKelas(!showFormKelas); setEditKelas(null);
-          setFormKelas({nama_kelas:'',tingkat:tingkatList[0],wali_kelas:''});
+          setFormKelas({nama_kelas:'',tingkat:tingkatList[0],wali_kelas:'',wali_guru_id:''});
         }}>
           {showFormKelas?'✕ Batal':'+ Tambah Kelas'}
         </button>
@@ -9240,7 +10373,7 @@ function TabKelasSiswa({sesi, showToast}) {
       <div style={{display:'flex',gap:8,marginBottom:6,flexWrap:'wrap',alignItems:'center',
         padding:'10px 14px',background:'#f0fdf4',borderRadius:10,border:'1.5px solid #86efac'}}>
         <div style={{fontSize:'.8rem',color:'#166534',flex:1}}>
-          <b>📤 Import Massal</b> — Upload Excel berisi kolom: <i>Tingkat, Rombel, Nama Siswa, NISN, Gender (L/P)</i>
+          <b>📤 Import Massal</b> — Upload Excel berisi kolom: <i>Tingkat, Rombel, Nama Siswa, NISN, Gender (L/P), Wali Kelas</i>
           <br/>Kelas otomatis dibuat jika belum ada.
         </div>
         <button className="btn btn-outline btn-sm" onClick={downloadTemplateSiswa}>📥 Download Template</button>
@@ -9276,9 +10409,19 @@ function TabKelasSiswa({sesi, showToast}) {
                 </select>
               </div>
               <div className="form-group">
-                <label>Wali Kelas</label>
-                <input value={formKelas.wali_kelas} onChange={e=>setFormKelas({...formKelas,wali_kelas:e.target.value})}
-                  placeholder="Nama wali kelas"/>
+                <label>Wali Kelas <span style={{fontWeight:400,color:'var(--text3)'}}>(pilih dari daftar guru)</span></label>
+                <select value={formKelas.wali_guru_id||''} onChange={e=>{
+                  const g = guruOpsi.find(x=>String(x.id)===e.target.value);
+                  setFormKelas({...formKelas, wali_guru_id: e.target.value, wali_kelas: g ? g.nama : ''});
+                }}>
+                  <option value="">— Belum ditentukan —</option>
+                  {guruOpsi.map(g=><option key={g.id} value={g.id}>{g.nama}{g.mapel?' ('+g.mapel+')':''}</option>)}
+                </select>
+                {formKelas.wali_kelas && !formKelas.wali_guru_id && (
+                  <div style={{fontSize:'.7rem',color:'#92400e',marginTop:4}}>
+                    Tercatat sebelumnya: "{formKelas.wali_kelas}" — pilih guru yang sesuai agar bisa membuka rekap kelas.
+                  </div>
+                )}
               </div>
             </div>
             <div style={{display:'flex',gap:8}}>
@@ -9320,7 +10463,10 @@ function TabKelasSiswa({sesi, showToast}) {
                 <div style={{fontSize:'.7rem',color:'var(--text3)',marginBottom:8}}>Belum ada siswa</div>
               )}
               <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
-                <button onClick={e=>{e.stopPropagation();setEditKelas(k);setFormKelas({nama_kelas:k.nama_kelas,tingkat:k.tingkat,wali_kelas:k.wali_kelas||''});setShowFormKelas(true);}}
+                <button onClick={e=>{e.stopPropagation();setRekapKelas(k);}}
+                  style={{padding:'3px 8px',borderRadius:6,border:'1px solid #0891b2',
+                    background:'#ecfeff',color:'#0e7490',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>📊 Kehadiran</button>
+                <button onClick={e=>{e.stopPropagation();setEditKelas(k);setFormKelas({nama_kelas:k.nama_kelas,tingkat:k.tingkat,wali_kelas:k.wali_kelas||'',wali_guru_id:k.wali_guru_id?String(k.wali_guru_id):''});setShowFormKelas(true);}}
                   style={{padding:'3px 8px',borderRadius:6,border:'1px solid var(--p)',
                     background:'#fff',color:'var(--p)',cursor:'pointer',fontSize:'.72rem'}}>✏️ Edit</button>
                 <button onClick={e=>{e.stopPropagation();hapusKelas(k);}}
@@ -11720,6 +12866,86 @@ function TabPenugasan({sesi, showToast}) {
     loadData();
   }
 
+  const [importInfo, setImportInfo] = React.useState('');
+
+  function downloadTemplatePenugasan() {
+    if (typeof XLSX === 'undefined') { showToast('Library Excel belum siap, coba sesaat lagi.','warning'); return; }
+    const kelasTA = kelasList.filter(k=>!k.tahun_ajaran || k.tahun_ajaran===filterTA);
+    const contoh = [];
+    guruList.slice(0,3).forEach((g,i)=>{
+      contoh.push({'Nama Guru':g.nama,'Mata Pelajaran':g.mapel||MAPEL_LIST[0]||'',
+        'Kelas':kelasTA.slice(i*2,i*2+2).map(k=>k.nama_kelas).join(', ')||(kelasTA[0]?.nama_kelas||'')});
+    });
+    if (!contoh.length) contoh.push({'Nama Guru':'Nama Guru Sesuai Daftar Guru','Mata Pelajaran':MAPEL_LIST[0]||'','Kelas':'VII-A, VII-B'});
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(contoh, {header:['Nama Guru','Mata Pelajaran','Kelas']});
+    ws['!cols'] = [{wch:34},{wch:30},{wch:30}];
+    XLSX.utils.book_append_sheet(wb, ws, 'Penugasan');
+    const wsG = XLSX.utils.aoa_to_sheet([['Daftar Guru (salin namanya ke sheet Penugasan)','Mapel Utama'],
+      ...guruList.map(g=>[g.nama, g.mapel||''])]);
+    wsG['!cols'] = [{wch:40},{wch:30}];
+    XLSX.utils.book_append_sheet(wb, wsG, 'Daftar Guru');
+    const wsK = XLSX.utils.aoa_to_sheet([['Daftar Kelas TA '+filterTA,'Tingkat'], ...kelasTA.map(k=>[k.nama_kelas, k.tingkat||''])]);
+    wsK['!cols'] = [{wch:28},{wch:10}];
+    XLSX.utils.book_append_sheet(wb, wsK, 'Daftar Kelas');
+    const wsM = XLSX.utils.aoa_to_sheet([['Daftar Mata Pelajaran (KMA 1503/2025)'], ...MAPEL_LIST.map(m=>[m])]);
+    wsM['!cols'] = [{wch:44}];
+    XLSX.utils.book_append_sheet(wb, wsM, 'Daftar Mapel');
+    const wsP = XLSX.utils.aoa_to_sheet([
+      ['PETUNJUK PENGISIAN TEMPLATE PENUGASAN'],[''],
+      ['1. Isi sheet "Penugasan": satu baris = satu guru + satu mata pelajaran.'],
+      ['2. Kolom Kelas boleh berisi beberapa kelas dipisah koma, misal: VII-A, VII-B, VIII-A'],
+      ['3. Nama guru, mapel, dan kelas harus sesuai sheet Daftar Guru / Daftar Mapel / Daftar Kelas.'],
+      ['4. Penugasan yang sudah ada otomatis dilewati (tidak dobel).'],
+      ['5. Penugasan diimpor ke Tahun Ajaran yang sedang dipilih di menu Penugasan ('+filterTA+').'],
+    ]);
+    wsP['!cols'] = [{wch:90}];
+    XLSX.utils.book_append_sheet(wb, wsP, 'Petunjuk');
+    XLSX.writeFile(wb, 'Template_Penugasan_'+filterTA.replace('/','-')+'.xlsx');
+  }
+
+  async function importPenugasan(e) {
+    const file = e.target.files[0]; e.target.value = '';
+    if (!file) return;
+    if (typeof XLSX === 'undefined') { showToast('Library Excel belum siap, coba sesaat lagi.','warning'); return; }
+    setImportInfo('⏳ Memproses file...');
+    try {
+      const wb = XLSX.read(await file.arrayBuffer(), {type:'array'});
+      const ws = wb.Sheets['Penugasan'] || wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json(ws, {defval:''});
+      const ambil = (r, kunci) => { const k = Object.keys(r).find(x=>x.toLowerCase().includes(kunci)); return k ? String(r[k]).trim() : ''; };
+      const kelasTA = kelasList.filter(k=>!k.tahun_ajaran || k.tahun_ajaran===filterTA);
+      const normK = t => String(t||'').toUpperCase().replace(/\s+/g,'').replace(/[–—]/g,'-');
+      const normM = t => String(t||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+      const sudah = new Set(penugasanList.map(p=>p.guru_id+'|'+p.mapel+'|'+p.kelas_id));
+      const baru = []; const gagal = []; let lewati = 0;
+      raw.forEach((r,i)=>{
+        const baris = i+2;
+        const namaG = ambil(r,'guru'), mapelTxt = ambil(r,'mapel')||ambil(r,'pelajaran'), kelasTxt = ambil(r,'kelas');
+        if (!namaG && !mapelTxt && !kelasTxt) return;
+        const g = cocokkanGuru(guruList, namaG);
+        if (!g) { gagal.push('Baris '+baris+': guru "'+namaG+'" tidak dikenali'); return; }
+        const mapel = MAPEL_LIST.find(m=>normM(m)===normM(mapelTxt)) || mapelTxt;
+        if (!mapel) { gagal.push('Baris '+baris+': mata pelajaran kosong'); return; }
+        kelasTxt.split(/[,;\/]+/).map(x=>x.trim()).filter(Boolean).forEach(kt=>{
+          const k = kelasTA.find(x=>normK(x.nama_kelas)===normK(kt));
+          if (!k) { gagal.push('Baris '+baris+': kelas "'+kt+'" tidak ada di TA '+filterTA); return; }
+          const kunci = g.id+'|'+mapel+'|'+k.id;
+          if (sudah.has(kunci)) { lewati++; return; }
+          sudah.add(kunci);
+          baru.push({madrasah_id: sesi.mad.id, guru_id: g.id, mapel, kelas_id: k.id, tahun_ajaran: filterTA, aktif: true});
+        });
+      });
+      if (baru.length) {
+        const {error} = await sb.from('supermad_penugasan').insert(baru);
+        if (error) { setImportInfo('❌ Gagal menyimpan: '+error.message); return; }
+      }
+      setImportInfo((baru.length?'✅ ':'ℹ️ ')+baru.length+' penugasan ditambahkan'+(lewati?', '+lewati+' sudah ada (dilewati)':'')+'.'
+        + (gagal.length ? '\n⚠️ '+gagal.length+' tidak diproses:\n• '+gagal.slice(0,15).join('\n• ')+(gagal.length>15?'\n• …':'') : ''));
+      loadData();
+    } catch(err) { setImportInfo('❌ '+err.message); }
+  }
+
   async function hapusPenugasan(pt) {
     if (!confirm(`Hapus penugasan "${pt.supermad_guru?.nama} — ${pt.mapel} — ${pt.supermad_kelas?.nama_kelas}"?`)) return;
     const {error} = await sb.from('supermad_penugasan').delete().eq('id', pt.id);
@@ -11753,15 +12979,30 @@ function TabPenugasan({sesi, showToast}) {
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
           <select value={filterTA} onChange={e=>setFilterTA(e.target.value)}
             style={{padding:'6px 10px',borderRadius:8,border:'1.5px solid var(--border)',fontSize:'.8rem',width:'auto'}}>
-            {['2026/2027','2025/2026','2024/2025'].map(ta=>(
+            {(()=>{const y=new Date().getFullYear();const l=[];for(let i=y+1;i>=y-2;i--)l.push(i+'/'+(i+1));return l;})().map(ta=>(
               <option key={ta} value={ta}>{ta}</option>
             ))}
           </select>
+          <button className="btn btn-outline btn-sm" onClick={downloadTemplatePenugasan}>📥 Template</button>
+          <label className="btn btn-outline btn-sm" style={{cursor:'pointer',margin:0}}>
+            📤 Import Excel
+            <input type="file" accept=".xlsx,.xls" onChange={importPenugasan} style={{display:'none'}}/>
+          </label>
           <button className="btn btn-primary btn-sm" onClick={()=>setShowForm(!showForm)}>
             {showForm?'✕ Batal':'+ Tambah Penugasan'}
           </button>
         </div>
       </div>
+
+      {importInfo && (
+        <div style={{whiteSpace:'pre-line',padding:'10px 14px',borderRadius:9,marginBottom:12,fontSize:'.8rem',
+          background:importInfo.startsWith('❌')?'#fef2f2':importInfo.includes('⚠️')?'#fffbeb':'#f0fdf4',
+          border:'1px solid '+(importInfo.startsWith('❌')?'#fca5a5':importInfo.includes('⚠️')?'#fcd34d':'#86efac'),
+          color:importInfo.startsWith('❌')?'#991b1b':importInfo.includes('⚠️')?'#92400e':'#166534'}}>
+          {importInfo}
+          <button onClick={()=>setImportInfo('')} style={{float:'right',border:'none',background:'none',cursor:'pointer',color:'inherit'}}>✕</button>
+        </div>
+      )}
 
       {showForm && (
         <div className="card" style={{marginBottom:14,background:'#f8fffe',border:'1.5px solid var(--p)'}}>
