@@ -403,6 +403,15 @@ function HalamanLogin({onLogin}) {
               {loading?'⏳ Memeriksa...':'🔓 Masuk'}</button>
             <button type="button" className="btn btn-outline" style={{width:'100%',justifyContent:'center',marginTop:8}}
               onClick={()=>{setMode('pilih');setErr('')}}>← Kembali</button>
+            <div style={{marginTop:14,padding:'10px 12px',background:'#eef2ff',border:'1px solid #c7d2fe',
+              borderRadius:9,fontSize:'.76rem',color:'#3730a3',textAlign:'center'}}>
+              Madrasah baru & sudah punya <b>token registrasi</b>?<br/>
+              <button type="button" onClick={()=>{setMode('daftar');setRegStep('token');setRegToken('');setErr('');}}
+                style={{marginTop:6,background:'#6366f1',color:'#fff',border:'none',borderRadius:7,padding:'6px 14px',
+                  fontWeight:700,fontSize:'.78rem',cursor:'pointer',fontFamily:'inherit'}}>
+                📝 Daftar Akun Operator
+              </button>
+            </div>
           </form>
         )}
 
@@ -428,7 +437,7 @@ function HalamanLogin({onLogin}) {
 
         {mode === 'kanwil' && (
           <form onSubmit={loginKanwil}>
-            <div style={{fontWeight:800,color:'var(--p3)',marginBottom:14,fontSize:'.9rem'}}>🏛️ Login Admin Kanwil</div>
+            <div style={{fontWeight:800,color:'var(--p3)',marginBottom:14,fontSize:'.9rem'}}>🏛️ Login Admin SUPERMAD</div>
             <div className="form-group">
               <label>Username *</label>
               <input value={user} onChange={e=>setUser(e.target.value)} placeholder="Username admin" required/>
@@ -586,6 +595,14 @@ function HalamanLogin({onLogin}) {
               👨‍🏫 Login Guru
             </button>
           </div>
+          <div style={{marginTop:12,fontSize:'.82rem',color:'#4a6b63'}}>
+            Madrasah baru bergabung?{' '}
+            <button onClick={()=>{bukaLogin('daftar');setRegStep('token');setRegToken('');}}
+              style={{background:'none',border:'none',color:'#6366f1',fontWeight:800,cursor:'pointer',
+                fontSize:'.82rem',padding:0,fontFamily:'inherit',textDecoration:'underline'}}>
+              📝 Daftar dengan token registrasi →
+            </button>
+          </div>
           <div style={{marginTop:28,display:'flex',gap:28}}>
             {[['187+','Madrasah Terdaftar'],['3.800+','Guru Aktif'],['PM-KBC','KMA 1503/2025']].map(([v,l])=>(
               <div key={l}>
@@ -700,7 +717,7 @@ function PilihPengguna({mad, penggunaList, token, onPilih, onBack}) {
             ))}
             {!penggunaList.length && (
               <div style={{textAlign:'center',color:'var(--text3)',fontSize:'.82rem',padding:20}}>
-                Belum ada pengguna terdaftar.<br/>Hubungi Admin Kanwil.
+                Belum ada pengguna terdaftar.<br/>Hubungi Admin SUPERMAD.
               </div>
             )}
           </div>
@@ -725,7 +742,7 @@ function PilihPengguna({mad, penggunaList, token, onPilih, onBack}) {
             <button type="button" className="btn btn-outline" style={{width:'100%',justifyContent:'center',marginTop:8}}
               onClick={()=>{ setDipilih(null); setErr(''); }}>← Pilih Akun Lain</button>
             <div style={{fontSize:'.7rem',color:'var(--text3)',textAlign:'center',marginTop:10}}>
-              Lupa password? Minta operator madrasah atau Admin Kanwil mereset password Anda.
+              Lupa password? Minta operator madrasah atau Admin SUPERMAD mereset password Anda.
             </div>
           </form>
         )}
@@ -875,7 +892,7 @@ function App() {
             <div style={{fontWeight:800,fontSize:'.82rem'}}>
               {sesi.mad
                 ? sesi.mad.nama.toUpperCase()
-                : 'KANTOR WILAYAH PROVINSI ACEH'}
+                : 'ADMIN SUPERMAD'}
             </div>
             {sesi.mad && sesi.mad.kota_kab && (
               <div style={{fontSize:'.65rem',opacity:.7}}>
@@ -2105,7 +2122,7 @@ function DashboardKanwil({showToast}) {
     const tgl = new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
     const win = window.open('','_blank');
     win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-<title>RTL Kanwil — Supervisi Madrasah</title>
+<title>RTL Lintas Madrasah — SUPERMAD</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Times New Roman',serif;font-size:11pt;padding:20mm;color:#000}
@@ -2131,11 +2148,11 @@ th{background:#0f4238;color:#fff;font-weight:700;text-align:center}
   <button onclick="window.close()" style="padding:8px 14px;background:#eee;border:none;border-radius:6px;cursor:pointer">✕ Tutup</button>
 </div>
 <div class="kop">
-  <div class="nama">Kantor Wilayah Kementerian Agama Provinsi Aceh</div>
-  <div class="sub">Bidang Pendidikan Madrasah</div>
+  <div class="nama">SUPERMAD — Supervisi Pembelajaran Madrasah</div>
+  <div class="sub">Rekap Lintas Madrasah Pengguna SUPERMAD · supermad.my.id</div>
 </div>
 <h2>Rekomendasi Tindak Lanjut (RTL) Supervisi Pembelajaran</h2>
-<div class="sub-h">Tingkat Provinsi Aceh · PM-KBC · KMA 1503/2025 · Dirjenpendis 6077/2025</div>
+<div class="sub-h">Lintas Madrasah Pengguna SUPERMAD · PM-KBC · KMA 1503/2025 · Dirjenpendis 6077/2025</div>
 
 <table>
 <tr><th colspan="4">RINGKASAN ANALISIS</th></tr>
@@ -2145,7 +2162,7 @@ th{background:#0f4238;color:#fff;font-weight:700;text-align:center}
     <td><b>Tanggal Analisis</b></td><td>${tgl}</td></tr>
 </table>
 
-<h3 style="margin:14px 0 8px;font-size:11pt">A. PRIORITAS MASALAH PROVINSI (Semua Aspek dengan Frekuensi > 0)</h3>
+<h3 style="margin:14px 0 8px;font-size:11pt">A. PRIORITAS MASALAH LINTAS MADRASAH (Semua Aspek dengan Frekuensi > 0)</h3>
 <table>
 <tr><th width="4%">No</th><th width="15%">Komponen</th><th>Aspek Bermasalah</th>
     <th width="12%" style="text-align:center">Frekuensi</th><th width="10%" style="text-align:center">% Guru</th><th width="12%">Prioritas</th></tr>
@@ -2173,24 +2190,16 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
 </table>
 
 <div class="ttd">
-  <div style="text-align:left">
-    <div style="font-weight:700;margin-bottom:8px">Ditetapkan oleh:</div>
-    <div>Kepala Bidang Pendidikan Madrasah</div>
-    <div class="ttd-line">
-      <b>.....................................</b><br>
-      NIP. —
-    </div>
-  </div>
+  <div></div>
   <div style="text-align:left">
     <div style="font-weight:700;margin-bottom:8px">Banda Aceh, ${tgl}</div>
-    <div>Admin Kanwil / Penelaah Kebijakan</div>
+    <div>Disusun oleh,<br>Admin SUPERMAD</div>
     <div class="ttd-line">
-      <b>.....................................</b><br>
-      NIP. —
+      <b>.....................................</b>
     </div>
   </div>
 </div>
-<div class="footer">SUPERMAD — RTL Supervisi Pembelajaran Madrasah PM-KBC · Kanwil Kemenag Provinsi Aceh</div>
+<div class="footer">SUPERMAD — RTL Supervisi Pembelajaran Madrasah PM-KBC · Dokumen ini dihasilkan otomatis dari data supervisi madrasah pengguna SUPERMAD</div>
 </body></html>`);
     win.document.close();
   }
@@ -2587,7 +2596,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}}>
         <h2 style={{fontWeight:900,color:'var(--p3)',fontSize:'1.1rem'}}>
-          🏛️ Admin Kanwil — Supervisi Pembelajaran Madrasah
+          🏛️ Admin SUPERMAD — Supervisi Pembelajaran Madrasah
         </h2>
         <button className="btn btn-outline btn-sm" onClick={exportExcel} disabled={exporting}>
           {exporting ? '⏳ Mengekspor...' : '📥 Export Excel'}
@@ -2600,7 +2609,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
           {icon:'🏫',label:'Total Madrasah',val:madrasahList.length,color:'var(--p)'},
           {icon:'📋',label:'Total Supervisi',val:totalSup,color:'#2563eb'},
           {icon:'🏆',label:'Aktif Laporan',val:madDenganData,color:'#16a34a'},
-          {icon:'📊',label:'Rata-rata Kanwil',
+          {icon:'📊',label:'Rata-rata Semua',
             val:allRata.length?rataKanwil.toFixed(1)+'%':'—',
             color:rataKanwil>=91?'#16a34a':rataKanwil>=81?'#2563eb':rataKanwil>=71?'#d97706':'#dc2626'},
         ].map((k,i)=>(
@@ -2614,7 +2623,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
 
       {/* Tab */}
       <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
-        {[['dashboard','📊 Dashboard'],['wilayah','🗺️ Per Wilayah'],['grafik','📈 Grafik'],['analitik','🔬 Analitik'],['rtl','📋 RTL Kanwil'],['tindaklanjut','✍️ Tindak Lanjut'],['madrasah','🏫 Madrasah'],['fitur','⚙️ Kelola Fitur']].map(([key,label])=>(
+        {[['dashboard','📊 Dashboard'],['wilayah','🗺️ Per Wilayah'],['grafik','📈 Grafik'],['analitik','🔬 Analitik'],['rtl','📋 RTL Lintas Madrasah'],['tindaklanjut','✍️ Tindak Lanjut'],['madrasah','🏫 Madrasah'],['fitur','⚙️ Kelola Fitur']].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',
               fontWeight:700,fontSize:'.8rem',fontFamily:'inherit',
@@ -2760,7 +2769,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
               {[
                 {label:'Total Madrasah',val:totalMad,ico:'🏫',warna:'#1a6b5c'},
                 {label:'Total Supervisi Selesai',val:totalSupAll,ico:'✅',warna:'#2563eb'},
-                {label:'Rata-rata Nilai Provinsi',val:rataAll?rataAll.toFixed(1)+'%':'—',ico:'📊',warna:rataAll?warna(rataAll):'#8aada6'},
+                {label:'Rata-rata Semua Madrasah',val:rataAll?rataAll.toFixed(1)+'%':'—',ico:'📊',warna:rataAll?warna(rataAll):'#8aada6'},
                 {label:'Wilayah Terdaftar',val:kabList2.length,ico:'🗺️',warna:'#7c3aed'},
               ].map(({label,val,ico,warna:w})=>(
                 <div key={label} className="card" style={{textAlign:'center',padding:'16px 12px'}}>
@@ -2959,7 +2968,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
           {!rtlKanwil.issues ? (
             <div style={{textAlign:'center',padding:32}}>
               <button className="btn btn-primary" onClick={loadRTLKanwil} disabled={loadingRTL}>
-                {loadingRTL ? '⏳ Menganalisis...' : '🔍 Analisis RTL Provinsi'}
+                {loadingRTL ? '⏳ Menganalisis...' : '🔍 Analisis RTL Lintas Madrasah'}
               </button>
               <div style={{marginTop:12,fontSize:'.8rem',color:'var(--text2)'}}>
                 Klik untuk menganalisis aspek yang paling banyak bermasalah di seluruh madrasah
@@ -2984,11 +2993,11 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
 
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}}>
                 <div style={{fontWeight:800,color:'var(--p3)'}}>
-                  📊 Prioritas Pembinaan — Tingkat Provinsi
+                  📊 Prioritas Pembinaan — Lintas Madrasah
                 </div>
                 <div style={{display:'flex',gap:8}}>
                   <button className="btn btn-outline btn-sm" onClick={()=>cetakRTLKanwil()}>
-                    🖨️ Cetak RTL Kanwil
+                    🖨️ Cetak RTL Lintas Madrasah
                   </button>
                   <button className="btn btn-outline btn-sm" onClick={()=>{setRtlKanwil([]);loadRTLKanwil();}}>
                     🔄 Refresh
@@ -3046,7 +3055,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
               {rtlKanwil.issues.length > 0 && (
                 <div className="card" style={{marginTop:14,background:'#fff8f0',border:'1.5px solid #fed7aa'}}>
                   <div style={{fontWeight:800,color:'#92400e',marginBottom:12}}>
-                    🎯 Top 5 Prioritas Pembinaan Provinsi
+                    🎯 Top 5 Prioritas Pembinaan Lintas Madrasah
                   </div>
                   {rtlKanwil.issues.slice(0,5).map((r,i)=>(
                     <div key={i} style={{display:'flex',alignItems:'flex-start',gap:10,
@@ -4334,7 +4343,7 @@ function DashboardSupervisor({sesi, showToast}) {
         return (
           <div style={{marginBottom:12,padding:'9px 14px',borderRadius:9,
             background:'#fffbeb',border:'1.5px solid #fcd34d',fontSize:'.78rem',color:'#92400e'}}>
-            <b>⚙️ Fitur dinonaktifkan Kanwil:</b>{' '}
+            <b>⚙️ Fitur dinonaktifkan Admin:</b>{' '}
             {mati.map(k=>labelMap[k]||k).join(', ')}
           </div>
         );
@@ -7898,7 +7907,7 @@ function TabAnalitikKanwil({madrasahList, stats, filterSmt, filterTA, showToast}
         {allRataAll.length > 0 && (
           <div style={{marginTop:12,padding:'8px 12px',background:'var(--surface2)',borderRadius:8,
             fontSize:'.8rem',display:'flex',gap:20,flexWrap:'wrap'}}>
-            <span>📊 Rata-rata Provinsi: <b style={{color:warna(avg(allRataAll))}}>{avg(allRataAll).toFixed(1)}%</b></span>
+            <span>📊 Rata-rata Semua Madrasah: <b style={{color:warna(avg(allRataAll))}}>{avg(allRataAll).toFixed(1)}%</b></span>
             <span>📈 Tertinggi: <b style={{color:'#16a34a'}}>{Math.max(...allRataAll).toFixed(1)}%</b></span>
             <span>📉 Terendah: <b style={{color:'#dc2626'}}>{Math.min(...allRataAll).toFixed(1)}%</b></span>
           </div>
@@ -8080,7 +8089,7 @@ function TabTindakLanjutKanwil({madrasahList, showToast}) {
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,flexWrap:'wrap',gap:8}}>
         <div>
-          <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1rem'}}>✍️ Tindak Lanjut Kanwil per Madrasah</div>
+          <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1rem'}}>✍️ Tindak Lanjut Pembinaan per Madrasah</div>
           <div style={{fontSize:'.75rem',color:'var(--text3)',marginTop:2}}>
             Catat hasil pembinaan lanjutan kanwil untuk setiap madrasah
           </div>
@@ -8743,7 +8752,7 @@ function TabPortofolio({sesi, showToast}) {
               <div className="form-group">
                 <label>Penyelenggara</label>
                 <input value={form.penyelenggara} onChange={e=>setForm({...form,penyelenggara:e.target.value})}
-                  placeholder="Contoh: Kanwil Kemenag Aceh"/>
+                  placeholder="Contoh: Balai Diklat Keagamaan Aceh"/>
               </div>
               <div className="form-group">
                 <label>Link Bukti (URL)</label>
