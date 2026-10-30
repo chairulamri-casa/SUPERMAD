@@ -2724,7 +2724,7 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
 
       {/* Tab */}
       <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
-        {[['dashboard','📊 Dashboard'],['wilayah','🗺️ Per Wilayah'],['grafik','📈 Grafik'],['analitik','🔬 Analitik'],['rtl','📋 RTL Lintas Madrasah'],['tindaklanjut','✍️ Tindak Lanjut'],['madrasah','🏫 Madrasah'],['fitur','⚙️ Kelola Fitur']].map(([key,label])=>(
+        {[['dashboard','📊 Dashboard'],['wilayah','🗺️ Per Wilayah'],['grafik','📈 Grafik'],['analitik','🔬 Analitik'],['rtl','📋 RTL Lintas Madrasah'],['tindaklanjut','✍️ Tindak Lanjut'],['madrasah','🏫 Madrasah'],['dokwajib','📁 Dokumen Wajib'],['fitur','⚙️ Kelola Fitur']].map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',
               fontWeight:700,fontSize:'.8rem',fontFamily:'inherit',
@@ -3457,6 +3457,8 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
           </div>
         </div>
       )}
+
+      {tab==='dokwajib' && <TabDokumenWajib showToast={showToast} />}
 
       {/* TAB KELOLA FITUR */}
       {tab==='fitur' && (
@@ -4500,6 +4502,7 @@ function DashboardSupervisor({sesi, showToast}) {
       <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
         {[
           ['kepatuhan',  '📈 Kepatuhan Guru',     true],
+          ['piagam',     '🏅 Penetapan Piagam',   true],
           ['jadwal',     '🗓️ Jadwal',            fiturAktif.jadwal !== false],
           ['daftar',     '📋 Belum Supervisi',    fiturAktif.supervisi !== false],
           ['sudah',      '✅ Sudah Supervisi',     fiturAktif.supervisi !== false],
@@ -4673,20 +4676,14 @@ function DashboardSupervisor({sesi, showToast}) {
                         border:'none',borderRadius:7,cursor:'pointer',fontSize:'.75rem',fontWeight:700}}>
                       📋 RTL
                     </button>
-                    {!isDraft && guru && kepMap[String(guru.id)] && (()=>{
+                    {!isDraft && guru && kepMap[String(guru.id)] && kepMap[String(guru.id)].skorSupervisi!=null && (()=>{
                       const kp = kepMap[String(guru.id)];
-                      const total = skorPiagam(capaian, kp.skor);
-                      return total >= PIAGAM_BATAS ? (
-                        <button onClick={()=>cetakPiagam(sesi, s, guru, showToast, kp)}
-                          title={'Skor piagam '+total+' (supervisi '+capaian.toFixed(1)+', kepatuhan '+kp.skor+')'}
-                          style={{padding:'5px 12px',background:'#fffbeb',color:'#92400e',
-                            border:'1.5px solid #d4a017',borderRadius:7,cursor:'pointer',fontSize:'.75rem',fontWeight:700}}>
-                          🏅 Piagam ({total})
-                        </button>
-                      ) : (
-                        <span title={'Skor piagam '+total+' (supervisi '+capaian.toFixed(1)+', kepatuhan '+kp.skor+'); minimal '+PIAGAM_BATAS}
-                          style={{padding:'5px 10px',borderRadius:7,fontSize:'.72rem',color:'var(--text3)',
-                            border:'1px dashed var(--border)'}}>🎯 Skor piagam {total}</span>
+                      const ok = kp.skorSupervisi >= PIAGAM_BATAS;
+                      return (
+                        <span title={'Skor piagam supervisi '+kp.skorSupervisi+' (capaian '+kp.capSup+', RTL ditanggapi '+kp.komponen.rtl+'%). Penerima ditetapkan di menu Penetapan Piagam.'}
+                          style={{padding:'5px 10px',borderRadius:7,fontSize:'.72rem',fontWeight:700,
+                            color:ok?'#92400e':'var(--text3)',background:ok?'#fffbeb':'transparent',
+                            border:ok?'1.5px solid #d4a017':'1px dashed var(--border)'}}>{ok?'🏅':'🎯'} Skor piagam {kp.skorSupervisi}</span>
                       );
                     })()}
                     <button onClick={hapusSupervisi}
@@ -4831,6 +4828,11 @@ function DashboardSupervisor({sesi, showToast}) {
       {/* TAB REKAP NILAI */}
       {tab === 'kepatuhan' && (
         <TabKepatuhanGuru sesi={sesi} guruList={guruList} showToast={showToast}
+          defaultTA={filterTA} defaultSmt={filterSmt} />
+      )}
+
+      {tab === 'piagam' && (
+        <TabPenetapanPiagam sesi={sesi} guruList={guruList} showToast={showToast}
           defaultTA={filterTA} defaultSmt={filterSmt} />
       )}
 
@@ -6623,6 +6625,9 @@ function DashboardGuru({sesi, showToast}) {
         rtlBelum={rtlList.filter(r=>(r.konfirmasi_guru||'belum')==='belum').length}
         onBuka={t=>setTab(t)} />
 
+      {/* Skor kepatuhan & piagam yang diterima */}
+      <PiagamSaya sesi={sesi} showToast={showToast} onBuka={t=>setTab(t)} />
+
       {/* Kelas & Mapel yang diampu (dari Penugasan operator) */}
       <div className="card" style={{marginBottom:12,padding:'12px 16px'}}>
         <div style={{fontWeight:800,color:'var(--p3)',fontSize:'.85rem',marginBottom:8}}>
@@ -6724,23 +6729,7 @@ function DashboardGuru({sesi, showToast}) {
                         </div>
                       ))}
                     </div>
-                    <KotakSkorPiagam sup={s} kep={kepGuru[(s.tahun_ajaran||'')+'|'+(s.semester||'')]}
-                      onCetak={()=>cetakPiagam(sesi, s, sesi.pengguna, showToast, kepGuru[(s.tahun_ajaran||'')+'|'+(s.semester||'')])}
-                      onSimpan={async()=>{
-                        const kp = kepGuru[(s.tahun_ajaran||'')+'|'+(s.semester||'')];
-                        const judul = 'Piagam Penghargaan Supervisi & Kepatuhan Pembelajaran — '+(s.semester||'')+' '+(s.tahun_ajaran||'');
-                        const {data:ada} = await sb.from('supermad_portofolio').select('id')
-                          .eq('guru_id', sesi.pengguna.id).eq('judul', judul).limit(1);
-                        if (ada && ada.length) { showToast('Piagam ini sudah ada di e-Portofolio Anda.','warning'); return; }
-                        const {error} = await sb.from('supermad_portofolio').insert({
-                          guru_id: sesi.pengguna.id, madrasah_id: sesi.mad.id, judul, kategori:'Penghargaan',
-                          tanggal: s.tanggal_supervisi || null, penyelenggara: sesi.mad.nama,
-                          deskripsi: 'Skor akumulasi '+skorPiagam(cap, kp?.skor)+' (supervisi PM-KBC '+cap.toFixed(1)+', kepatuhan administrasi '+(kp?.skor??'—')+'). Supervisor: '+(s.nama_supervisor||'—')+'.',
-                          link_bukti: '',
-                        });
-                        if (error) { showToast('Gagal: '+error.message,'error'); return; }
-                        showToast('✅ Piagam ditambahkan ke e-Portofolio PKB');
-                      }} />
+                    <KotakSkorPiagam sup={s} kep={kepGuru[(s.tahun_ajaran||'')+'|'+(s.semester||'')]} />
                   </div>
                 );
               })}
@@ -8461,6 +8450,8 @@ function TabDokumenGuru({sesi, showToast}) {
   const [form, setForm]         = React.useState({status:'lengkap', file_url:'', catatan:''});
   const [filterGrup, setFilterGrup] = React.useState('Perencanaan');
   const [filterTA, setFilterTA] = React.useState(getTASekarang());
+  const [dokWajib, setDokWajib] = React.useState(DOK_WAJIB_DEFAULT);
+  React.useEffect(()=>{ muatDokumenWajib().then(setDokWajib); }, []);
 
   React.useEffect(()=>{ loadData(filterTA); }, [filterTA]);
 
@@ -8618,6 +8609,9 @@ function TabDokumenGuru({sesi, showToast}) {
           <span>❌ Belum: <b>{total-lengkap-sebagian}</b></span>
           <span>Total: <b>{total}</b></span>
         </div>
+        <div style={{fontSize:'.72rem',color:'#92400e',marginTop:6}}>
+          ⭐ Dokumen bertanda <b>Wajib</b> dihitung dalam Skor Kepatuhan (Piagam Kepatuhan Terbaik) <b>bila dilampiri link bukti</b>.
+        </div>
       </div>
 
       {/* Filter grup */}
@@ -8644,7 +8638,11 @@ function TabDokumenGuru({sesi, showToast}) {
               borderLeft:'4px solid '+(st==='lengkap'?'#16a34a':st==='sebagian'?'#d97706':'#e5e7eb')}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
                 <div style={{flex:1}}>
-                  <div style={{fontWeight:700,fontSize:'.85rem'}}>{i+1}. {dok.nama}</div>
+                  <div style={{fontWeight:700,fontSize:'.85rem'}}>{i+1}. {dok.nama}
+                    {dokWajib.includes(dok.kode) && <span title="Dihitung dalam Skor Kepatuhan bila ada link bukti"
+                      style={{marginLeft:6,padding:'1px 8px',borderRadius:20,fontSize:'.66rem',fontWeight:800,
+                      background:'#fef3c7',color:'#92400e',border:'1px solid #fcd34d'}}>⭐ Wajib</span>}
+                  </div>
                   {existing?.catatan && (
                     <div style={{fontSize:'.72rem',color:'var(--text2)',marginTop:2}}>
                       💬 {existing.catatan}
@@ -9072,72 +9070,6 @@ function cocokkanGuru(daftar, nama) {
 }
 
 // ── PIAGAM PENGHARGAAN SUPERVISI (predikat Sangat Baik) ──
-async function cetakPiagam(sesi, sup, guru, showToast, kep) {
-  const w = window.open('','_blank');
-  if (!w) { showToast && showToast('Izinkan pop-up untuk mencetak','warning'); return; }
-  w.document.write('<p style="font-family:Arial;padding:20px">⏳ Menyiapkan piagam...</p>');
-  const ttd = await getPenandatangan(sesi);
-  const mad = ttd.mad;
-  const cap = parseFloat(sup.capaian_rata)||0;
-  const tglSup = sup.tanggal_supervisi ? new Date(sup.tanggal_supervisi+'T00:00:00').toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'}) : '';
-  const tgl = new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
-  const kode = String(sup.id||'').replace(/-/g,'').slice(0,8).toUpperCase();
-  const nipG = guru.nip ? 'NIP. '+guru.nip : (guru.nuptk ? 'NUPTK. '+guru.nuptk : '');
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Piagam — ${escHtml(guru.nama)}</title>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Great+Vibes&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
-<style>
-@page{size:A4 landscape;margin:0}*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:#f3f4f6}
-.hal{width:297mm;height:210mm;margin:0 auto;background:#fffdf7;position:relative;overflow:hidden;font-family:'Lora',Georgia,serif;color:#1f2937}
-.bingkai{position:absolute;inset:9mm;border:3px solid #0f4238;outline:1.5px solid #c9a227;outline-offset:-7px}
-.sudut{position:absolute;width:26mm;height:26mm;border:3px solid #c9a227}
-.s1{top:13mm;left:13mm;border-right:none;border-bottom:none}.s2{top:13mm;right:13mm;border-left:none;border-bottom:none}
-.s3{bottom:13mm;left:13mm;border-right:none;border-top:none}.s4{bottom:13mm;right:13mm;border-left:none;border-top:none}
-.isi{position:absolute;inset:22mm 28mm;text-align:center;display:flex;flex-direction:column;align-items:center}
-.mad{font-family:'Cinzel',serif;font-weight:700;font-size:13pt;letter-spacing:2px;color:#0f4238;text-transform:uppercase}
-.almt{font-size:8.5pt;color:#6b7280;margin-top:2px}
-.judul{font-family:'Cinzel',serif;font-weight:900;font-size:34pt;letter-spacing:6px;color:#0f4238;margin-top:8mm;line-height:1}
-.subj{font-size:11pt;letter-spacing:4px;color:#a16207;margin-top:3mm;text-transform:uppercase}
-.diberikan{font-size:11pt;margin-top:8mm;color:#374151}
-.nama{font-family:'Great Vibes',cursive;font-size:40pt;color:#0f4238;margin-top:2mm;line-height:1.1}
-.nip{font-size:10pt;color:#4b5563;margin-top:1mm}
-.garis{width:150mm;height:1.5px;background:linear-gradient(90deg,transparent,#c9a227,transparent);margin:3mm auto}
-.teks{font-size:11.5pt;line-height:1.65;max-width:210mm;color:#374151}
-.teks b{color:#0f4238}
-.ttd{position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:1fr 1fr;font-size:10pt;text-align:center}
-.sp{height:20mm}
-.kode{position:absolute;bottom:12mm;left:0;right:0;text-align:center;font-size:7.5pt;color:#9ca3af;letter-spacing:1px}
-.no-print{position:fixed;top:10px;left:10px;z-index:9}
-@media print{.no-print{display:none}html,body{background:#fff}}
-</style></head><body>
-<div class="no-print"><button onclick="window.print()" style="padding:8px 18px;background:#0f4238;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">🖨️ Cetak / PDF</button>
-<button onclick="window.close()" style="padding:8px 14px;border:1px solid #ccc;border-radius:6px;cursor:pointer;margin-left:6px;background:#fff">✕ Tutup</button></div>
-<div class="hal">
-  <div class="bingkai"></div><div class="sudut s1"></div><div class="sudut s2"></div><div class="sudut s3"></div><div class="sudut s4"></div>
-  <div class="isi">
-    <div class="mad">${escHtml(mad.nama||'')}</div>
-    <div class="almt">${escHtml([mad.alamat,[mad.kota_kab,mad.provinsi].filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</div>
-    <div class="judul">PIAGAM</div>
-    <div class="subj">Penghargaan</div>
-    <div class="diberikan">diberikan kepada</div>
-    <div class="nama">${escHtml(guru.nama||'')}</div>
-    <div class="nip">${escHtml(nipG)}${guru.mapel?' · Guru '+escHtml(guru.mapel):''}</div>
-    <div class="garis"></div>
-    <div class="teks">atas prestasi <b>SANGAT BAIK</b> dalam Supervisi Pembelajaran berbasis Kurikulum Berbasis Cinta dan
-      Pembelajaran Mendalam (PM-KBC) serta Kepatuhan Administrasi Pembelajaran pada Semester ${escHtml(sup.semester||'')}
-      Tahun Pelajaran ${escHtml(sup.tahun_ajaran||'')}, dengan <b>skor akumulasi ${kep ? skorPiagam(cap, kep.skor) : cap.toFixed(1)}</b>
-      (supervisi ${cap.toFixed(1)}${kep ? ', kepatuhan '+kep.skor : ''}).
-      Semoga menjadi teladan dan terus menginspirasi peningkatan mutu pembelajaran.</div>
-    <div class="ttd">
-      <div>Supervisor,<br>${escHtml(sup.jabatan_supervisor||'')}<div class="sp"></div><b>${escHtml(sup.nama_supervisor||'.............................')}</b>${sup.nip_supervisor?'<br>NIP. '+escHtml(sup.nip_supervisor):''}</div>
-      <div>${escHtml(mad.kota_kab||'..............')}, ${tgl}<br>Kepala Madrasah<div class="sp"></div><b>${escHtml(ttd.kepalaNama||'.............................')}</b><br>NIP. ${escHtml(ttd.kepalaNip||'—')}</div>
-    </div>
-  </div>
-  <div class="kode">Kode verifikasi: SPMD-${kode} · dihasilkan oleh SUPERMAD</div>
-</div></body></html>`;
-  w.document.open(); w.document.write(html); w.document.close();
-}
-
 // ── PETA SKEMATIS SEBARAN MADRASAH PER KABUPATEN/KOTA (Aceh) ──
 const PETA_ACEH = [
   ['Kota Sabang',0,0],['Kota Banda Aceh',1,0],
@@ -9373,9 +9305,24 @@ async function hitungKelengkapanNilai(madId, ta, smtNama, penugasan, atur) {
 
 // ── SKOR KEPATUHAN & SKOR PIAGAM ─────────────────────────────
 // Ubah angka di bawah bila kebijakan madrasah berbeda
-const PIAGAM_BOBOT_SUPERVISI = 0.7;   // 70% capaian supervisi (rata-rata)
-const PIAGAM_BOBOT_KEPATUHAN = 0.3;   // 30% skor kepatuhan administrasi
-const PIAGAM_BATAS           = 85;    // skor minimal untuk mendapat piagam
+// Dua jalur piagam, ditetapkan kepala madrasah di akhir semester berdasarkan peringkat
+const PIAGAM_BOBOT_SUPERVISI = 0.8;   // Piagam Supervisi Terbaik: 80% capaian supervisi
+const PIAGAM_BOBOT_RTL       = 0.2;   //                           20% RTL ditanggapi
+const PIAGAM_BATAS           = 85;    // skor minimal penerima (kedua jalur)
+const PIAGAM_PERSEN          = 0.10;  // kuota penerima ±10% guru aktif
+const PIAGAM_MAKS            = 5;     // ...minimal 1, maksimal 5 per jalur
+const DOK_WAJIB_DEFAULT = ['prota','promes','atp','modul_ajar','daftar_nilai','inst_formatif','sumatif_tes'];
+let _dokWajibCache = null;
+async function muatDokumenWajib(paksa) {
+  if (_dokWajibCache && !paksa) return _dokWajibCache;
+  try {
+    const {data, error} = await sb.from('supermad_pengaturan').select('nilai').eq('kunci','dokumen_wajib').maybeSingle();
+    const kode = (!error && data && data.nilai && Array.isArray(data.nilai.kode)) ? data.nilai.kode : DOK_WAJIB_DEFAULT;
+    _dokWajibCache = kode;
+    return kode;
+  } catch(e) { return DOK_WAJIB_DEFAULT; }
+}
+function namaDokumen(kode) { const d = DAFTAR_DOKUMEN.find(x=>x.kode===kode); return d ? d.nama : kode; }
 
 // Tanggal acuan keaktifan: hari ini, atau akhir semester bila semester sudah lewat
 function tanggalAcuan(ta, smt) {
@@ -9398,14 +9345,23 @@ async function hitungKepatuhanGuru(madId, ta, smt, guruList, hanyaGuruId) {
     if (hanyaGuruId) q = q.eq('guru_id', hanyaGuruId);
     return q.order('id');
   };
-  // RTL dihitung sama seperti yang dilihat guru: RTL tersimpan + RTL otomatis dari supervisi yang belum punya RTL
+  // Supervisi selesai pada semester ini (untuk Piagam Supervisi Terbaik)
   const qSup = () => {
-    let q = sb.from('supermad_supervisi').select('id,guru_id,skor_perencanaan,skor_pelaksanaan,skor_asesmen')
-      .eq('madrasah_id', madId).eq('status','selesai');
+    let q = sb.from('supermad_supervisi').select('*')
+      .eq('madrasah_id', madId).eq('status','selesai').eq('tahun_ajaran', ta).eq('semester', smt);
     if (hanyaGuruId) q = q.eq('guru_id', hanyaGuruId);
     return q.order('id');
   };
-  let [jurnal, pen, sups] = await Promise.all([ambilSemua(qJurnal), muatPenugasanMadrasah(madId, ta), ambilSemua(qSup)]);
+  const qDok = () => {
+    let q = sb.from('supermad_dokumen').select('id,guru_id,kode_dok,status,file_url')
+      .eq('madrasah_id', madId).eq('tahun_ajaran', ta);
+    if (hanyaGuruId) q = q.eq('guru_id', hanyaGuruId);
+    return q.order('id');
+  };
+  let [jurnal, pen, sups, dok, dokWajib] = await Promise.all([
+    ambilSemua(qJurnal), muatPenugasanMadrasah(madId, ta), ambilSemua(qSup),
+    ambilSemua(qDok).catch(()=>[]), muatDokumenWajib()]);
+  // RTL dihitung sama seperti yang dilihat guru: RTL tersimpan + RTL otomatis dari supervisi yang belum punya RTL
   let rtl = [];
   const supIds = sups.map(x=>x.id);
   for (let i=0; i<supIds.length; i+=150) {
@@ -9438,90 +9394,491 @@ async function hitungKepatuhanGuru(madId, ta, smt, guruList, hanyaGuruId) {
     const terakhir = jg.reduce((m,j)=>(!m||j.tanggal>m)?j.tanggal:m, null);
     const hari = hariSejakAcuan(terakhir, acuan);
     const status = hari==null ? 'tidak' : hari<=7 ? 'aktif' : hari<=14 ? 'kurang' : 'tidak';
-    const rtlG = rtl.filter(r=>String(r.guru_id)===gid);
-    const rtlBelum = rtlG.filter(r=>(r.konfirmasi_guru||'belum')==='belum').length;
-    const formatif = persen('formatif'), sts = persen('sts'), sas = persen('sas');
+    const formatif = persen('formatif'), sts = persen('sts'), sas = persen('sas'), proyek = persen('proyek');
     const jurnalTerisi = jg.filter(isiJurnal).length;
-    // Komponen skor kepatuhan (0–100)
+    // ---- Komponen skor kepatuhan (0–100) ----
     const kKeaktifan = status==='aktif' ? 100 : status==='kurang' ? 50 : 0;
     const kJurnal    = jg.length ? Math.round(jurnalTerisi / jg.length * 100) : 0;
-    const proyek = persen('proyek');
     const nilaiWajib = [['formatif',formatif],['sts',sts],['proyek',proyek],['sas',sas]]
       .filter(([k,v])=>wajib[k] && v!=null).map(([,v])=>v);
     const kNilai     = nilaiWajib.length ? Math.round(nilaiWajib.reduce((a,b)=>a+b,0)/nilaiWajib.length) : null;
-    const kRtl       = rtlG.length ? Math.round((rtlG.length - rtlBelum) / rtlG.length * 100) : 100;
-    const komponen   = [kKeaktifan, kJurnal, kNilai, kRtl].filter(v=>v!=null);
+    // Dokumen wajib (ditentukan Admin SUPERMAD): dihitung bila ada link bukti; lengkap = 1, sebagian = ½
+    const dg = dok.filter(d=>String(d.guru_id)===gid);
+    const nilaiDok = kode => { const d = dg.find(x=>x.kode_dok===kode); if (!d || !d.file_url) return 0;
+      return d.status==='lengkap' ? 1 : d.status==='sebagian' ? 0.5 : 0; };
+    const kDok = dokWajib.length ? Math.round(dokWajib.reduce((a,k)=>a+nilaiDok(k),0)/dokWajib.length*100) : null;
+    const dokKurang = dokWajib.filter(k=>nilaiDok(k)<1);
+    const komponen   = [kKeaktifan, kJurnal, kNilai, kDok].filter(v=>v!=null);
     const skor = Math.round(komponen.reduce((a,b)=>a+b,0) / komponen.length);
+    // ---- Jalur supervisi: capaian supervisi + RTL ditanggapi ----
+    const sg = sups.filter(x=>String(x.guru_id)===gid)
+      .sort((a,b)=>String(a.tanggal_supervisi||'').localeCompare(String(b.tanggal_supervisi||'')));
+    const rtlG = rtl.filter(r=>String(r.guru_id)===gid);
+    const rtlBelum = rtlG.filter(r=>(r.konfirmasi_guru||'belum')==='belum').length;
+    const capSup = sg.length ? Math.round(sg.reduce((a,x)=>a+(parseFloat(x.capaian_rata)||0),0)/sg.length*10)/10 : null;
+    const kRtl = rtlG.length ? Math.round((rtlG.length - rtlBelum) / rtlG.length * 100) : (sg.length ? 100 : null);
+    const skorSupervisi = capSup==null ? null : Math.round((capSup*PIAGAM_BOBOT_SUPERVISI + kRtl*PIAGAM_BOBOT_RTL)*10)/10;
     return {
-      id: g.id, nama: g.nama, mapel: g.mapel,
+      id: g.id, nama: g.nama, mapel: g.mapel, nip: g.nip||'', nuptk: g.nuptk||'',
       kelasDiampu: ng.length,
       diabsen: jg.filter(absen).length,
       jurnal: jurnalTerisi,
       jurnalTertunda: jg.filter(j=>absen(j) && !isiJurnal(j)).length,
       formatif, sts, sas, proyek, rtlBelum, terakhir, hari, status, wajib, formatifMin: atur.formatifMin,
       pertemuan: jg.length,
-      komponen: {keaktifan:kKeaktifan, jurnal:kJurnal, nilai:kNilai, rtl:kRtl},
+      dokKurang, dokWajib,
+      komponen: {keaktifan:kKeaktifan, jurnal:kJurnal, nilai:kNilai, dokumen:kDok, rtl:kRtl},
       skor,
+      capSup, jmlSup: sg.length, supTerakhir: sg.length ? sg[sg.length-1] : null, skorSupervisi,
     };
   });
 }
-function skorPiagam(capSupervisi, skorKepatuhan) {
-  return Math.round(((parseFloat(capSupervisi)||0) * PIAGAM_BOBOT_SUPERVISI + (skorKepatuhan||0) * PIAGAM_BOBOT_KEPATUHAN) * 10) / 10;
+// Peringkat penerima piagam untuk satu jalur ('supervisi' | 'kepatuhan')
+function tentukanPenerima(rows, jalur, porto) {
+  const nilaiDari = r => jalur==='supervisi' ? r.skorSupervisi : r.skor;
+  const kuota = Math.min(PIAGAM_MAKS, Math.max(1, Math.round(rows.length*PIAGAM_PERSEN)));
+  const urut = rows.filter(r=>nilaiDari(r)!=null)
+    .map(r=>({...r, nilaiJalur: nilaiDari(r), porto: (porto||{})[String(r.id)]||0}))
+    .sort((a,b)=>b.nilaiJalur-a.nilaiJalur || b.porto-a.porto || String(a.nama).localeCompare(String(b.nama)));
+  urut.forEach((r,i)=>{ r.peringkat = i+1; });
+  let batas = null; const ok = new Set();
+  urut.filter(r=>r.nilaiJalur>=PIAGAM_BATAS).forEach((r,i)=>{
+    if (i<kuota) { ok.add(r.id); batas = r; }
+    else if (batas && r.nilaiJalur===batas.nilaiJalur && r.porto===batas.porto) ok.add(r.id); // nilai sama persis → ikut
+  });
+  urut.forEach(r=>{ r.penerima = ok.has(r.id); });
+  return {kuota, urut};
 }
-
+// Jumlah item e-Portofolio per guru dalam satu tahun ajaran (penentu bila nilai sama)
+async function hitungPortofolio(madId, ta) {
+  const y = parseInt(String(ta).slice(0,4))||new Date().getFullYear();
+  try {
+    const rows = await ambilSemua(()=>sb.from('supermad_portofolio').select('id,guru_id,tanggal')
+      .eq('madrasah_id', madId).gte('tanggal', y+'-07-01').lte('tanggal', (y+1)+'-06-30').order('id'));
+    const m = {}; rows.forEach(r=>{ m[String(r.guru_id)] = (m[String(r.guru_id)]||0)+1; });
+    return m;
+  } catch(e) { return {}; }
+}
 // Kotak rincian skor piagam (dipakai di akun guru)
-function KotakSkorPiagam({sup, kep, onCetak, onSimpan}) {
-  if (!kep) return (
-    <div style={{marginTop:12,fontSize:'.75rem',color:'var(--text3)'}}>⏳ Menghitung skor piagam...</div>
-  );
-  const cap = parseFloat(sup.capaian_rata)||0;
-  const total = skorPiagam(cap, kep.skor);
-  const layak = total >= PIAGAM_BATAS;
-  const kurang = Math.max(0, Math.round((PIAGAM_BATAS - total)*10)/10);
-  const saran = [];
-  if (kep.pertemuan && kep.komponen.keaktifan < 100) saran.push('isi absensi/jurnal secara rutin setiap pekan');
-  if (!kep.pertemuan) saran.push('mulai isi absensi dan jurnal mengajar');
-  else if (kep.komponen.jurnal < 100) saran.push('lengkapi '+(kep.jurnalTertunda ? kep.jurnalTertunda+' ' : '')+'jurnal yang belum diisi');
-  if (kep.komponen.nilai != null && kep.komponen.nilai < 100) saran.push('lengkapi nilai sesuai aturan madrasah (formatif sampai '+(kep.formatifMin||3)+'× per siswa)');
-  if (kep.komponen.rtl < 100) saran.push('tanggapi RTL supervisi');
-  const bar = (lbl, v) => (
+function barSkor(lbl, v, w) {
+  return (
     <div style={{display:'flex',alignItems:'center',gap:6,fontSize:'.7rem'}}>
-      <span style={{width:92,color:'var(--text2)'}}>{lbl}</span>
+      <span style={{width:w||110,color:'var(--text2)'}}>{lbl}</span>
       <div style={{flex:1,height:6,background:'#e5e7eb',borderRadius:9,overflow:'hidden'}}>
         <div style={{width:(v||0)+'%',height:'100%',background:v>=90?'#16a34a':v>=60?'#d97706':'#dc2626'}}/>
       </div>
       <span style={{width:34,textAlign:'right',fontWeight:700}}>{v==null?'—':v}</span>
     </div>
   );
+}
+function KotakSkorPiagam({sup, kep}) {
+  if (!kep) return (
+    <div style={{marginTop:12,fontSize:'.75rem',color:'var(--text3)'}}>⏳ Menghitung skor piagam...</div>
+  );
+  if (kep.skorSupervisi==null) return null;
+  const capai = kep.skorSupervisi >= PIAGAM_BATAS;
   return (
     <div style={{marginTop:12,padding:'12px 14px',borderRadius:10,
-      background:layak?'#fffbeb':'#f8fafc',border:'1.5px solid '+(layak?'#d4a017':'var(--border)')}}>
-      <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:8}}>
-        <span style={{fontSize:'1.4rem'}}>{layak?'🏅':'🎯'}</span>
-        <div style={{flex:1,minWidth:200}}>
-          <div style={{fontWeight:800,fontSize:'.85rem',color:layak?'#92400e':'var(--p3)'}}>
-            Skor Piagam: {total} {layak ? '— Selamat, Anda berhak atas piagam!' : '— kurang '+kurang+' poin lagi'}
+      background:capai?'#fffbeb':'#f8fafc',border:'1.5px solid '+(capai?'#d4a017':'var(--border)')}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+        <span style={{fontSize:'1.4rem'}}>{capai?'🏅':'🎯'}</span>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:800,fontSize:'.85rem',color:capai?'#92400e':'var(--p3)'}}>
+            Skor Piagam Supervisi: {kep.skorSupervisi} {capai ? '— memenuhi syarat minimal' : '— minimal '+PIAGAM_BATAS}
           </div>
           <div style={{fontSize:'.7rem',color:'var(--text2)'}}>
-            {Math.round(PIAGAM_BOBOT_SUPERVISI*100)}% Supervisi ({cap.toFixed(1)}) + {Math.round(PIAGAM_BOBOT_KEPATUHAN*100)}% Kepatuhan ({kep.skor}) · minimal {PIAGAM_BATAS}
+            {Math.round(PIAGAM_BOBOT_SUPERVISI*100)}% capaian supervisi semester ini ({kep.capSup}{kep.jmlSup>1?', rata-rata '+kep.jmlSup+' kali':''}) + {Math.round(PIAGAM_BOBOT_RTL*100)}% RTL ditanggapi ({kep.komponen.rtl})
           </div>
         </div>
-        {layak && <>
-          <button className="btn btn-sm" style={{background:'#0f4238',color:'#fff'}} onClick={onCetak}>🖨️ Cetak Piagam</button>
-          <button className="btn btn-outline btn-sm" onClick={onSimpan}>🗂️ Simpan ke e-Portofolio</button>
-        </>}
       </div>
       <div style={{display:'flex',flexDirection:'column',gap:3}}>
-        {bar('Keaktifan', kep.komponen.keaktifan)}
-        {bar('Jurnal terisi', kep.komponen.jurnal)}
-        {bar('Kelengkapan nilai', kep.komponen.nilai)}
-        {bar('RTL ditanggapi', kep.komponen.rtl)}
+        {barSkor('Capaian supervisi', Math.round(kep.capSup))}
+        {barSkor('RTL ditanggapi', kep.komponen.rtl)}
       </div>
-      {!layak && saran.length>0 && (
-        <div style={{marginTop:8,fontSize:'.72rem',color:'var(--text2)'}}>
-          💡 Agar skor naik: {saran.join(', ')}.
+      <div style={{marginTop:8,fontSize:'.72rem',color:'var(--text2)',lineHeight:1.5}}>
+        {kep.komponen.rtl<100 && <>💡 Tanggapi RTL supervisi agar skor naik. </>}
+        🏅 <b>Piagam Supervisi Terbaik</b> diberikan kepada peringkat teratas (skor ≥ {PIAGAM_BATAS}) yang ditetapkan kepala madrasah di akhir semester.
+      </div>
+    </div>
+  );
+}
+
+// Cetak piagam dari data penetapan (jalur 'supervisi' atau 'kepatuhan')
+async function cetakPiagam(sesi, pen, showToast) {
+  const w = window.open('','_blank');
+  if (!w) { showToast && showToast('Izinkan pop-up untuk mencetak','warning'); return; }
+  w.document.write('<p style="font-family:Arial;padding:20px">⏳ Menyiapkan piagam...</p>');
+  const ttd = await getPenandatangan(sesi);
+  const mad = ttd.mad;
+  const r = pen.rincian || {};
+  const sup = r.sup || {};
+  const jalurSup = pen.jalur === 'supervisi';
+  const tgl = new Date(pen.ditetapkan_pada||Date.now()).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
+  const kode = String(pen.id||'').replace(/-/g,'').slice(0,8).toUpperCase();
+  const nipG = r.nip ? 'NIP. '+r.nip : (r.nuptk ? 'NUPTK. '+r.nuptk : '');
+  const smtT = escHtml(pen.semester||''), taT = escHtml(pen.tahun_ajaran||'');
+  const teks = jalurSup
+    ? `sebagai <b>GURU TERBAIK</b> dalam Supervisi Pembelajaran berbasis Kurikulum Berbasis Cinta dan Pembelajaran Mendalam (PM-KBC)
+       beserta tindak lanjutnya pada Semester ${smtT} Tahun Pelajaran ${taT}, dengan <b>skor ${escHtml(String(pen.skor))}</b>
+       (capaian supervisi ${escHtml(String(r.capSup??'—'))}, RTL ditanggapi ${escHtml(String(r.rtl??'—'))}%).
+       Semoga menjadi teladan dan terus menginspirasi peningkatan mutu pembelajaran.`
+    : `sebagai <b>GURU TERBAIK</b> dalam Kepatuhan dan Kedisiplinan Administrasi Pembelajaran — keaktifan mengajar, jurnal,
+       kelengkapan nilai, dan dokumen pembelajaran — pada Semester ${smtT} Tahun Pelajaran ${taT}, dengan <b>skor ${escHtml(String(pen.skor))}</b>.
+       Semoga menjadi teladan dan terus menginspirasi budaya disiplin di madrasah.`;
+  const kolomTtd = jalurSup
+    ? `<div>Supervisor,<br>${escHtml(sup.jabatan_supervisor||'')}<div class="sp"></div><b>${escHtml(sup.nama_supervisor||'.............................')}</b>${sup.nip_supervisor?'<br>NIP. '+escHtml(sup.nip_supervisor):''}</div>`
+    : `<div></div>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Piagam — ${escHtml(r.nama||'')}</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Great+Vibes&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+@page{size:A4 landscape;margin:0}*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#f3f4f6}
+.hal{width:297mm;height:210mm;margin:0 auto;background:#fffdf7;position:relative;overflow:hidden;font-family:'Lora',Georgia,serif;color:#1f2937}
+.bingkai{position:absolute;inset:9mm;border:3px solid ${jalurSup?'#0f4238':'#1e3a8a'};outline:1.5px solid #c9a227;outline-offset:-7px}
+.sudut{position:absolute;width:26mm;height:26mm;border:3px solid #c9a227}
+.s1{top:13mm;left:13mm;border-right:none;border-bottom:none}.s2{top:13mm;right:13mm;border-left:none;border-bottom:none}
+.s3{bottom:13mm;left:13mm;border-right:none;border-top:none}.s4{bottom:13mm;right:13mm;border-left:none;border-top:none}
+.isi{position:absolute;inset:22mm 28mm;text-align:center;display:flex;flex-direction:column;align-items:center}
+.mad{font-family:'Cinzel',serif;font-weight:700;font-size:13pt;letter-spacing:2px;color:${jalurSup?'#0f4238':'#1e3a8a'};text-transform:uppercase}
+.almt{font-size:8.5pt;color:#6b7280;margin-top:2px}
+.judul{font-family:'Cinzel',serif;font-weight:900;font-size:34pt;letter-spacing:6px;color:${jalurSup?'#0f4238':'#1e3a8a'};margin-top:7mm;line-height:1}
+.subj{font-size:11pt;letter-spacing:4px;color:#a16207;margin-top:3mm;text-transform:uppercase}
+.diberikan{font-size:11pt;margin-top:7mm;color:#374151}
+.nama{font-family:'Great Vibes',cursive;font-size:40pt;color:${jalurSup?'#0f4238':'#1e3a8a'};margin-top:2mm;line-height:1.1}
+.nip{font-size:10pt;color:#4b5563;margin-top:1mm}
+.garis{width:150mm;height:1.5px;background:linear-gradient(90deg,transparent,#c9a227,transparent);margin:3mm auto}
+.teks{font-size:11.5pt;line-height:1.65;max-width:215mm;color:#374151}
+.teks b{color:${jalurSup?'#0f4238':'#1e3a8a'}}
+.ttd{position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:1fr 1fr;font-size:10pt;text-align:center}
+.sp{height:20mm}
+.kode{position:absolute;bottom:12mm;left:0;right:0;text-align:center;font-size:7.5pt;color:#9ca3af;letter-spacing:1px}
+.no-print{position:fixed;top:10px;left:10px;z-index:9}
+@media print{.no-print{display:none}html,body{background:#fff}}
+</style></head><body>
+<div class="no-print"><button onclick="window.print()" style="padding:8px 18px;background:#0f4238;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">🖨️ Cetak / PDF</button>
+<button onclick="window.close()" style="padding:8px 14px;border:1px solid #ccc;border-radius:6px;cursor:pointer;margin-left:6px;background:#fff">✕ Tutup</button></div>
+<div class="hal">
+  <div class="bingkai"></div><div class="sudut s1"></div><div class="sudut s2"></div><div class="sudut s3"></div><div class="sudut s4"></div>
+  <div class="isi">
+    <div class="mad">${escHtml(mad.nama||'')}</div>
+    <div class="almt">${escHtml([mad.alamat,[mad.kota_kab,mad.provinsi].filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</div>
+    <div class="judul">PIAGAM</div>
+    <div class="subj">${jalurSup?'Supervisi Pembelajaran Terbaik':'Kepatuhan Pembelajaran Terbaik'}</div>
+    <div class="diberikan">diberikan kepada</div>
+    <div class="nama">${escHtml(r.nama||'')}</div>
+    <div class="nip">${escHtml(nipG)}${r.mapel?' · Guru '+escHtml(r.mapel):''}</div>
+    <div class="garis"></div>
+    <div class="teks">${teks}</div>
+    <div class="ttd">
+      ${kolomTtd}
+      <div>${escHtml(mad.kota_kab||'..............')}, ${tgl}<br>Kepala Madrasah<div class="sp"></div><b>${escHtml(ttd.kepalaNama||'.............................')}</b><br>NIP. ${escHtml(ttd.kepalaNip||'—')}</div>
+    </div>
+  </div>
+  <div class="kode">Kode verifikasi: SPMD-${kode} · dihasilkan oleh SUPERMAD</div>
+</div></body></html>`;
+  w.document.open(); w.document.write(html); w.document.close();
+}
+
+async function simpanPiagamKePortofolio(sesi, pen, showToast) {
+  const judul = 'Piagam '+(pen.jalur==='supervisi'?'Supervisi Pembelajaran Terbaik':'Kepatuhan Pembelajaran Terbaik')+' — '+pen.semester+' '+pen.tahun_ajaran;
+  const {data:ada} = await sb.from('supermad_portofolio').select('id').eq('guru_id', sesi.pengguna.id).eq('judul', judul).limit(1);
+  if (ada && ada.length) { showToast('Piagam ini sudah ada di e-Portofolio Anda.','warning'); return; }
+  const {error} = await sb.from('supermad_portofolio').insert({
+    guru_id: sesi.pengguna.id, madrasah_id: sesi.mad.id, judul, kategori:'Penghargaan',
+    tanggal: String(pen.ditetapkan_pada||'').slice(0,10) || null, penyelenggara: sesi.mad.nama,
+    deskripsi: 'Peringkat '+pen.peringkat+' dengan skor '+pen.skor+'. Ditetapkan oleh '+(pen.ditetapkan_oleh||'kepala madrasah')+'.',
+    link_bukti: '',
+  });
+  if (error) { showToast('Gagal: '+error.message,'error'); return; }
+  showToast('✅ Piagam ditambahkan ke e-Portofolio PKB');
+}
+
+// ── KOTAK "SKOR KEPATUHAN & PIAGAM SAYA" (dashboard guru) ──
+function PiagamSaya({sesi, showToast, onBuka}) {
+  const [kep, setKep] = React.useState(null);
+  const [daftar, setDaftar] = React.useState([]);
+  const ta = getTASekarang(), smt = semesterSekarang();
+  React.useEffect(()=>{ (async()=>{
+    try {
+      const rs = await hitungKepatuhanGuru(sesi.mad.id, ta, smt, [{...sesi.pengguna, aktif:true}], sesi.pengguna.id);
+      setKep(rs[0]||null);
+    } catch(e) { console.error('Skor kepatuhan:', e); }
+    const {data, error} = await sb.from('supermad_piagam_penetapan').select('*')
+      .eq('guru_id', String(sesi.pengguna.id)).order('ditetapkan_pada',{ascending:false});
+    if (!error) setDaftar(data||[]);
+  })(); }, []);
+  if (!kep && !daftar.length) return null;
+  const saran = [];
+  if (kep) {
+    if (!kep.pertemuan) saran.push('mulai isi absensi dan jurnal mengajar');
+    else {
+      if (kep.komponen.keaktifan < 100) saran.push('isi absensi/jurnal secara rutin setiap pekan');
+      if (kep.komponen.jurnal < 100) saran.push('lengkapi '+(kep.jurnalTertunda ? kep.jurnalTertunda+' ' : '')+'jurnal yang belum diisi');
+    }
+    if (kep.komponen.nilai != null && kep.komponen.nilai < 100) saran.push('lengkapi nilai sesuai aturan madrasah');
+    if (kep.dokKurang && kep.dokKurang.length) saran.push('lengkapi '+kep.dokKurang.length+' dokumen wajib beserta link buktinya ('+kep.dokKurang.map(namaDokumen).join(', ')+')');
+  }
+  const capai = kep && kep.skor >= PIAGAM_BATAS;
+  return (
+    <div className="card" style={{marginBottom:12,padding:'12px 16px',border:'1.5px solid '+(daftar.length?'#d4a017':'var(--border)'),
+      background:daftar.length?'#fffdf5':'#fff'}}>
+      {daftar.length>0 && (
+        <div style={{marginBottom:kep?12:0}}>
+          <div style={{fontWeight:800,color:'#92400e',fontSize:'.88rem',marginBottom:6}}>🏅 Piagam Anda</div>
+          {daftar.map(p=>(
+            <div key={p.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'7px 10px',
+              borderRadius:9,background:'#fffbeb',border:'1px solid #fde68a',marginBottom:5}}>
+              <div style={{flex:1,minWidth:200,fontSize:'.8rem'}}>
+                <b>{p.jalur==='supervisi'?'Supervisi Pembelajaran Terbaik':'Kepatuhan Pembelajaran Terbaik'}</b>
+                <span style={{color:'var(--text2)'}}> · {p.semester} {p.tahun_ajaran} · peringkat {p.peringkat} · skor {p.skor}</span>
+              </div>
+              <button className="btn btn-sm" style={{background:'#0f4238',color:'#fff'}} onClick={()=>cetakPiagam(sesi, p, showToast)}>🖨️ Cetak</button>
+              <button className="btn btn-outline btn-sm" onClick={()=>simpanPiagamKePortofolio(sesi, p, showToast)}>🗂️ e-Portofolio</button>
+            </div>
+          ))}
         </div>
       )}
+      {kep && <>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,flexWrap:'wrap'}}>
+          <span style={{fontSize:'1.3rem'}}>🏆</span>
+          <div style={{flex:1,minWidth:200}}>
+            <div style={{fontWeight:800,fontSize:'.86rem',color:'var(--p3)'}}>
+              Skor Kepatuhan Semester {smt} {ta}: <span style={{color:kep.skor>=90?'#16a34a':kep.skor>=60?'#d97706':'#dc2626'}}>{kep.skor}</span>
+            </div>
+            <div style={{fontSize:'.7rem',color:'var(--text2)'}}>
+              Piagam Kepatuhan Terbaik: peringkat teratas (skor ≥ {PIAGAM_BATAS}) ditetapkan kepala madrasah di akhir semester
+              {capai ? ' — skor Anda sudah memenuhi syarat minimal 👍' : ''}
+            </div>
+          </div>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:3}}>
+          {barSkor('Keaktifan', kep.komponen.keaktifan)}
+          {barSkor('Jurnal terisi', kep.komponen.jurnal)}
+          {barSkor('Kelengkapan nilai', kep.komponen.nilai)}
+          {barSkor('Dokumen wajib', kep.komponen.dokumen)}
+        </div>
+        {saran.length>0 && (
+          <div style={{marginTop:8,fontSize:'.72rem',color:'var(--text2)',lineHeight:1.5}}>
+            💡 Agar skor naik: {saran.join('; ')}.
+            {kep.dokKurang && kep.dokKurang.length>0 && onBuka && (
+              <button onClick={()=>onBuka('dokumen')} style={{marginLeft:6,border:'none',background:'none',color:'#2563eb',
+                fontWeight:700,cursor:'pointer',fontSize:'.72rem',padding:0}}>Buka Dok. Admin →</button>
+            )}
+          </div>
+        )}
+      </>}
+    </div>
+  );
+}
+
+// ── TAB PENETAPAN PIAGAM (kepala madrasah / supervisor) ──
+function TabPenetapanPiagam({sesi, guruList, showToast, defaultTA, defaultSmt}) {
+  const [ta, setTa]   = React.useState(defaultTA || getTASekarang());
+  const [smt, setSmt] = React.useState(defaultSmt || semesterSekarang());
+  const [hasil, setHasil]   = React.useState(null);   // {supervisi, kepatuhan}
+  const [tetap, setTetap]   = React.useState(null);   // baris penetapan tersimpan
+  const [galat, setGalat]   = React.useState('');
+  const [busy, setBusy]     = React.useState(false);
+
+  React.useEffect(()=>{ muat(); }, [ta, smt, guruList.length]);
+
+  async function muat() {
+    setHasil(null); setTetap(null); setGalat('');
+    const {data, error} = await sb.from('supermad_piagam_penetapan').select('*')
+      .eq('madrasah_id', String(sesi.mad.id)).eq('tahun_ajaran', ta).eq('semester', smt)
+      .order('jalur').order('peringkat');
+    if (error) { setGalat(error.message); setTetap([]); }
+    else { setTetap(data||[]); if (data && data.length) return; }
+    try {
+      const [rows, porto] = await Promise.all([hitungKepatuhanGuru(sesi.mad.id, ta, smt, guruList), hitungPortofolio(sesi.mad.id, ta)]);
+      setHasil({supervisi: tentukanPenerima(rows, 'supervisi', porto), kepatuhan: tentukanPenerima(rows, 'kepatuhan', porto), total: rows.length});
+    } catch(e) { console.error(e); showToast('Gagal menghitung peringkat: '+(e.message||e),'error'); }
+  }
+
+  async function tetapkan() {
+    const isi = [];
+    ['supervisi','kepatuhan'].forEach(j=>{
+      hasil[j].urut.filter(r=>r.penerima).forEach(r=>{
+        const s = r.supTerakhir;
+        isi.push({madrasah_id:String(sesi.mad.id), tahun_ajaran:ta, semester:smt, jalur:j, guru_id:String(r.id),
+          peringkat:r.peringkat, skor:r.nilaiJalur, ditetapkan_oleh:sesi.pengguna.nama||'',
+          rincian:{nama:r.nama, nip:r.nip, nuptk:r.nuptk, mapel:r.mapel, capSup:r.capSup, rtl:r.komponen.rtl,
+            komponen:r.komponen, porto:r.porto,
+            sup: s ? {id:s.id, nama_supervisor:s.nama_supervisor||'', jabatan_supervisor:s.jabatan_supervisor||'',
+                      nip_supervisor:s.nip_supervisor||'', tanggal_supervisi:s.tanggal_supervisi||''} : null}});
+      });
+    });
+    if (!isi.length) { showToast('Belum ada guru yang mencapai skor minimal '+PIAGAM_BATAS+'.','warning'); return; }
+    if (!window.confirm('Tetapkan '+isi.length+' penerima piagam untuk Semester '+smt+' '+ta+'?\nSetelah ditetapkan, hasil dikunci dan guru penerima dapat mencetak piagamnya.')) return;
+    setBusy(true);
+    const {error} = await sb.from('supermad_piagam_penetapan').insert(isi);
+    setBusy(false);
+    if (error) { showToast('Gagal menetapkan: '+error.message,'error'); return; }
+    showToast('✅ Penerima piagam ditetapkan dan dikunci');
+    muat();
+  }
+
+  async function batalkan() {
+    if (!window.confirm('Batalkan penetapan piagam Semester '+smt+' '+ta+'?\nPeringkat akan dihitung ulang dari data terbaru.')) return;
+    setBusy(true);
+    const {error} = await sb.from('supermad_piagam_penetapan').delete()
+      .eq('madrasah_id', String(sesi.mad.id)).eq('tahun_ajaran', ta).eq('semester', smt);
+    setBusy(false);
+    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    showToast('Penetapan dibatalkan');
+    muat();
+  }
+
+  const pilihTA = (()=>{const y=new Date().getFullYear();const l=[];for(let i=y+1;i>=y-2;i--)l.push(i+'/'+(i+1));return l;})();
+  const sel = {padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit',width:'auto'};
+  const th = {padding:'6px 8px',fontWeight:700,fontSize:'.72rem',textAlign:'center',whiteSpace:'nowrap'};
+  const td = {padding:'6px 8px',borderBottom:'1px solid var(--border)',textAlign:'center',fontSize:'.78rem'};
+  const judulJalur = {supervisi:'🏅 Piagam Supervisi Pembelajaran Terbaik', kepatuhan:'🏆 Piagam Kepatuhan Pembelajaran Terbaik'};
+  const ketJalur = {
+    supervisi: 'Guru yang sudah disupervisi semester ini · '+Math.round(PIAGAM_BOBOT_SUPERVISI*100)+'% capaian supervisi + '+Math.round(PIAGAM_BOBOT_RTL*100)+'% RTL ditanggapi',
+    kepatuhan: 'Semua guru aktif · rata-rata keaktifan, jurnal terisi, kelengkapan nilai, dan dokumen wajib',
+  };
+
+  return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}}>
+        <div style={{flex:1,minWidth:220}}>
+          <div style={{fontWeight:900,color:'var(--p3)'}}>🏅 Penetapan Penerima Piagam</div>
+          <div style={{fontSize:'.74rem',color:'var(--text2)'}}>Lakukan di akhir semester. Setelah ditetapkan, hasil dikunci dan guru dapat mencetak piagam dari akunnya.</div>
+        </div>
+        <select value={ta} onChange={e=>setTa(e.target.value)} style={sel}>{pilihTA.map(t=><option key={t}>{t}</option>)}</select>
+        <select value={smt} onChange={e=>setSmt(e.target.value)} style={sel}><option>Ganjil</option><option>Genap</option></select>
+      </div>
+
+      {galat && (
+        <div style={{padding:'10px 14px',borderRadius:10,background:'#fef2f2',border:'1px solid #fca5a5',color:'#991b1b',fontSize:'.8rem',marginBottom:12}}>
+          ⚠️ Tabel penetapan piagam belum tersedia. Minta pengelola menjalankan SQL <b>supermad_piagam.sql</b>. Peringkat di bawah tetap bisa dilihat.
+        </div>
+      )}
+
+      {tetap && tetap.length>0 ? (
+        <div>
+          <div style={{padding:'10px 14px',borderRadius:10,background:'#ecfdf5',border:'1px solid #86efac',fontSize:'.8rem',marginBottom:12,
+            display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+            <span style={{flex:1}}>🔒 Sudah ditetapkan oleh <b>{tetap[0].ditetapkan_oleh||'—'}</b> pada {new Date(tetap[0].ditetapkan_pada).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'})}.</span>
+            <button className="btn btn-outline btn-sm" disabled={busy} onClick={batalkan}>🔓 Batalkan Penetapan</button>
+          </div>
+          {['supervisi','kepatuhan'].map(j=>{
+            const l = tetap.filter(p=>p.jalur===j);
+            return (
+              <div key={j} className="card" style={{marginBottom:12,padding:'12px 16px'}}>
+                <div style={{fontWeight:800,color:'var(--p3)',marginBottom:8}}>{judulJalur[j]}</div>
+                {!l.length && <div style={{fontSize:'.8rem',color:'var(--text3)'}}>Tidak ada penerima pada jalur ini.</div>}
+                {l.map(p=>(
+                  <div key={p.id} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:'1px solid var(--border)',flexWrap:'wrap'}}>
+                    <span style={{fontWeight:900,width:26,color:'#a16207'}}>#{p.peringkat}</span>
+                    <div style={{flex:1,minWidth:180,fontSize:'.82rem'}}><b>{p.rincian?.nama||'—'}</b>
+                      <span style={{color:'var(--text3)'}}> · {p.rincian?.mapel||''}</span></div>
+                    <span style={{fontWeight:800}}>{p.skor}</span>
+                    <button className="btn btn-sm" style={{background:'#0f4238',color:'#fff'}} onClick={()=>cetakPiagam(sesi, p, showToast)}>🖨️ Cetak</button>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      ) : !hasil ? <Loading text="Menghitung peringkat guru..." /> : (
+        <div>
+          <div style={{padding:'10px 14px',borderRadius:10,background:'#eff6ff',border:'1px solid #bfdbfe',fontSize:'.78rem',color:'#1e3a8a',marginBottom:12,lineHeight:1.6}}>
+            Kuota per jalur: <b>{hasil.supervisi.kuota} guru</b> (±{Math.round(PIAGAM_PERSEN*100)}% dari {hasil.total} guru aktif, minimal 1, maksimal {PIAGAM_MAKS}) ·
+            skor minimal <b>{PIAGAM_BATAS}</b> · bila nilai sama, didahulukan yang lebih banyak e-Portofolio PKB tahun ini; bila tetap sama, semuanya menerima ·
+            satu guru boleh menerima dua piagam.
+          </div>
+          {['supervisi','kepatuhan'].map(j=>{
+            const h = hasil[j];
+            return (
+              <div key={j} className="card" style={{marginBottom:12,padding:0,overflowX:'auto'}}>
+                <div style={{padding:'10px 14px'}}>
+                  <div style={{fontWeight:800,color:'var(--p3)'}}>{judulJalur[j]}</div>
+                  <div style={{fontSize:'.72rem',color:'var(--text2)'}}>{ketJalur[j]}</div>
+                </div>
+                <table style={{width:'100%',borderCollapse:'collapse',minWidth:560}}>
+                  <thead><tr style={{background:'var(--p3)',color:'#fff'}}>
+                    <th style={th}>#</th><th style={{...th,textAlign:'left'}}>Guru</th>
+                    <th style={th}>{j==='supervisi'?'Capaian supervisi':'Keaktifan · Jurnal · Nilai · Dok.'}</th>
+                    {j==='supervisi' && <th style={th}>RTL</th>}
+                    <th style={th}>Portofolio</th><th style={th}>Skor</th><th style={th}>Status</th>
+                  </tr></thead>
+                  <tbody>
+                    {h.urut.slice(0, Math.max(10, h.urut.filter(r=>r.penerima).length)).map(r=>(
+                      <tr key={r.id} style={{background:r.penerima?'#fffbeb':'#fff'}}>
+                        <td style={td}>{r.peringkat}</td>
+                        <td style={{...td,textAlign:'left'}}><b>{r.nama}</b><div style={{fontSize:'.68rem',color:'var(--text3)'}}>{r.mapel||''}</div></td>
+                        <td style={td}>{j==='supervisi' ? r.capSup :
+                          [r.komponen.keaktifan, r.komponen.jurnal, r.komponen.nilai==null?'—':r.komponen.nilai, r.komponen.dokumen==null?'—':r.komponen.dokumen].join(' · ')}</td>
+                        {j==='supervisi' && <td style={td}>{r.komponen.rtl}</td>}
+                        <td style={td}>{r.porto}</td>
+                        <td style={{...td,fontWeight:900}}>{r.nilaiJalur}</td>
+                        <td style={td}>{r.penerima ? <span style={{color:'#a16207',fontWeight:800}}>🏅 Penerima</span>
+                          : r.nilaiJalur<PIAGAM_BATAS ? <span style={{color:'var(--text3)',fontSize:'.7rem'}}>di bawah {PIAGAM_BATAS}</span>
+                          : <span style={{color:'var(--text3)',fontSize:'.7rem'}}>di luar kuota</span>}</td>
+                      </tr>
+                    ))}
+                    {!h.urut.length && <tr><td colSpan={7} style={{...td,padding:18,color:'var(--text3)'}}>
+                      {j==='supervisi' ? 'Belum ada guru yang disupervisi pada semester ini.' : 'Belum ada data guru.'}</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+          <button className="btn btn-primary" disabled={busy || !!galat} onClick={tetapkan}>
+            {busy ? '⏳ Menyimpan...' : '🔒 Tetapkan Penerima Piagam'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── TAB DOKUMEN WAJIB (Admin SUPERMAD) ──
+function TabDokumenWajib({showToast}) {
+  const [pilih, setPilih] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+  React.useEffect(()=>{ muatDokumenWajib(true).then(k=>setPilih(new Set(k))); }, []);
+  async function simpan() {
+    const kode = DAFTAR_DOKUMEN.map(d=>d.kode).filter(k=>pilih.has(k));
+    if (!kode.length) { showToast('Pilih minimal satu dokumen wajib.','error'); return; }
+    setSaving(true);
+    const {error} = await sb.from('supermad_pengaturan').upsert({kunci:'dokumen_wajib', nilai:{kode}, diperbarui:new Date().toISOString()});
+    setSaving(false);
+    if (error) { showToast('Gagal: '+error.message+' — pastikan SQL supermad_piagam.sql sudah dijalankan.','error'); return; }
+    _dokWajibCache = kode;
+    showToast('✅ Dokumen wajib disimpan — berlaku untuk semua madrasah');
+  }
+  if (!pilih) return <Loading text="Memuat daftar dokumen..." />;
+  const grups = [...new Set(DAFTAR_DOKUMEN.map(d=>d.grup))];
+  return (
+    <div>
+      <div style={{fontWeight:900,color:'var(--p3)'}}>📁 Dokumen Administrasi Wajib</div>
+      <div style={{fontSize:'.76rem',color:'var(--text2)',marginBottom:12,lineHeight:1.5}}>
+        Berlaku untuk semua madrasah. Dokumen yang dicentang menjadi komponen <b>Skor Kepatuhan</b> guru (Piagam Kepatuhan Terbaik).
+        Dokumen hanya dihitung bila guru melampirkan link bukti: status Lengkap = penuh, Sebagian = setengah.
+        Pilih dokumen yang wajib dimiliki <b>semua guru mapel</b> agar adil.
+      </div>
+      {grups.map(g=>(
+        <div key={g} className="card" style={{marginBottom:10,padding:'12px 16px'}}>
+          <div style={{fontWeight:800,fontSize:'.84rem',marginBottom:8,color:'var(--p3)'}}>{g==='Perencanaan'?'📚 Perencanaan':'📊 Penilaian'}</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:6}}>
+            {DAFTAR_DOKUMEN.filter(d=>d.grup===g).map(d=>(
+              <label key={d.kode} style={{display:'flex',alignItems:'center',gap:8,fontSize:'.8rem',cursor:'pointer',padding:'5px 8px',
+                borderRadius:8,background:pilih.has(d.kode)?'#ecfdf5':'transparent'}}>
+                <input type="checkbox" checked={pilih.has(d.kode)} style={{width:'auto'}}
+                  onChange={e=>setPilih(prev=>{const n=new Set(prev); e.target.checked?n.add(d.kode):n.delete(d.kode); return n;})}/>
+                {d.nama}
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+        <button className="btn btn-primary" disabled={saving} onClick={simpan}>{saving?'⏳ Menyimpan...':'💾 Simpan ('+pilih.size+' dokumen)'}</button>
+        <button className="btn btn-outline" onClick={()=>setPilih(new Set(DOK_WAJIB_DEFAULT))}>↺ Pakai bawaan</button>
+      </div>
     </div>
   );
 }
@@ -9791,7 +10148,7 @@ function TabKepatuhanGuru({sesi, guruList, showToast, defaultTA, defaultSmt}) {
       <td class="c">${i+1}</td><td>${escHtml(r.nama)}<br><span class="sm">${escHtml(r.mapel||'')}</span></td>
       <td class="c">${r.kelasDiampu}</td><td class="c">${r.diabsen}</td><td class="c">${r.jurnal}</td><td class="c">${r.jurnalTertunda}</td>
       <td class="c">${r.formatif==null?'—':r.formatif+'%'}</td><td class="c">${r.sts==null?'—':r.sts+'%'}</td><td class="c">${r.sas==null?'—':r.sas+'%'}</td>
-      <td class="c">${r.rtlBelum}</td>
+      <td class="c">${r.komponen.dokumen==null?'—':r.komponen.dokumen+'%'}</td><td class="c">${r.rtlBelum}</td>
       <td class="c">${r.terakhir?escHtml(new Date(r.terakhir+'T00:00:00').toLocaleDateString('id-ID',{day:'numeric',month:'short'})):'—'}</td>
       <td class="c"><b style="color:${stInfo[r.status].c}">${stInfo[r.status].l}</b></td><td class="c"><b>${r.skor}</b></td></tr>`).join('');
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Kepatuhan Administrasi Guru</title>
@@ -9806,10 +10163,11 @@ td.c{text-align:center}.sm{font-size:8pt;color:#555}.ket{font-size:8pt;color:#44
 <h1>LAPORAN KEPATUHAN ADMINISTRASI PEMBELAJARAN GURU</h1>
 <div class="sub"><b>${escHtml(ttd.mad.nama||'')}</b> · Semester ${escHtml(smt)} · Tahun Pelajaran ${escHtml(ta)} · Per ${tgl}</div>
 <table><thead><tr><th>No</th><th>Nama Guru</th><th>Kelas Diampu</th><th>Pertemuan Diabsen</th><th>Jurnal Terisi</th><th>Jurnal Tertunda</th>
-<th>Nilai Formatif</th><th>Nilai STS</th><th>Nilai SAS</th><th>RTL Belum Ditanggapi</th><th>Aktivitas Terakhir</th><th>Status</th><th>Skor Kepatuhan</th></tr></thead>
-<tbody>${isi||'<tr><td colspan="13" class="c">Belum ada data</td></tr>'}</tbody></table>
+<th>Nilai Formatif</th><th>Nilai STS</th><th>Nilai SAS</th><th>Dokumen Wajib</th><th>RTL Belum Ditanggapi</th><th>Aktivitas Terakhir</th><th>Status</th><th>Skor Kepatuhan</th></tr></thead>
+<tbody>${isi||'<tr><td colspan="14" class="c">Belum ada data</td></tr>'}</tbody></table>
 <div class="ket">Status: Aktif = ada pertemuan tercatat ≤ 7 hari terakhir · Kurang aktif = 8–14 hari · Tidak aktif = lebih dari 14 hari / belum ada.
-Persentase nilai = siswa yang nilainya lengkap sesuai Pengaturan Penilaian madrasah dibanding jumlah siswa di kelas yang diampu.</div>
+Persentase nilai = siswa yang nilainya lengkap sesuai Pengaturan Penilaian madrasah dibanding jumlah siswa di kelas yang diampu.
+Skor Kepatuhan = rata-rata keaktifan, jurnal terisi, kelengkapan nilai, dan dokumen wajib (dengan link bukti).</div>
 <div class="ttd"><div></div><div>${escHtml(ttd.mad.kota_kab||'..............')}, ${tgl}<br>Kepala Madrasah<div class="sp"></div>
 <b>${escHtml(ttd.kepalaNama||'.............................')}</b><br>NIP. ${escHtml(ttd.kepalaNip||'—')}</div></div>
 </body></html>`;
@@ -9873,6 +10231,7 @@ Persentase nilai = siswa yang nilainya lengkap sesuai Pengaturan Penilaian madra
                   <th style={{...th,textAlign:'left'}}>Guru</th><th style={th}>Kelas<br/>diampu</th>
                   <th style={th}>Pertemuan<br/>diabsen</th><th style={th}>Jurnal<br/>terisi</th><th style={th}>Jurnal<br/>tertunda</th>
                   <th style={th}>Nilai<br/>Formatif</th><th style={th}>Nilai<br/>STS</th><th style={th}>Nilai<br/>SAS</th>
+                  <th style={th}>Dokumen<br/>wajib</th>
                   <th style={th}>RTL belum<br/>ditanggapi</th><th style={th}>Aktivitas<br/>terakhir</th><th style={th}>Status</th>
                   <th style={{...th,background:'#155a4c'}}>Skor<br/>Kepatuhan</th>
                 </tr>
@@ -9891,6 +10250,7 @@ Persentase nilai = siswa yang nilainya lengkap sesuai Pengaturan Penilaian madra
                     <td style={td}>{pctCell(r.formatif)}</td>
                     <td style={td}>{pctCell(r.sts)}</td>
                     <td style={td}>{pctCell(r.sas)}</td>
+                    <td style={td}>{pctCell(r.komponen.dokumen)}</td>
                     <td style={{...td,fontWeight:700,color:r.rtlBelum?'#2563eb':'var(--text3)'}}>{r.rtlBelum}</td>
                     <td style={{...td,fontSize:'.72rem'}}>
                       {r.terakhir ? new Date(r.terakhir+'T00:00:00').toLocaleDateString('id-ID',{day:'numeric',month:'short'}) : '—'}
@@ -9901,19 +10261,20 @@ Persentase nilai = siswa yang nilainya lengkap sesuai Pengaturan Penilaian madra
                         background:stInfo[r.status].bg,color:stInfo[r.status].c,whiteSpace:'nowrap'}}>{stInfo[r.status].l}</span>
                     </td>
                     <td style={{...td,fontWeight:900,fontSize:'.9rem',color:r.skor>=90?'#16a34a':r.skor>=60?'#d97706':'#dc2626'}}
-                      title={'Keaktifan '+r.komponen.keaktifan+' · Jurnal '+r.komponen.jurnal+' · Nilai '+(r.komponen.nilai==null?'—':r.komponen.nilai)+' · RTL '+r.komponen.rtl}>
+                      title={'Keaktifan '+r.komponen.keaktifan+' · Jurnal '+r.komponen.jurnal+' · Nilai '+(r.komponen.nilai==null?'—':r.komponen.nilai)+' · Dokumen '+(r.komponen.dokumen==null?'—':r.komponen.dokumen)}>
                       {r.skor}
                     </td>
                   </tr>
                 ))}
-                {!rows.length && <tr><td colSpan={12} style={{...td,padding:24,color:'var(--text3)'}}>Belum ada data guru.</td></tr>}
+                {!rows.length && <tr><td colSpan={13} style={{...td,padding:24,color:'var(--text3)'}}>Belum ada data guru.</td></tr>}
               </tbody>
             </table>
           </div>
           <div style={{fontSize:'.72rem',color:'var(--text3)',marginTop:8,lineHeight:1.5}}>
             💡 Status dihitung dari pertemuan terakhir yang tercatat (absensi/jurnal): Aktif ≤ 7 hari, Kurang aktif 8–14 hari, Tidak aktif &gt; 14 hari
             (untuk semester yang sudah lewat, dihitung dari akhir semester). <b>Skor Kepatuhan</b> = rata-rata Keaktifan, Jurnal terisi,
-            Kelengkapan nilai (sesuai 📐 Pengaturan Penilaian madrasah), dan RTL ditanggapi — dipakai {Math.round(PIAGAM_BOBOT_KEPATUHAN*100)}% dalam Skor Piagam.
+            Kelengkapan nilai (sesuai 📐 Pengaturan Penilaian madrasah), dan Dokumen wajib (dengan link bukti) — dasar Piagam Kepatuhan Terbaik.
+            RTL dihitung pada jalur Piagam Supervisi Terbaik (RTL dari supervisi semester ini).
             Persentase nilai = siswa yang sudah dinilai dibanding jumlah siswa di kelas-kelas yang diampu (dari menu Penugasan).
           </div>
         </>
