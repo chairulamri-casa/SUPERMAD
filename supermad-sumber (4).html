@@ -13518,6 +13518,145 @@ ${blokTtdHtml(ttd,'Guru Mata Pelajaran')}
 }
 
 // ── TAB PENUGASAN (OPERATOR) ─────────────────────────────────
+// ── PEMERIKSAAN PENUGASAN (operator) — deteksi penugasan kurang/ganda ──
+const MAPEL_INTI = [
+  {label:"Al-Qur'an Hadis", re:/qur.?an|hadi[st]|^qh$/},
+  {label:'Akidah Akhlak',   re:/akidah|aqidah/},
+  {label:'Fikih',           re:/fi[kq]ih/},
+  {label:'Sejarah Kebudayaan Islam', re:/kebudayaan islam|^ski$/, miMulai:3},
+  {label:'Bahasa Arab',     re:/arab/},
+  {label:'Pendidikan Pancasila', re:/pancasila|^p?pkn/},
+  {label:'Bahasa Indonesia',re:/bahasa indonesia|^b\.? ?indo/},
+  {label:'Matematika',      re:/matematika|^mtk$/},
+  {label:'Bahasa Inggris',  re:/inggris/, miMulai:3},
+  {label:'PJOK',            re:/jasmani|pjok|penjas|olahraga/},
+  {label:'IPAS',            re:/ipas|pengetahuan alam dan sosial/, hanyaMI:true, miMulai:3},
+];
+function angkaTingkat(k) {
+  const t = String(k.tingkat || k.nama_kelas || '').toUpperCase().trim();
+  const m = t.match(/^(XII|XI|IX|X|VIII|VII|VI|IV|V|III|II|I|\d+)/);
+  if (!m) return null;
+  const r = {I:1,II:2,III:3,IV:4,V:5,VI:6,VII:7,VIII:8,IX:9,X:10,XI:11,XII:12};
+  return r[m[1]] || parseInt(m[1]) || null;
+}
+function PemeriksaanPenugasan({sesi, ta, guruList, kelasList, penugasanList}) {
+  const [wali, setWali] = React.useState({});
+  const [buka, setBuka] = React.useState(false);
+  React.useEffect(()=>{
+    sb.from('supermad_kelas').select('id,wali_guru_id').eq('madrasah_id', sesi.mad.id)
+      .then(({data, error})=>{ if (error) return; const m = {}; (data||[]).forEach(k=>{ if (k.wali_guru_id) m[k.id] = k.wali_guru_id; }); setWali(m); });
+  }, [kelasList.length]);
+
+  const isMI = /^MI$|IBTIDAIYAH/i.test(String(getJenjangMad(sesi.mad)).trim());
+  const norm = x => String(x||'').toLowerCase().trim();
+  const kelasTA = kelasList.filter(k=>!k.tahun_ajaran || k.tahun_ajaran===ta);
+  const pen = penugasanList.filter(p=>p.aktif!==false);
+  const perKelas = {};      // kelas_id → {mapelKey → {nama, guru:Set}}
+  pen.forEach(p=>{
+    const k = (perKelas[p.kelas_id] = perKelas[p.kelas_id] || {});
+    const key = norm(p.mapel);
+    (k[key] = k[key] || {nama:p.mapel, guru:new Set()}).guru.add(String(p.guru_id));
+  });
+  const namaGuru = {}; guruList.forEach(g=>{ namaGuru[String(g.id)] = g.nama; });
+
+  // A. Kelas tanpa penugasan
+  const kosong = kelasTA.filter(k=>!perKelas[k.id]);
+  // B+C. Mapel yang belum ada gurunya per kelas
+  const tingkatGrup = {};
+  kelasTA.forEach(k=>{ const t = angkaTingkat(k) ?? String(k.tingkat||''); (tingkatGrup[t] = tingkatGrup[t] || []).push(k); });
+  const kurang = [];
+  kelasTA.forEach(k=>{
+    const ada = perKelas[k.id];
+    if (!ada) return;
+    const kunciAda = Object.keys(ada);
+    const hilang = new Map();
+    // pembanding kelas paralel: mapel yang ada di lebih dari separuh kelas setingkat
+    const t = angkaTingkat(k) ?? String(k.tingkat||'');
+    const paralel = (tingkatGrup[t] || []).filter(pk=>perKelas[pk.id]);   // hanya kelas yang sudah berpenugasan
+    if (paralel.length >= 2) {
+      const hit = {};
+      paralel.forEach(pk=>Object.keys(perKelas[pk.id]||{}).forEach(m=>{ hit[m] = hit[m] || {n:0, nama:perKelas[pk.id][m].nama}; hit[m].n++; }));
+      Object.entries(hit).forEach(([m,v])=>{ if (v.n > paralel.length/2 && !ada[m]) hilang.set(m, v.nama+' (ada di kelas paralel)'); });
+    }
+    // mapel inti kurikulum
+    const ang = angkaTingkat(k);
+    MAPEL_INTI.forEach(mi=>{
+      if (mi.hanyaMI && !isMI) return;
+      if (isMI && mi.miMulai && ang && ang < mi.miMulai) return;
+      if (kunciAda.some(m=>mi.re.test(m))) return;
+      if ([...hilang.keys()].some(m=>mi.re.test(m))) return;
+      hilang.set('inti:'+mi.label, mi.label);
+    });
+    if (hilang.size) kurang.push({kelas:k.nama_kelas, mapel:[...hilang.values()]});
+  });
+  // D. Penugasan ganda (satu mapel di satu kelas diampu >1 guru)
+  const ganda = [];
+  kelasTA.forEach(k=>Object.values(perKelas[k.id]||{}).forEach(v=>{
+    if (v.guru.size>1) ganda.push({kelas:k.nama_kelas, mapel:v.nama, guru:[...v.guru].map(g=>namaGuru[g]||'?')});
+  }));
+  // E. Guru aktif tanpa penugasan
+  const adaGuru = new Set(pen.map(p=>String(p.guru_id)));
+  const tanpa = guruList.filter(g=>!adaGuru.has(String(g.id)));
+  // F. Guru kelas (wali kelas MI) yang hanya tercatat sedikit mapel di kelasnya
+  const guruKelas = [];
+  if (isMI) kelasTA.forEach(k=>{
+    const w = wali[k.id]; if (!w) return;
+    const jml = Object.values(perKelas[k.id]||{}).filter(v=>v.guru.has(String(w))).length;
+    if (jml <= 2) guruKelas.push({kelas:k.nama_kelas, guru:namaGuru[String(w)]||'?', jml});
+  });
+
+  const kategori = [
+    {ikon:'🏫', judul:'Kelas belum punya penugasan', n:kosong.length, warna:'#dc2626',
+      isi: kosong.map(k=>k.nama_kelas).join(', ')},
+    {ikon:'📚', judul:'Mapel yang belum ada gurunya', n:kurang.reduce((a,x)=>a+x.mapel.length,0), warna:'#d97706',
+      isi: kurang.map(x=><div key={x.kelas} style={{marginBottom:3}}><b>{x.kelas}:</b> {x.mapel.join(', ')}</div>)},
+    {ikon:'👥', judul:'Satu mapel diampu lebih dari satu guru', n:ganda.length, warna:'#7c3aed',
+      isi: ganda.map((x,i)=><div key={i} style={{marginBottom:3}}><b>{x.kelas} · {x.mapel}:</b> {x.guru.join(', ')}</div>)},
+    {ikon:'👤', judul:'Guru aktif tanpa penugasan', n:tanpa.length, warna:'#2563eb',
+      isi: tanpa.map(g=>g.nama).join(', ')},
+    ...(isMI ? [{ikon:'🧑‍🏫', judul:'Guru kelas hanya tercatat ≤ 2 mapel di kelasnya', n:guruKelas.length, warna:'#0891b2',
+      isi: guruKelas.map((x,i)=><div key={i} style={{marginBottom:3}}><b>{x.kelas}:</b> {x.guru} — {x.jml} mapel</div>)}] : []),
+  ];
+  const total = kategori.reduce((a,c)=>a+c.n,0);
+  if (!kelasTA.length) return null;
+  return (
+    <div className="card" style={{marginBottom:12,padding:'12px 16px',border:'1.5px solid '+(total?'#fcd34d':'#86efac'),
+      background:total?'#fffdf5':'#f7fef9'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',cursor:total?'pointer':'default'}} onClick={()=>total&&setBuka(!buka)}>
+        <div style={{flex:1,minWidth:220}}>
+          <div style={{fontWeight:800,color:'var(--p3)',fontSize:'.88rem'}}>
+            🔎 Pemeriksaan Penugasan TA {ta} {total ? '— '+total+' hal perlu dicek' : '— ✅ tidak ditemukan masalah'}
+          </div>
+          <div style={{fontSize:'.7rem',color:'var(--text2)'}}>Penugasan yang kurang atau salah orang membuat skor kepatuhan dan piagam guru tidak akurat.</div>
+        </div>
+        {total>0 && <span style={{fontSize:'.78rem',fontWeight:700,color:'#2563eb'}}>{buka?'▲ Tutup':'▼ Lihat rincian'}</span>}
+      </div>
+      {total>0 && (
+        <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
+          {kategori.filter(c=>c.n).map(c=>(
+            <span key={c.judul} style={{padding:'3px 10px',borderRadius:20,fontSize:'.72rem',fontWeight:700,
+              color:c.warna,background:c.warna+'14',border:'1px solid '+c.warna+'55'}}>{c.ikon} {c.judul}: {c.n}</span>
+          ))}
+        </div>
+      )}
+      {buka && total>0 && (
+        <div style={{marginTop:10,display:'flex',flexDirection:'column',gap:8}}>
+          {kategori.filter(c=>c.n).map(c=>(
+            <div key={c.judul} style={{padding:'8px 12px',borderRadius:9,background:'#fff',borderLeft:'4px solid '+c.warna,fontSize:'.76rem',lineHeight:1.5}}>
+              <div style={{fontWeight:800,color:c.warna,marginBottom:4}}>{c.ikon} {c.judul} ({c.n})</div>
+              <div style={{maxHeight:220,overflowY:'auto',color:'var(--text2)'}}>{c.isi}</div>
+            </div>
+          ))}
+          <div style={{fontSize:'.7rem',color:'var(--text3)',lineHeight:1.5}}>
+            💡 "Mapel yang belum ada gurunya" dibandingkan dengan mapel inti kurikulum dan mapel yang sudah diisi di kelas paralel.
+            Bila memang tidak diajarkan di kelas itu (misalnya mapel pilihan/peminatan), abaikan saja. Penugasan ganda bisa wajar untuk team teaching.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TabPenugasan({sesi, showToast}) {
   const [guruList,     setGuruList]     = React.useState([]);
   const [kelasList,    setKelasList]    = React.useState([]);
@@ -13685,6 +13824,7 @@ function TabPenugasan({sesi, showToast}) {
 
   return (
     <div>
+      {!loading && <PemeriksaanPenugasan sesi={sesi} ta={filterTA} guruList={guruList} kelasList={kelasList} penugasanList={penugasanList} />}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12,flexWrap:'wrap',gap:8}}>
         <div style={{fontWeight:700,color:'var(--text2)',fontSize:'.85rem'}}>
           📌 Penugasan Mengajar — Siapa ngajar mapel apa di kelas mana
