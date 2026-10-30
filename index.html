@@ -6338,6 +6338,7 @@ function DashboardGuru({sesi, showToast}) {
         {[
           ['hasil',     '📊 Hasil Supervisi',      fiturAktif.supervisi !== false],
           ['rtl',       '📋 RTL Saya',              fiturAktif.rtl !== false],
+          ['absensi',   '🙋 Absensi Siswa',          true],
           ['jurnal',    '📓 Jurnal Mengajar',        true],
           ['nilai',     '📝 Nilai Siswa',            true],
           ['dokumen',   '📁 Dok. Admin',             true],
@@ -6469,8 +6470,11 @@ function DashboardGuru({sesi, showToast}) {
       )}
 
       {/* TAB JURNAL MENGAJAR */}
+      {tab==='absensi' && (
+        <TabJurnal key="absensi" mode="absensi" sesi={sesi} showToast={showToast} />
+      )}
       {tab==='jurnal' && (
-        <TabJurnal sesi={sesi} showToast={showToast} />
+        <TabJurnal key="jurnal" mode="jurnal" sesi={sesi} showToast={showToast} />
       )}
 
       {/* TAB NILAI SISWA */}
@@ -9342,11 +9346,17 @@ function TabNilai({sesi, showToast}) {
   const [savingId,    setSavingId]    = React.useState(null);
   const [filterKelas, setFilterKelas] = React.useState('');
   const [filterJenis, setFilterJenis] = React.useState('formatif');
-  const [activeTab,   setActiveTab]   = React.useState('input'); // 'input'|'rapor'
-  const [bobotSLM,    setBobotSLM]    = React.useState(50); // bobot SLM (%)
-  const [bobotSAS,    setBobotSAS]    = React.useState(50); // bobot SAS (%)
+  // Pengaturan rapor disimpan di browser per guru, agar tidak hilang saat pindah menu
+  const RAPOR_KEY = 'supermad_rapor_'+sesi.pengguna.id;
+  const raporSaved = (()=>{ try { return JSON.parse(localStorage.getItem(RAPOR_KEY)||'{}')||{}; } catch(e){ return {}; } })();
+  const [activeTab,   setActiveTab]   = React.useState(raporSaved.activeTab||'input'); // 'input'|'rapor'
+  const [bobotSLM,    setBobotSLM]    = React.useState(raporSaved.bobotSLM!=null?raporSaved.bobotSLM:50); // bobot SLM (%)
+  const [bobotSAS,    setBobotSAS]    = React.useState(raporSaved.bobotSAS!=null?raporSaved.bobotSAS:50); // bobot SAS (%)
   // Komponen yang masuk SLM — guru bisa centang/uncentang
-  const [slmKomponen, setSlmKomponen] = React.useState({formatif:false, sts:true, proyek:true});
+  const [slmKomponen, setSlmKomponen] = React.useState(raporSaved.slmKomponen||{formatif:false, sts:true, proyek:true});
+  React.useEffect(()=>{
+    try { localStorage.setItem(RAPOR_KEY, JSON.stringify({activeTab, bobotSLM, bobotSAS, slmKomponen})); } catch(e) {}
+  }, [activeTab, bobotSLM, bobotSAS, slmKomponen]);
   const [loading,     setLoading]     = React.useState(false);
   const [saving,      setSaving]      = React.useState(false);
   const [importStatus, setImportStatus] = React.useState('');
@@ -10551,7 +10561,9 @@ function TabNilai({sesi, showToast}) {
 }
 
 // ── TAB JURNAL MENGAJAR (GURU) ────────────────────────────────
-function TabJurnal({sesi, showToast}) {
+function TabJurnal({sesi, showToast, mode='jurnal'}) {
+  const isAbsensiMode = mode==='absensi';
+  const BELUM = '(belum diisi)';
   const taList = [getTASekarang(),(()=>{const [a]=getTASekarang().split('/');return (a-1)+'/'+a;})()];
   const [filterTA,  setFilterTA]  = React.useState(getTASekarang());
   const [filterSmt, setFilterSmt] = React.useState('Ganjil');
@@ -10692,17 +10704,25 @@ function TabJurnal({sesi, showToast}) {
       semester: filterSmt,
       updated_at: new Date().toISOString(),
     };
-    const {data, error} = await sb.from('supermad_jurnal').insert(payload).select('id').single();
-    setSaving(false);
-    if (error) { showToast('Gagal: '+error.message,'error'); return; }
-    const newJurnal = {...payload, id: data.id};
+    // Jika pertemuan yang sama sudah ada (misal jurnal sudah diisi), pakai itu
+    const {data:ada} = await sb.from('supermad_jurnal').select('*')
+      .eq('guru_id', sesi.pengguna.id).eq('tanggal', payload.tanggal)
+      .eq('kelas', payload.kelas).eq('jam_ke', payload.jam_ke).eq('mapel', payload.mapel).limit(1);
+    let newJurnal;
+    if (ada && ada.length) {
+      newJurnal = ada[0];
+      setSaving(false);
+    } else {
+      const {data, error} = await sb.from('supermad_jurnal').insert(payload).select('id').single();
+      setSaving(false);
+      if (error) { showToast('Gagal: '+error.message,'error'); return; }
+      newJurnal = {...payload, id: data.id};
+    }
     loadData(filterTA, filterSmt);
     // Langsung buka absensi
     setActiveJurnal(newJurnal);
-    const siswas = await loadSiswa(formAbsensi.kelas);
-    const map = {};
-    siswas.forEach(s=>{ map[s.id]='hadir'; });
-    setAbsensiMap(map);
+    const siswas = await loadSiswa(newJurnal.kelas);
+    await loadAbsensi(newJurnal.id, siswas);
     setView('absensi');
   }
 
@@ -10717,15 +10737,23 @@ function TabJurnal({sesi, showToast}) {
       semester: filterSmt,
       updated_at: new Date().toISOString(),
     };
-    let error;
-    if (editJurnal) {
-      ({error} = await sb.from('supermad_jurnal').update(payload).eq('id', editJurnal.id));
+    delete payload.kelas_id;
+    let error, targetId = editJurnal ? editJurnal.id : null;
+    if (!targetId) {
+      const {data:ada} = await sb.from('supermad_jurnal').select('id')
+        .eq('guru_id', sesi.pengguna.id).eq('tanggal', payload.tanggal)
+        .eq('kelas', payload.kelas).eq('jam_ke', payload.jam_ke).eq('mapel', payload.mapel)
+        .eq('materi', BELUM).limit(1);
+      if (ada && ada.length) targetId = ada[0].id;
+    }
+    if (targetId) {
+      ({error} = await sb.from('supermad_jurnal').update(payload).eq('id', targetId));
     } else {
       ({error} = await sb.from('supermad_jurnal').insert(payload));
     }
     setSaving(false);
     if (error) { showToast('Gagal: '+error.message,'error'); return; }
-    showToast('✅ Jurnal '+(editJurnal?'diperbarui':'disimpan')+'!');
+    showToast('✅ Jurnal '+(targetId?'diperbarui':'disimpan')+'!');
     setView('list');
     setEditJurnal(null);
     loadData(filterTA, filterSmt);
@@ -10759,12 +10787,45 @@ function TabJurnal({sesi, showToast}) {
     loadData(filterTA, filterSmt);
   }
 
+  const adaAbsensi = j => ((j.jumlah_hadir||0)+(j.jumlah_sakit||0)+(j.jumlah_izin||0)+(j.jumlah_alpa||0))>0;
+  const adaJurnal  = j => j.materi && j.materi!==BELUM;
+
   async function hapusJurnal(j) {
-    if (!confirm('Hapus jurnal ini? Data absensi terkait juga terhapus.')) return;
-    await sb.from('supermad_absensi').delete().eq('jurnal_id', j.id);
-    await sb.from('supermad_jurnal').delete().eq('id', j.id);
+    if (!confirm('Hapus isi jurnal pertemuan ini?')) return;
+    if (adaAbsensi(j)) {
+      // Absensi tetap disimpan, hanya isi jurnal yang dikosongkan
+      await sb.from('supermad_jurnal').update({materi:BELUM,tujuan_pembelajaran:null,kendala:null,
+        tindak_lanjut:null,refleksi:null,updated_at:new Date().toISOString()}).eq('id', j.id);
+    } else {
+      await sb.from('supermad_jurnal').delete().eq('id', j.id);
+    }
     showToast('🗑️ Jurnal dihapus');
     loadData(filterTA, filterSmt);
+  }
+
+  async function hapusAbsensi(j) {
+    if (!confirm('Hapus data absensi pertemuan ini?')) return;
+    await sb.from('supermad_absensi').delete().eq('jurnal_id', j.id);
+    if (adaJurnal(j)) {
+      // Jurnal tetap disimpan, hanya rekap absensi yang dinolkan
+      await sb.from('supermad_jurnal').update({jumlah_hadir:0,jumlah_sakit:0,jumlah_izin:0,jumlah_alpa:0,
+        updated_at:new Date().toISOString()}).eq('id', j.id);
+    } else {
+      await sb.from('supermad_jurnal').delete().eq('id', j.id);
+    }
+    showToast('🗑️ Absensi dihapus');
+    loadData(filterTA, filterSmt);
+  }
+
+  function bukaEditJurnal(j) {
+    setEditJurnal(j);
+    setForm({
+      tanggal:j.tanggal,kelas:j.kelas,jam_ke:j.jam_ke,mapel:j.mapel||'',
+      kelas_id:((penugasanList||[]).find(p=>p.mapel===j.mapel&&p.supermad_kelas?.nama_kelas===j.kelas)||{}).kelas_id||'',
+      materi:j.materi===BELUM?'':j.materi,tujuan_pembelajaran:j.tujuan_pembelajaran||'',
+      kendala:j.kendala||'',tindak_lanjut:j.tindak_lanjut||'',refleksi:j.refleksi||''
+    });
+    setView('form-jurnal');
   }
 
   function formatTgl(tgl) {
@@ -11117,88 +11178,121 @@ function TabJurnal({sesi, showToast}) {
     );
   }
 
-  // VIEW LIST JURNAL
-  if (loading) return <Loading text="Memuat jurnal..." />;
+  // VIEW LIST (mode jurnal / mode absensi)
+  if (loading) return <Loading text={isAbsensiMode?'Memuat absensi...':'Memuat jurnal...'} />;
+  const daftarJurnal   = jurnalList.filter(adaJurnal);
+  const belumJurnal    = jurnalList.filter(j=>!adaJurnal(j) && adaAbsensi(j));
+  const daftarAbsensi  = jurnalList.filter(adaAbsensi);
+  const belumAbsensi   = jurnalList.filter(j=>adaJurnal(j) && !adaAbsensi(j));
+  const tampil = isAbsensiMode ? daftarAbsensi : daftarJurnal;
+  const pending = isAbsensiMode ? belumAbsensi : belumJurnal;
+  const chipAbsen = j => (
+    <div style={{marginTop:8,display:'flex',gap:6,flexWrap:'wrap'}}>
+      {[
+        {label:'Hadir',val:j.jumlah_hadir||0,c:'#16a34a',bg:'#d1fae5'},
+        {label:'Sakit',val:j.jumlah_sakit||0,c:'#d97706',bg:'#fef3c7'},
+        {label:'Izin', val:j.jumlah_izin||0, c:'#2563eb',bg:'#dbeafe'},
+        {label:'Alpa', val:j.jumlah_alpa||0, c:'#dc2626',bg:'#fee2e2'},
+      ].map(({label,val,c,bg})=>(
+        <span key={label} style={{padding:'2px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,color:c,background:bg}}>
+          {label}: {val}
+        </span>
+      ))}
+    </div>
+  );
   return (
     <div>
       {/* Toolbar */}
       <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center'}}>
-        <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1rem',flex:1}}>📓 Jurnal Mengajar</div>
+        <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1rem',flex:1}}>
+          {isAbsensiMode ? '🙋 Absensi Siswa' : '📓 Jurnal Mengajar'}
+        </div>
         <select value={filterTA} onChange={e=>setFilterTA(e.target.value)}
-          style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit'}}>
-          {taList.map(ta=><option key={ta} value={ta}>{ta}</option>)}
+          style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit',width:'auto'}}>
+          {[...new Set([...taList, filterTA])].map(ta=><option key={ta} value={ta}>{ta}</option>)}
         </select>
         <select value={filterSmt} onChange={e=>setFilterSmt(e.target.value)}
-          style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit'}}>
+          style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit',width:'auto'}}>
           <option value="Ganjil">Ganjil</option>
           <option value="Genap">Genap</option>
         </select>
-        <button className="btn btn-outline btn-sm" onClick={()=>setRekapMode(true)}>📊 Rekap</button>
-        <button className="btn btn-outline btn-sm" style={{borderColor:'#0891b2',color:'#0891b2'}} onClick={()=>{
-          setFormAbsensi({tanggal:new Date().toISOString().split('T')[0],jam_ke:'1',...defaultDariPenugasan()});
-          setView('form-absensi');
-        }}>📋 Absensi</button>
-        <button className="btn btn-primary btn-sm" onClick={()=>{
-          setView('form-jurnal'); setEditJurnal(null);
-          setForm({tanggal:new Date().toISOString().split('T')[0],jam_ke:'1',...defaultDariPenugasan(),
-            materi:'',tujuan_pembelajaran:'',kendala:'',tindak_lanjut:'',refleksi:''});
-        }}>📝 Jurnal</button>
+        {isAbsensiMode ? (<>
+          <button className="btn btn-outline btn-sm" onClick={()=>setRekapMode(true)}>📊 Rekap Absensi</button>
+          <button className="btn btn-primary btn-sm" onClick={()=>{
+            setFormAbsensi({tanggal:new Date().toISOString().split('T')[0],jam_ke:'1',...defaultDariPenugasan()});
+            setView('form-absensi');
+          }}>+ Absensi Baru</button>
+        </>) : (
+          <button className="btn btn-primary btn-sm" onClick={()=>{
+            setView('form-jurnal'); setEditJurnal(null);
+            setForm({tanggal:new Date().toISOString().split('T')[0],jam_ke:'1',...defaultDariPenugasan(),
+              materi:'',tujuan_pembelajaran:'',kendala:'',tindak_lanjut:'',refleksi:''});
+          }}>+ Jurnal Baru</button>
+        )}
       </div>
 
-      {jurnalList.length===0 ? (
+      {/* Pengingat pertemuan yang belum lengkap */}
+      {pending.length > 0 && (
+        <div style={{marginBottom:12,padding:'10px 14px',borderRadius:10,background:'#fffbeb',
+          border:'1.5px solid #fcd34d',fontSize:'.8rem',color:'#92400e'}}>
+          <div style={{fontWeight:800,marginBottom:6}}>
+            {isAbsensiMode
+              ? `⚠️ ${pending.length} pertemuan sudah ada jurnalnya tetapi belum diabsen:`
+              : `⚠️ ${pending.length} pertemuan sudah diabsen tetapi jurnalnya belum diisi:`}
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:5}}>
+            {pending.map(j=>(
+              <div key={j.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                <span style={{flex:1}}>{formatTgl(j.tanggal)} · Kelas <b>{j.kelas}</b> · Jam ke-{j.jam_ke} · {j.mapel||''}</span>
+                <button className="btn btn-sm" style={{background:'#d97706',color:'#fff',padding:'4px 10px',fontSize:'.72rem'}}
+                  onClick={()=> isAbsensiMode ? bukaAbsensi(j) : bukaEditJurnal(j)}>
+                  {isAbsensiMode ? '🙋 Absen Sekarang' : '📝 Isi Jurnal'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tampil.length===0 ? (
         <div className="card" style={{textAlign:'center',padding:32,color:'var(--text3)'}}>
-          Belum ada jurnal untuk {filterSmt} {filterTA}.<br/>
-          <small>Klik <b>📋 Absensi</b> untuk absen siswa, atau <b>📝 Jurnal</b> untuk catat materi.</small>
+          {isAbsensiMode
+            ? <>Belum ada absensi untuk {filterSmt} {filterTA}.<br/><small>Klik <b>+ Absensi Baru</b> untuk mengabsen siswa.</small></>
+            : <>Belum ada jurnal untuk {filterSmt} {filterTA}.<br/><small>Klik <b>+ Jurnal Baru</b> untuk mencatat pembelajaran.</small></>}
         </div>
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
-          {jurnalList.map((j,i)=>(
-            <div key={j.id} className="card" style={{borderLeft:'4px solid var(--p)'}}>
+          {tampil.map(j=>(
+            <div key={j.id} className="card" style={{borderLeft:'4px solid '+(isAbsensiMode?'#0891b2':'var(--p)')}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,flexWrap:'wrap'}}>
                 <div style={{flex:1}}>
                   <div style={{fontWeight:700,marginBottom:2}}>
                     {formatTgl(j.tanggal)} &nbsp;·&nbsp; Kelas <b>{j.kelas}</b> &nbsp;·&nbsp; Jam ke-{j.jam_ke}
                   </div>
                   <div style={{fontSize:'.8rem',color:'var(--p3)',fontWeight:600,marginBottom:4}}>{j.mapel||''}</div>
-                  {j.materi==='(belum diisi)' ? (
-                    <span style={{fontSize:'.78rem',padding:'2px 8px',borderRadius:20,
-                      background:'#fef3c7',color:'#92400e',fontWeight:700}}>
-                      ⚠️ Materi belum diisi — klik ✏️ untuk lengkapi jurnal
-                    </span>
-                  ) : (
-                    <div style={{fontSize:'.82rem',color:'var(--text2)'}}>{j.materi}</div>
+                  {isAbsensiMode ? chipAbsen(j) : (
+                    <>
+                      <div style={{fontSize:'.82rem',color:'var(--text2)'}}>{j.materi}</div>
+                      {j.kendala && <div style={{fontSize:'.75rem',color:'var(--text3)',marginTop:3}}>Kendala: {j.kendala}</div>}
+                      {j.tindak_lanjut && <div style={{fontSize:'.75rem',color:'var(--text3)'}}>Tindak lanjut: {j.tindak_lanjut}</div>}
+                    </>
                   )}
-                  {/* Rekap absensi */}
-                  <div style={{marginTop:8,display:'flex',gap:6,flexWrap:'wrap'}}>
-                    {[
-                      {label:'Hadir',val:j.jumlah_hadir||0,c:'#16a34a',bg:'#d1fae5'},
-                      {label:'Sakit',val:j.jumlah_sakit||0,c:'#d97706',bg:'#fef3c7'},
-                      {label:'Izin', val:j.jumlah_izin||0, c:'#2563eb',bg:'#dbeafe'},
-                      {label:'Alpa', val:j.jumlah_alpa||0, c:'#dc2626',bg:'#fee2e2'},
-                    ].map(({label,val,c,bg})=>(
-                      <span key={label} style={{padding:'2px 8px',borderRadius:20,fontSize:'.7rem',fontWeight:700,color:c,background:bg}}>
-                        {label}: {val}
-                      </span>
-                    ))}
-                  </div>
                 </div>
                 <div style={{display:'flex',gap:6,flexShrink:0}}>
-                  <button onClick={()=>bukaAbsensi(j)}
-                    style={{padding:'4px 10px',borderRadius:7,border:'1.5px solid var(--p)',
-                      background:'#fff',color:'var(--p)',cursor:'pointer',fontSize:'.75rem',fontWeight:700}}>
-                    📋 Absensi
-                  </button>
-                  <button onClick={()=>{setEditJurnal(j);setForm({
-                    tanggal:j.tanggal,kelas:j.kelas,jam_ke:j.jam_ke,mapel:j.mapel||'',
-                    kelas_id:((penugasanList||[]).find(p=>p.mapel===j.mapel&&p.supermad_kelas?.nama_kelas===j.kelas)||{}).kelas_id||'',
-                    materi:j.materi==='(belum diisi)'?'':j.materi,tujuan_pembelajaran:j.tujuan_pembelajaran||'',
-                    kendala:j.kendala||'',tindak_lanjut:j.tindak_lanjut||'',refleksi:j.refleksi||''
-                  });setView('form-jurnal');}}
-                    style={{padding:'4px 10px',borderRadius:7,border:'1px solid var(--border)',
-                      background:'#fff',color:'var(--text2)',cursor:'pointer',fontSize:'.75rem'}}>
-                    ✏️
-                  </button>
-                  <button onClick={()=>hapusJurnal(j)}
+                  {isAbsensiMode ? (
+                    <button onClick={()=>bukaAbsensi(j)}
+                      style={{padding:'4px 10px',borderRadius:7,border:'1.5px solid #0891b2',
+                        background:'#fff',color:'#0891b2',cursor:'pointer',fontSize:'.75rem',fontWeight:700}}>
+                      ✏️ Ubah Absen
+                    </button>
+                  ) : (
+                    <button onClick={()=>bukaEditJurnal(j)}
+                      style={{padding:'4px 10px',borderRadius:7,border:'1px solid var(--border)',
+                        background:'#fff',color:'var(--text2)',cursor:'pointer',fontSize:'.75rem'}}>
+                      ✏️
+                    </button>
+                  )}
+                  <button onClick={()=> isAbsensiMode ? hapusAbsensi(j) : hapusJurnal(j)}
                     style={{padding:'4px 10px',borderRadius:7,border:'1px solid #ef4444',
                       background:'#fef2f2',color:'#dc2626',cursor:'pointer',fontSize:'.75rem'}}>
                     🗑️
