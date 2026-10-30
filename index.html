@@ -6408,6 +6408,8 @@ function DashboardGuru({sesi, showToast}) {
   const [catatanGuru, setCatatanGuru] = useState('');
   const [saving, setSaving]     = useState(false);
   const [penugasanGuru, setPenugasanGuru] = useState({list:[], ta:''});
+  const [kelasWali, setKelasWali] = useState([]);
+  const [waliAktif, setWaliAktif] = useState(null);
 
   useEffect(()=>{ loadData(); }, []);
 
@@ -6416,6 +6418,8 @@ function DashboardGuru({sesi, showToast}) {
     // Guru login via token - id guru langsung dari sesi.pengguna.id
     const guruId = sesi.pengguna.id;
     fetchPenugasanGuru(guruId, getTASekarang()).then(r=>setPenugasanGuru(r));
+    sb.from('supermad_kelas').select('*').eq('wali_guru_id', guruId).order('tahun_ajaran',{ascending:false})
+      .then(({data})=>{ setKelasWali(data||[]); if (data && data.length===1) setWaliAktif(data[0]); });
     const {data:sups} = await sb.from('supermad_supervisi')
       .select('*').eq('madrasah_id', sesi.mad.id)
       .eq('guru_id', guruId)
@@ -6604,6 +6608,7 @@ function DashboardGuru({sesi, showToast}) {
           ['portofolio','🗂️ e-Portofolio',         fiturAktif.portofolio !== false],
           ['asesmen',   '📈 Analisis Asesmen',       fiturAktif.analisis_asesmen !== false],
           ['analisis',  '🔬 Analisis Instrumen',     fiturAktif.analisis_instrumen !== false],
+          ['wali',      '🏫 Wali Kelas',               kelasWali.length > 0],
         ].filter(([,,t])=>t).map(([key,label])=>(
           <button key={key} onClick={()=>setTab(key)}
             style={{padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',
@@ -6734,6 +6739,28 @@ function DashboardGuru({sesi, showToast}) {
       )}
       {tab==='jurnal' && (
         <TabJurnal key="jurnal" mode="jurnal" sesi={sesi} showToast={showToast} />
+      )}
+
+      {/* TAB WALI KELAS */}
+      {tab==='wali' && (
+        waliAktif ? (
+          <RekapKehadiranKelas sesi={sesi} kelas={waliAktif} ta={waliAktif.tahun_ajaran} showToast={showToast}
+            onBack={kelasWali.length>1 ? ()=>setWaliAktif(null) : null} />
+        ) : (
+          <div>
+            <div style={{fontWeight:900,color:'var(--p3)',marginBottom:10}}>🏫 Kelas Perwalian Saya</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:10}}>
+              {kelasWali.map(k=>(
+                <div key={k.id} className="card" style={{cursor:'pointer',borderTop:'3px solid var(--p)'}}
+                  onClick={()=>setWaliAktif(k)}>
+                  <div style={{fontWeight:900,fontSize:'1.05rem',color:'var(--p3)'}}>🏫 {k.nama_kelas}</div>
+                  <div style={{fontSize:'.75rem',color:'var(--text2)',margin:'3px 0 8px'}}>TA {k.tahun_ajaran} · Tingkat {k.tingkat}</div>
+                  <span className="btn btn-outline btn-sm">📊 Rekap Kehadiran</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
       )}
 
       {/* TAB NILAI SISWA */}
@@ -8960,6 +8987,221 @@ function TabPortofolio({sesi, showToast}) {
   );
 }
 
+// ── REKAP KEHADIRAN SEMESTER PER SISWA (operator & wali kelas) ──
+async function ambilSemua(buatQuery) {
+  // Ambil semua baris (melewati batas 1000 baris per permintaan)
+  const hasil = []; const step = 1000;
+  for (let from = 0; ; from += step) {
+    const {data, error} = await buatQuery().range(from, from + step - 1);
+    if (error) throw error;
+    hasil.push(...(data||[]));
+    if (!data || data.length < step) break;
+  }
+  return hasil;
+}
+
+function RekapKehadiranKelas({sesi, kelas, ta, showToast, onBack}) {
+  const blnNow = new Date().getMonth()+1;
+  const [smt, setSmt]         = React.useState(blnNow>=7 ? 'Ganjil' : 'Genap');
+  const [loading, setLoading] = React.useState(true);
+  const [rows, setRows]       = React.useState([]);
+  const [info, setInfo]       = React.useState({hari:0, pertemuan:0});
+  const [err, setErr]         = React.useState('');
+
+  React.useEffect(()=>{ muat(); }, [smt]);
+
+  async function muat() {
+    setLoading(true); setErr('');
+    try {
+      const {data:sw} = await sb.from('supermad_siswa').select('id,nama,nis,jenis_kelamin')
+        .eq('madrasah_id', sesi.mad.id).eq('kelas', kelas.nama_kelas).eq('tahun_ajaran', ta)
+        .eq('aktif', true).order('nama');
+      const siswa = sw||[];
+      const jurnal = await ambilSemua(()=>sb.from('supermad_jurnal').select('id,tanggal,mapel')
+        .eq('madrasah_id', sesi.mad.id).eq('kelas', kelas.nama_kelas)
+        .eq('tahun_ajaran', ta).eq('semester', smt).order('tanggal'));
+      const tglJurnal = {}; jurnal.forEach(j=>{ tglJurnal[j.id]=j.tanggal; });
+      let absensi = [];
+      const ids = jurnal.map(j=>j.id);
+      for (let i=0; i<ids.length; i+=60) {
+        const potong = ids.slice(i, i+60);
+        const part = await ambilSemua(()=>sb.from('supermad_absensi').select('jurnal_id,siswa_id,status')
+          .in('jurnal_id', potong).order('jurnal_id'));
+        absensi = absensi.concat(part);
+      }
+      // Per siswa: hitung per pertemuan & per hari
+      const perSiswa = {};
+      absensi.forEach(a=>{
+        const tgl = tglJurnal[a.jurnal_id]; if (!tgl) return;
+        const ps = perSiswa[a.siswa_id] = perSiswa[a.siswa_id] || {p:{hadir:0,sakit:0,izin:0,alpa:0}, hari:{}};
+        ps.p[a.status] = (ps.p[a.status]||0)+1;
+        (ps.hari[tgl] = ps.hari[tgl] || []).push(a.status);
+      });
+      const hariSet = new Set(Object.values(tglJurnal));
+      const hasil = siswa.map(s2=>{
+        const ps = perSiswa[s2.id] || {p:{hadir:0,sakit:0,izin:0,alpa:0}, hari:{}};
+        const h = {hadir:0,sakit:0,izin:0,alpa:0};
+        Object.values(ps.hari).forEach(list=>{
+          // Satu hari dianggap hadir bila hadir di salah satu pertemuan;
+          // jika tidak hadir sama sekali: sakit > izin > alpa
+          const st = list.includes('hadir') ? 'hadir' : list.includes('sakit') ? 'sakit' : list.includes('izin') ? 'izin' : 'alpa';
+          h[st]++;
+        });
+        const totHari = h.hadir+h.sakit+h.izin+h.alpa;
+        return {...s2, p: ps.p, h, totHari, pct: totHari ? h.hadir/totHari*100 : null};
+      });
+      setRows(hasil);
+      setInfo({hari: hariSet.size, pertemuan: jurnal.length});
+    } catch(e) {
+      setErr(e.message||String(e));
+    }
+    setLoading(false);
+  }
+
+  async function cetak() {
+    const w = window.open('','_blank');
+    if (!w) { showToast('Izinkan pop-up untuk mencetak','warning'); return; }
+    w.document.write('<p style="font-family:Arial;padding:20px">⏳ Menyiapkan rekap...</p>');
+    const ttd = await getPenandatangan(sesi);
+    const {data:gl} = await rpcSesi('supermad_list_guru', sesi);
+    const wali = (gl||[]).find(g=>String(g.id)===String(kelas.wali_guru_id)) || {};
+    const waliNama = wali.nama || kelas.wali_kelas || '';
+    const waliNip  = wali.nip || wali.nuptk || '';
+    const waliLbl  = wali.nip ? 'NIP' : (wali.nuptk ? 'NUPTK' : 'NIP');
+    const tgl = new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
+    const isi = rows.map((r,i)=>`<tr>
+      <td class="c">${i+1}</td><td>${escHtml(r.nama)}</td><td class="c">${escHtml(r.nis||'')}</td><td class="c">${escHtml(r.jenis_kelamin||'')}</td>
+      <td class="c b">${r.h.sakit}</td><td class="c b">${r.h.izin}</td><td class="c b">${r.h.alpa}</td>
+      <td class="c">${r.h.hadir}/${r.totHari}</td><td class="c b">${r.pct==null?'—':r.pct.toFixed(1)+'%'}</td>
+      <td class="c sm">${r.p.hadir}</td><td class="c sm">${r.p.sakit}</td><td class="c sm">${r.p.izin}</td><td class="c sm">${r.p.alpa}</td>
+    </tr>`).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Rekap Kehadiran ${escHtml(kelas.nama_kelas)}</title>
+<style>
+@page{size:A4 portrait;margin:12mm}
+*{box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:9.5pt;color:#111;margin:0;padding:10px}
+h1{text-align:center;font-size:13.5pt;margin:0}.sub{text-align:center;font-size:10pt;margin:2px 0 10px;font-weight:700}
+.id{display:grid;grid-template-columns:1fr 1fr;gap:5px 24px;border:1px solid #555;border-radius:6px;padding:8px 12px;margin-bottom:10px}
+.id div{display:grid;grid-template-columns:105px 10px 1fr}
+table{width:100%;border-collapse:collapse}th,td{border:1px solid #555;padding:4px 5px}
+th{background:#0f4238;color:#fff;font-size:8.5pt}td.c{text-align:center}td.b{font-weight:700}td.sm{color:#555;font-size:8.5pt}
+.ket{font-size:8pt;margin-top:6px;color:#444;line-height:1.4}
+.ttd{display:grid;grid-template-columns:1fr 1fr;margin-top:16px;text-align:center}.sp{height:55px}
+.no-print{margin-bottom:10px}@media print{.no-print{display:none}}
+</style></head><body>
+<div class="no-print"><button onclick="window.print()" style="padding:7px 18px;background:#0f4238;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700">🖨️ Cetak / PDF</button>
+<button onclick="window.close()" style="padding:7px 14px;border:1px solid #ccc;border-radius:6px;cursor:pointer;margin-left:6px">✕ Tutup</button></div>
+<h1>REKAP KEHADIRAN SISWA</h1><div class="sub">${escHtml(ttd.mad.nama||'')}</div>
+<div class="id">
+  <div><b>Kelas</b><span>:</span><span>${escHtml(kelas.nama_kelas)}</span></div>
+  <div><b>Tahun Pelajaran</b><span>:</span><span>${escHtml(ta)}</span></div>
+  <div><b>Wali Kelas</b><span>:</span><span>${escHtml(waliNama||'—')}</span></div>
+  <div><b>Semester</b><span>:</span><span>${escHtml(smt)}</span></div>
+  <div><b>Hari tercatat</b><span>:</span><span>${info.hari} hari</span></div>
+  <div><b>Pertemuan</b><span>:</span><span>${info.pertemuan} pertemuan</span></div>
+</div>
+<table><thead>
+<tr><th rowspan="2" style="width:24px">No</th><th rowspan="2">Nama Siswa</th><th rowspan="2" style="width:70px">NIS</th><th rowspan="2" style="width:26px">L/P</th>
+<th colspan="5">Ketidakhadiran per Hari (untuk Rapor)</th><th colspan="4">Rincian per Pertemuan</th></tr>
+<tr><th>Sakit</th><th>Izin</th><th>Alpa</th><th>Hadir</th><th>%</th><th>H</th><th>S</th><th>I</th><th>A</th></tr>
+</thead><tbody>${isi||'<tr><td colspan="13" class="c">Belum ada data</td></tr>'}</tbody></table>
+<div class="ket">Keterangan: Satu hari dihitung <b>hadir</b> bila siswa hadir di salah satu pertemuan pada hari itu. Bila tidak hadir sama sekali,
+status hari mengikuti urutan Sakit → Izin → Alpa. Rincian per pertemuan menghitung seluruh pertemuan dari semua mata pelajaran.</div>
+<div class="ttd">
+  <div>Mengetahui,<br>Kepala Madrasah<div class="sp"></div><b>${escHtml(ttd.kepalaNama||'.............................')}</b><br>NIP. ${escHtml(ttd.kepalaNip||'—')}</div>
+  <div>${escHtml(ttd.mad.kota_kab||'..............')}, ${tgl}<br>Wali Kelas<div class="sp"></div><b>${escHtml(waliNama||'.............................')}</b><br>${waliLbl}. ${escHtml(waliNip||'—')}</div>
+</div></body></html>`;
+    w.document.open(); w.document.write(html); w.document.close();
+  }
+
+  const warnaPct = v => v==null ? 'var(--text3)' : v>=90 ? '#16a34a' : v>=75 ? '#d97706' : '#dc2626';
+  const th = {padding:'7px 8px',fontWeight:700,textAlign:'center',whiteSpace:'nowrap'};
+  const td = {padding:'6px 8px',textAlign:'center',borderBottom:'1px solid var(--border)'};
+  return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12,flexWrap:'wrap'}}>
+        {onBack && <button className="btn btn-outline btn-sm" onClick={onBack}>← Kembali</button>}
+        <div style={{flex:1}}>
+          <div style={{fontWeight:900,color:'var(--p3)'}}>📊 Rekap Kehadiran Semester — Kelas {kelas.nama_kelas}</div>
+          <div style={{fontSize:'.74rem',color:'var(--text2)'}}>
+            TA {ta} · Wali Kelas: {kelas.wali_kelas || '—'}
+          </div>
+        </div>
+        <select value={smt} onChange={e=>setSmt(e.target.value)}
+          style={{padding:'6px 10px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.8rem',fontFamily:'inherit',width:'auto'}}>
+          <option value="Ganjil">Semester Ganjil</option>
+          <option value="Genap">Semester Genap</option>
+        </select>
+        <button className="btn btn-primary btn-sm" onClick={cetak} disabled={loading||!rows.length}>🖨️ Cetak Rekap</button>
+      </div>
+
+      {err && <div style={{padding:'10px 14px',borderRadius:9,background:'#fef2f2',border:'1px solid #fca5a5',color:'#991b1b',fontSize:'.8rem',marginBottom:10}}>⚠️ {err}</div>}
+
+      {loading ? <Loading text="Menghitung kehadiran..." /> : (
+        <>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:8,marginBottom:12}}>
+            {[
+              ['👥 Siswa', rows.length, '#2563eb'],
+              ['📅 Hari tercatat', info.hari, '#0891b2'],
+              ['📝 Pertemuan', info.pertemuan, '#7c3aed'],
+              ['✅ Rata-rata hadir', (()=>{const v=rows.filter(r=>r.pct!=null);return v.length?(v.reduce((a,r)=>a+r.pct,0)/v.length).toFixed(1)+'%':'—';})(), '#16a34a'],
+            ].map(([l,v,c])=>(
+              <div key={l} className="card" style={{padding:'10px 12px',textAlign:'center',borderTop:'3px solid '+c}}>
+                <div style={{fontSize:'1.2rem',fontWeight:900,color:c}}>{v}</div>
+                <div style={{fontSize:'.7rem',color:'var(--text2)'}}>{l}</div>
+              </div>
+            ))}
+          </div>
+          {info.pertemuan===0 ? (
+            <div className="card" style={{textAlign:'center',padding:28,color:'var(--text3)'}}>
+              Belum ada absensi untuk kelas ini di semester {smt} TA {ta}.<br/>
+              <small>Rekap terisi otomatis dari menu 🙋 Absensi Siswa yang diisi para guru mapel.</small>
+            </div>
+          ) : (
+            <div className="card" style={{padding:0,overflowX:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.78rem',minWidth:620}}>
+                <thead>
+                  <tr style={{background:'var(--p3)',color:'#fff'}}>
+                    <th style={th} rowSpan={2}>No</th>
+                    <th style={{...th,textAlign:'left'}} rowSpan={2}>Nama Siswa</th>
+                    <th style={th} rowSpan={2}>L/P</th>
+                    <th style={{...th,background:'#155a4c'}} colSpan={5}>Per Hari (untuk Rapor)</th>
+                    <th style={{...th,background:'#3f5f58'}} colSpan={4}>Per Pertemuan</th>
+                  </tr>
+                  <tr style={{background:'var(--surface2)',color:'var(--text2)'}}>
+                    {['Sakit','Izin','Alpa','Hadir','%','H','S','I','A'].map(h=><th key={h} style={{...th,fontSize:'.7rem'}}>{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r,i)=>(
+                    <tr key={r.id} style={{background:i%2?'var(--surface2)':'#fff'}}>
+                      <td style={td}>{i+1}</td>
+                      <td style={{...td,textAlign:'left',fontWeight:600}}>{r.nama}</td>
+                      <td style={td}>{r.jenis_kelamin||'—'}</td>
+                      <td style={{...td,fontWeight:700,color:'#d97706'}}>{r.h.sakit}</td>
+                      <td style={{...td,fontWeight:700,color:'#2563eb'}}>{r.h.izin}</td>
+                      <td style={{...td,fontWeight:700,color:'#dc2626'}}>{r.h.alpa}</td>
+                      <td style={td}>{r.h.hadir}/{r.totHari}</td>
+                      <td style={{...td,fontWeight:800,color:warnaPct(r.pct)}}>{r.pct==null?'—':r.pct.toFixed(1)+'%'}</td>
+                      <td style={{...td,color:'var(--text2)'}}>{r.p.hadir}</td>
+                      <td style={{...td,color:'var(--text2)'}}>{r.p.sakit}</td>
+                      <td style={{...td,color:'var(--text2)'}}>{r.p.izin}</td>
+                      <td style={{...td,color:'var(--text2)'}}>{r.p.alpa}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div style={{fontSize:'.72rem',color:'var(--text3)',marginTop:8,lineHeight:1.5}}>
+            💡 Satu hari dihitung <b>hadir</b> bila siswa hadir di salah satu pertemuan hari itu. Bila tidak hadir sama sekali,
+            status hari mengikuti urutan Sakit → Izin → Alpa. Kolom "Per Hari" inilah yang dipakai untuk rapor.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── TAB KELAS & SISWA (OPERATOR) ─────────────────────────────
 function TabKelasSiswa({sesi, showToast}) {
   const [kelasList, setKelasList]   = React.useState([]);
@@ -8970,7 +9212,10 @@ function TabKelasSiswa({sesi, showToast}) {
   const [filterTA, setFilterTA]     = React.useState(getTASekarang());
   const [showFormKelas, setShowFormKelas] = React.useState(false);
   const [editKelas, setEditKelas]   = React.useState(null);
-  const [formKelas, setFormKelas]   = React.useState({nama_kelas:'',tingkat:'VII',wali_kelas:''});
+  const [formKelas, setFormKelas]   = React.useState({nama_kelas:'',tingkat:'VII',wali_kelas:'',wali_guru_id:''});
+  const [guruOpsi, setGuruOpsi]     = React.useState([]);
+  const [rekapKelas, setRekapKelas] = React.useState(null);
+  React.useEffect(()=>{ rpcSesi('supermad_list_guru', sesi).then(({data})=>setGuruOpsi((data||[]).filter(g=>g.aktif!==false))); }, []);
   const [showFormSiswa, setShowFormSiswa] = React.useState(false);
   const [editSiswa, setEditSiswa]   = React.useState(null);
   const [formSiswa, setFormSiswa]   = React.useState({nama:'',nis:'',jenis_kelamin:'L'});
@@ -9023,17 +9268,23 @@ function TabKelasSiswa({sesi, showToast}) {
 
   async function simpanKelas(e) {
     e.preventDefault();
-    const payload = {...formKelas, madrasah_id: sesi.mad.id, tahun_ajaran: filterTA, aktif: true};
+    const payload = {...formKelas, wali_guru_id: formKelas.wali_guru_id || null,
+      madrasah_id: sesi.mad.id, tahun_ajaran: filterTA, aktif: true};
     let error;
     if (editKelas) {
       ({error} = await sb.from('supermad_kelas').update(payload).eq('id', editKelas.id));
     } else {
       ({error} = await sb.from('supermad_kelas').insert(payload));
     }
-    if (error) { showToast('Gagal: '+error.message,'error'); return; }
+    if (error) {
+      showToast(String(error.message).includes('wali_guru_id')
+        ? 'Kolom wali kelas belum tersedia. Jalankan SQL supermad_wali_kelas.sql terlebih dahulu.'
+        : 'Gagal: '+error.message,'error');
+      return;
+    }
     showToast('✅ Kelas '+(editKelas?'diperbarui':'ditambahkan')+'!');
     setShowFormKelas(false); setEditKelas(null);
-    setFormKelas({nama_kelas:'',tingkat:'VII',wali_kelas:''});
+    setFormKelas({nama_kelas:'',tingkat:'VII',wali_kelas:'',wali_guru_id:''});
     loadKelas(filterTA);
   }
 
@@ -9256,6 +9507,10 @@ function TabKelasSiswa({sesi, showToast}) {
     ? ['Kelas 1','Kelas 2','Kelas 3','Kelas 4','Kelas 5','Kelas 6']
     : ['VII','VIII','IX','X','XI','XII'];
 
+  if (rekapKelas) return (
+    <RekapKehadiranKelas sesi={sesi} kelas={rekapKelas} ta={filterTA} showToast={showToast}
+      onBack={()=>setRekapKelas(null)} />
+  );
   if (loading) return <Loading text="Memuat kelas..." />;
 
   // VIEW DAFTAR SISWA
@@ -9393,7 +9648,7 @@ function TabKelasSiswa({sesi, showToast}) {
         </select>
         <button className="btn btn-primary btn-sm" onClick={()=>{
           setShowFormKelas(!showFormKelas); setEditKelas(null);
-          setFormKelas({nama_kelas:'',tingkat:tingkatList[0],wali_kelas:''});
+          setFormKelas({nama_kelas:'',tingkat:tingkatList[0],wali_kelas:'',wali_guru_id:''});
         }}>
           {showFormKelas?'✕ Batal':'+ Tambah Kelas'}
         </button>
@@ -9526,9 +9781,19 @@ function TabKelasSiswa({sesi, showToast}) {
                 </select>
               </div>
               <div className="form-group">
-                <label>Wali Kelas</label>
-                <input value={formKelas.wali_kelas} onChange={e=>setFormKelas({...formKelas,wali_kelas:e.target.value})}
-                  placeholder="Nama wali kelas"/>
+                <label>Wali Kelas <span style={{fontWeight:400,color:'var(--text3)'}}>(pilih dari daftar guru)</span></label>
+                <select value={formKelas.wali_guru_id||''} onChange={e=>{
+                  const g = guruOpsi.find(x=>String(x.id)===e.target.value);
+                  setFormKelas({...formKelas, wali_guru_id: e.target.value, wali_kelas: g ? g.nama : ''});
+                }}>
+                  <option value="">— Belum ditentukan —</option>
+                  {guruOpsi.map(g=><option key={g.id} value={g.id}>{g.nama}{g.mapel?' ('+g.mapel+')':''}</option>)}
+                </select>
+                {formKelas.wali_kelas && !formKelas.wali_guru_id && (
+                  <div style={{fontSize:'.7rem',color:'#92400e',marginTop:4}}>
+                    Tercatat sebelumnya: "{formKelas.wali_kelas}" — pilih guru yang sesuai agar bisa membuka rekap kelas.
+                  </div>
+                )}
               </div>
             </div>
             <div style={{display:'flex',gap:8}}>
@@ -9570,7 +9835,10 @@ function TabKelasSiswa({sesi, showToast}) {
                 <div style={{fontSize:'.7rem',color:'var(--text3)',marginBottom:8}}>Belum ada siswa</div>
               )}
               <div style={{display:'flex',gap:6,justifyContent:'flex-end'}}>
-                <button onClick={e=>{e.stopPropagation();setEditKelas(k);setFormKelas({nama_kelas:k.nama_kelas,tingkat:k.tingkat,wali_kelas:k.wali_kelas||''});setShowFormKelas(true);}}
+                <button onClick={e=>{e.stopPropagation();setRekapKelas(k);}}
+                  style={{padding:'3px 8px',borderRadius:6,border:'1px solid #0891b2',
+                    background:'#ecfeff',color:'#0e7490',cursor:'pointer',fontSize:'.72rem',fontWeight:700}}>📊 Kehadiran</button>
+                <button onClick={e=>{e.stopPropagation();setEditKelas(k);setFormKelas({nama_kelas:k.nama_kelas,tingkat:k.tingkat,wali_kelas:k.wali_kelas||'',wali_guru_id:k.wali_guru_id?String(k.wali_guru_id):''});setShowFormKelas(true);}}
                   style={{padding:'3px 8px',borderRadius:6,border:'1px solid var(--p)',
                     background:'#fff',color:'var(--p)',cursor:'pointer',fontSize:'.72rem'}}>✏️ Edit</button>
                 <button onClick={e=>{e.stopPropagation();hapusKelas(k);}}
