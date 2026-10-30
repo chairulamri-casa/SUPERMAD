@@ -308,7 +308,7 @@ function HalamanLogin({onLogin}) {
       });
       if (error) { setErr('Gagal daftar: '+error.message); return; }
       if (!res || res.error) { setErr(res?.error || 'Gagal daftar.'); return; }
-      onLogin({mad:res.mad, mode:'madrasah', token:res.token, penggunaTerpilih:res.pengguna_terpilih});
+      onLogin({mad:res.mad, mode:'madrasah', token:res.token, penggunaTerpilih:res.pengguna_terpilih, kodeAkses:res.kode_akses});
     } catch(err) { setErr('Error: '+err.message); }
     finally { setLoading(false); }
   }
@@ -763,6 +763,7 @@ function App() {
   });
   const [loginData, setLoginData] = useState(null);
   const [toast, setToast] = useState(null);
+  const [infoKode, setInfoKode] = useState(null); // tampil sekali setelah registrasi operator
 
   function showToast(msg, type='success') {
     setToast({msg, type, key: Date.now()});
@@ -804,6 +805,7 @@ function App() {
       // Registrasi operator baru: langsung masuk sebagai operator tersebut
       const s = {pengguna: data.penggunaTerpilih, mad: data.mad, mode: data.penggunaTerpilih.role||'operator', token: data.token};
       setSesi(s); setStep('app');
+      if (data.kodeAkses) setInfoKode({kode: data.kodeAkses, npsn: data.mad?.npsn, nama: data.mad?.nama});
       try { localStorage.setItem('supermad_sesi', JSON.stringify(s)); } catch(e) {}
     } else {
       setLoginData(data);
@@ -918,6 +920,40 @@ function App() {
       </div>
 
       {toast && <Toast key={toast.key} msg={toast.msg} type={toast.type} onClose={()=>setToast(null)} />}
+
+      {infoKode && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.55)',display:'flex',alignItems:'center',
+          justifyContent:'center',zIndex:2000,padding:16}}>
+          <div style={{background:'#fff',borderRadius:16,padding:'26px 24px',maxWidth:420,width:'100%',textAlign:'center',
+            boxShadow:'0 20px 60px rgba(0,0,0,.35)'}}>
+            <div style={{fontSize:'2.2rem'}}>🎉</div>
+            <div style={{fontWeight:900,color:'var(--p3)',fontSize:'1.05rem',margin:'6px 0 4px'}}>Pendaftaran Berhasil!</div>
+            <div style={{fontSize:'.82rem',color:'var(--text2)',marginBottom:14}}>
+              Catat data berikut untuk <b>login berikutnya</b> lewat menu <b>🏫 Login Madrasah</b>:
+            </div>
+            <div style={{background:'#f0fdf4',border:'2px solid #86efac',borderRadius:12,padding:'12px 16px',textAlign:'left',marginBottom:12}}>
+              <div style={{fontSize:'.75rem',color:'var(--text2)'}}>Madrasah</div>
+              <div style={{fontWeight:800,marginBottom:6}}>{infoKode.nama}</div>
+              <div style={{fontSize:'.75rem',color:'var(--text2)'}}>NPSN</div>
+              <div style={{fontWeight:800,fontFamily:'monospace',fontSize:'1.05rem',marginBottom:6}}>{infoKode.npsn}</div>
+              <div style={{fontSize:'.75rem',color:'var(--text2)'}}>Kode Akses Madrasah</div>
+              <div style={{fontWeight:900,fontFamily:'monospace',fontSize:'1.3rem',letterSpacing:2,color:'#065f46'}}>{infoKode.kode}</div>
+            </div>
+            <div style={{fontSize:'.74rem',color:'#92400e',background:'#fffbeb',border:'1px solid #fcd34d',
+              borderRadius:9,padding:'8px 10px',textAlign:'left',marginBottom:14}}>
+              Cara login berikutnya: <b>NPSN + Kode Akses</b> → pilih akun Anda → masukkan <b>password</b> yang tadi Anda buat.
+              Kode akses juga bisa dilihat kembali di tab <b>⚙️ Profil</b>.
+            </div>
+            <div style={{display:'flex',gap:8,justifyContent:'center'}}>
+              <button className="btn btn-outline btn-sm" onClick={()=>{
+                navigator.clipboard?.writeText('NPSN: '+infoKode.npsn+' | Kode Akses: '+infoKode.kode);
+                showToast('📋 NPSN & kode akses disalin');
+              }}>📋 Salin</button>
+              <button className="btn btn-primary btn-sm" onClick={()=>setInfoKode(null)}>✓ Sudah Saya Catat</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1542,6 +1578,7 @@ function ProfilMadrasah({sesi, showToast, onUpdate}) {
   const [saving, setSaving]       = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoUrl, setLogoUrl]     = useState(sesi.mad.logo_url||'');
+  const [kodeAkses, setKodeAkses] = useState('');
 
   async function uploadLogo(e) {
     const file = e.target.files[0];
@@ -1587,6 +1624,30 @@ function ProfilMadrasah({sesi, showToast, onUpdate}) {
   return (
     <div className="card">
       <div style={{fontWeight:800,color:'var(--p3)',marginBottom:16}}>🏫 Profil Madrasah</div>
+
+      {sesi.mode==='operator' && (
+        <div style={{marginBottom:16,padding:'12px 16px',background:'#f0fdf4',border:'1.5px solid #86efac',
+          borderRadius:10,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+          <div style={{flex:1,minWidth:180}}>
+            <div style={{fontWeight:700,fontSize:'.85rem'}}>🔐 Kode Akses Madrasah</div>
+            <div style={{fontSize:'.72rem',color:'var(--text2)'}}>Dipakai bersama NPSN untuk Login Madrasah. Jangan dibagikan ke luar madrasah.</div>
+          </div>
+          <div style={{fontFamily:'monospace',fontWeight:900,fontSize:'1.1rem',letterSpacing:2,color:'#065f46'}}>
+            {kodeAkses || '••••••••'}
+          </div>
+          {!kodeAkses ? (
+            <button className="btn btn-outline btn-sm" onClick={async()=>{
+              const {data, error} = await sb.rpc('supermad_kode_akses', {p_sesi: sesi.token});
+              if (error || !data) { showToast('Gagal memuat kode akses'+(error?': '+error.message:''),'error'); return; }
+              setKodeAkses(data);
+            }}>👁️ Tampilkan</button>
+          ) : (
+            <button className="btn btn-outline btn-sm" onClick={()=>{
+              navigator.clipboard?.writeText(kodeAkses); showToast('📋 Kode akses disalin');
+            }}>📋 Salin</button>
+          )}
+        </div>
+      )}
 
       {/* Upload Logo Madrasah */}
       <div style={{marginBottom:16,padding:'14px 16px',background:'var(--surface2)',
@@ -2414,7 +2475,8 @@ ${rtlKanwil.issues.slice(0,5).map((r,i)=>{
           <b>Cara penggunaan:</b><br/>
           1. Berikan token ini ke operator madrasah<br/>
           2. Operator buka <b>supermad.my.id</b> → klik <b>"Daftar Akun"</b><br/>
-          3. Masukkan token, isi data diri, akun langsung aktif
+          3. Masukkan token, isi data diri, akun langsung aktif<br/>
+          4. Kode akses madrasah ditampilkan setelah daftar — wajib dicatat untuk login berikutnya
         </div>
         <div style={{display:'flex',gap:10,justifyContent:'center'}}>
           <button onClick={()=>{
