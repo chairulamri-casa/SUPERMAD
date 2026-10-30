@@ -10086,19 +10086,66 @@ function TabNilai({sesi, showToast}) {
         </select>
         )}
         {activeTab==='input' && (
-          <select value={filterJenis} onChange={e=>{
-            const jenis = e.target.value;
-            setFilterJenis(jenis);
-            // Langsung update nilaiMap dari ref (fresh, bukan tunggu state)
-            const allMp = allNilaiRef.current;
-            const mp={};
-            Object.keys(allMp).forEach(sid=>{ if(allMp[sid][jenis]!==undefined) mp[sid]=allMp[sid][jenis]; });
-            setNilaiMap(mp);
-            setEditMap({}); setDirtySet(new Set());
-          }}
-            style={{padding:'7px 12px',border:'1.5px solid var(--border)',borderRadius:8,fontSize:'.85rem',fontFamily:'inherit'}}>
-            {jenisOpt.map(j=><option key={j.val} value={j.val}>{j.label}</option>)}
-          </select>
+          <div style={{width:'100%',marginTop:4}}>
+            <div style={{fontSize:'.78rem',fontWeight:800,color:'var(--p3)',marginBottom:6}}>
+              📋 Pilih Jenis Asesmen yang akan diinput nilainya:
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:8}}>
+              {[
+                {val:'formatif', kat:'ASESMEN FORMATIF', icon:'📝', warna:'#2563eb', bg:'#eff6ff',
+                  judul:'Formatif (Harian/Kuis)', ket:'Selama proses belajar, untuk umpan balik & perbaikan. Bisa diisi hingga 5 pertemuan (F1–F5).'},
+                {val:'sts', kat:'ASESMEN SUMATIF', icon:'📘', warna:'#7c3aed', bg:'#f5f3ff',
+                  judul:'Sumatif Tengah Semester (STS)', ket:'Mengukur capaian di pertengahan semester. Masuk komponen SLM.'},
+                {val:'sas', kat:'ASESMEN SUMATIF', icon:'📕', warna:'#be123c', bg:'#fff1f2',
+                  judul:'Sumatif Akhir Semester (SAS)', ket:'Mengukur capaian akhir semester. Langsung menentukan Nilai Rapor.'},
+                {val:'proyek', kat:'SUMATIF PRAKTIK', icon:'🛠️', warna:'#d97706', bg:'#fffbeb',
+                  judul:'Proyek / Praktik', ket:'Penilaian unjuk kerja, produk, atau proyek. Masuk komponen SLM.'},
+              ].map(o=>{
+                const aktif = filterJenis===o.val;
+                const total = siswaList.length;
+                const terisi = siswaList.filter(sw=>{
+                  if (o.val==='formatif') {
+                    const fm = formatifMap[sw.id];
+                    return fm ? hitungNilaiFormatif(fm)!==undefined : (allNilaiMap[sw.id]||{}).formatif!=null;
+                  }
+                  return (allNilaiMap[sw.id]||{})[o.val]!=null;
+                }).length;
+                const pct = total ? Math.round(terisi/total*100) : 0;
+                return (
+                  <button key={o.val} type="button" onClick={()=>{
+                    if (aktif) return;
+                    if ((dirtySet.size||fDirtySet.size) && !confirm('Ada nilai yang belum disimpan. Tetap pindah jenis asesmen?')) return;
+                    const jenis = o.val;
+                    setFilterJenis(jenis);
+                    const allMp = allNilaiRef.current;
+                    const mp={};
+                    Object.keys(allMp).forEach(sid=>{ if(allMp[sid][jenis]!==undefined) mp[sid]=allMp[sid][jenis]; });
+                    setNilaiMap(mp);
+                    setEditMap({}); setDirtySet(new Set());
+                    setFEditMap({}); setFDirtySet(new Set());
+                  }}
+                    style={{textAlign:'left',cursor:'pointer',fontFamily:'inherit',borderRadius:12,padding:'10px 12px',
+                      border:'2px solid '+(aktif?o.warna:'var(--border)'),
+                      background:aktif?o.bg:'#fff',
+                      boxShadow:aktif?'0 4px 14px '+o.warna+'33':'none',transition:'all .15s'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+                      <span style={{fontSize:'.62rem',fontWeight:900,letterSpacing:.6,color:o.warna}}>{o.kat}</span>
+                      {aktif && <span style={{fontSize:'.62rem',fontWeight:800,color:'#fff',background:o.warna,
+                        padding:'1px 7px',borderRadius:20}}>DIPILIH</span>}
+                    </div>
+                    <div style={{fontWeight:800,fontSize:'.86rem',color:'var(--text1)',marginBottom:3}}>{o.icon} {o.judul}</div>
+                    <div style={{fontSize:'.7rem',color:'var(--text2)',lineHeight:1.4,marginBottom:7}}>{o.ket}</div>
+                    <div style={{height:5,background:'#e5e7eb',borderRadius:9,overflow:'hidden'}}>
+                      <div style={{width:pct+'%',height:'100%',background:o.warna}}/>
+                    </div>
+                    <div style={{fontSize:'.68rem',fontWeight:700,marginTop:3,color:terisi===total&&total?'#16a34a':'var(--text3)'}}>
+                      {total ? (terisi===total ? '✓ Semua siswa terisi ('+total+')' : terisi+' dari '+total+' siswa terisi') : '—'}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         )}
         <div style={{display:'flex',alignItems:'center',gap:6,fontSize:'.8rem',color:'var(--text2)'}}>
           KKTP:
