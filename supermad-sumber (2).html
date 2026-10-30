@@ -9346,19 +9346,27 @@ async function hitungKelengkapanNilai(madId, ta, smtNama, penugasan, atur) {
   const nilai = await ambilSemua(()=>sb.from('supermad_nilai').select('siswa_id,kelas,mapel,jenis_nilai,nilai,f1,f2,f3,f4,f5')
     .eq('madrasah_id', madId).eq('tahun_ajaran', ta).eq('semester', smtKeAngka(smtNama))
     .in('kelas', kelasSet).order('siswa_id'));
+  // terisi[mapel|kelas|jenis] = Map(siswa_id → bobot 0..1)
+  // Formatif dihitung sebagian: terisi 1 dari minimal 3 = 1/3, 2 dari 3 = 2/3, ≥3 = penuh
   const terisi = {};
   nilai.forEach(n=>{
+    let bobot = 1;
     if (n.jenis_nilai === 'formatif') {
       let jml = ['f1','f2','f3','f4','f5'].filter(f=>n[f]!=null && n[f]!=='').length;
       if (!jml && n.nilai!=null) jml = 1;           // data lama: satu nilai formatif
-      if (jml < atur.formatifMin) return;           // belum memenuhi jumlah minimal
+      if (!jml) return;
+      bobot = Math.min(jml, atur.formatifMin) / atur.formatifMin;
     } else if (n.nilai==null) return;
     const k = n.mapel+'|'+n.kelas+'|'+n.jenis_nilai;
-    (terisi[k] = terisi[k] || new Set()).add(n.siswa_id);
+    const m = (terisi[k] = terisi[k] || new Map());
+    m.set(n.siswa_id, Math.max(m.get(n.siswa_id)||0, bobot));
   });
   return penugasan.map(p=>{
     const j = {};
-    ['formatif','sts','sas','proyek'].forEach(jn=>{ j[jn] = (terisi[p.mapel+'|'+p.kelas+'|'+jn]||new Set()).size; });
+    ['formatif','sts','sas','proyek'].forEach(jn=>{
+      const m = terisi[p.mapel+'|'+p.kelas+'|'+jn];
+      j[jn] = m ? Math.round([...m.values()].reduce((a,b)=>a+b,0)*100)/100 : 0;
+    });
     return {...p, siswa: jmlSiswa[p.kelas]||0, jenis: j};
   });
 }
@@ -9390,12 +9398,28 @@ async function hitungKepatuhanGuru(madId, ta, smt, guruList, hanyaGuruId) {
     if (hanyaGuruId) q = q.eq('guru_id', hanyaGuruId);
     return q.order('id');
   };
-  const qRtl = () => {
-    let q = sb.from('supermad_rtl').select('id,guru_id,konfirmasi_guru').eq('madrasah_id', madId);
+  // RTL dihitung sama seperti yang dilihat guru: RTL tersimpan + RTL otomatis dari supervisi yang belum punya RTL
+  const qSup = () => {
+    let q = sb.from('supermad_supervisi').select('id,guru_id,skor_perencanaan,skor_pelaksanaan,skor_asesmen')
+      .eq('madrasah_id', madId).eq('status','selesai');
     if (hanyaGuruId) q = q.eq('guru_id', hanyaGuruId);
     return q.order('id');
   };
-  let [jurnal, pen, rtl] = await Promise.all([ambilSemua(qJurnal), muatPenugasanMadrasah(madId, ta), ambilSemua(qRtl)]);
+  let [jurnal, pen, sups] = await Promise.all([ambilSemua(qJurnal), muatPenugasanMadrasah(madId, ta), ambilSemua(qSup)]);
+  let rtl = [];
+  const supIds = sups.map(x=>x.id);
+  for (let i=0; i<supIds.length; i+=150) {
+    const {data} = await sb.from('supermad_rtl').select('id,guru_id,supervisi_id,konfirmasi_guru').in('supervisi_id', supIds.slice(i,i+150));
+    rtl = rtl.concat(data||[]);
+  }
+  const supGuru = {}; sups.forEach(x=>{ supGuru[x.id] = x.guru_id; });
+  rtl.forEach(r=>{ if (!r.guru_id) r.guru_id = supGuru[r.supervisi_id]; });
+  const adaRtl = new Set(rtl.map(r=>String(r.supervisi_id)));
+  sups.forEach(x=>{
+    if (adaRtl.has(String(x.id))) return;
+    const g = generateRTL(x.skor_perencanaan||[], x.skor_pelaksanaan||[], x.skor_asesmen||[]);
+    if (g.p.length+g.l.length+g.a.length) rtl.push({id:null, guru_id:x.guru_id, supervisi_id:x.id, konfirmasi_guru:'belum'});
+  });
   if (hanyaGuruId) pen = pen.filter(p=>String(p.guru_id)===String(hanyaGuruId));
   const atur = aturanPenilaian(await muatAturanMadrasah(madId), ta, smt);
   const wajib = komponenWajib(atur);
@@ -9458,7 +9482,7 @@ function KotakSkorPiagam({sup, kep, onCetak, onSimpan}) {
   if (kep.pertemuan && kep.komponen.keaktifan < 100) saran.push('isi absensi/jurnal secara rutin setiap pekan');
   if (!kep.pertemuan) saran.push('mulai isi absensi dan jurnal mengajar');
   else if (kep.komponen.jurnal < 100) saran.push('lengkapi '+(kep.jurnalTertunda ? kep.jurnalTertunda+' ' : '')+'jurnal yang belum diisi');
-  if (kep.komponen.nilai != null && kep.komponen.nilai < 100) saran.push('lengkapi nilai sesuai aturan madrasah (formatif minimal '+(kep.formatifMin||3)+'×)');
+  if (kep.komponen.nilai != null && kep.komponen.nilai < 100) saran.push('lengkapi nilai sesuai aturan madrasah (formatif sampai '+(kep.formatifMin||3)+'× per siswa)');
   if (kep.komponen.rtl < 100) saran.push('tanggapi RTL supervisi');
   const bar = (lbl, v) => (
     <div style={{display:'flex',alignItems:'center',gap:6,fontSize:'.7rem'}}>
@@ -9667,10 +9691,14 @@ function TugasSaya({sesi, rtlBelum, onBuka}) {
       <span style={{color:warna,fontWeight:800}}>Buka →</span>
     </button>
   );
-  const chip = (lbl, n, tot) => {
-    const c = tot===0 ? '#9ca3af' : n===0 ? '#9ca3af' : n>=tot ? '#16a34a' : '#d97706';
+  const chip = (lbl, n, tot, dihitung=true, persen=false) => {
+    if (!dihitung) return <span title="Belum masuk perhitungan kelengkapan (menunggu jadwal dari operator)"
+      style={{padding:'2px 8px',borderRadius:20,fontSize:'.68rem',fontWeight:600,color:'#9ca3af',
+      background:'#f9fafb',border:'1px dashed #d1d5db'}}>{lbl} {n}/{tot} · belum dihitung</span>;
+    n = Math.round(n*100)/100;
+    const c = tot===0 ? '#9ca3af' : n>=tot ? '#16a34a' : n===0 ? '#dc2626' : '#d97706';
     return <span style={{padding:'2px 8px',borderRadius:20,fontSize:'.68rem',fontWeight:700,color:c,
-      background:c+'18',border:'1px solid '+c+'55'}}>{lbl} {n}/{tot}</span>;
+      background:c+'18',border:'1px solid '+c+'55'}}>{lbl} {persen ? (tot?Math.round(n/tot*100):0)+'%' : n+'/'+tot}</span>;
   };
   return (
     <div className="card" style={{marginBottom:12,padding:'12px 16px',
@@ -9699,17 +9727,17 @@ function TugasSaya({sesi, rtlBelum, onBuka}) {
       {data.nilai.length>0 && (
         <div style={{marginTop:10,paddingTop:8,borderTop:'1px dashed var(--border)'}}>
           <div style={{fontSize:'.72rem',fontWeight:700,color:'var(--text2)',marginBottom:5}}>
-            Kelengkapan nilai (siswa lengkap / jumlah siswa) · Formatif minimal {data.atur?.formatifMin||3}× per siswa
+            Kelengkapan nilai (siswa terisi / jumlah siswa) · Formatif dihitung bertahap sampai {data.atur?.formatifMin||3}× per siswa
             {data.atur?.tglSAS ? ' · SAS & Proyek dihitung mulai '+new Date(data.atur.tglSAS+'T00:00:00').toLocaleDateString('id-ID',{day:'numeric',month:'short'}) : ''}:
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:4}}>
             {data.nilai.map(n=>(
               <div key={n.id} style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',fontSize:'.76rem'}}>
                 <span style={{minWidth:150,fontWeight:600}}>{n.mapel} · {n.kelas}</span>
-                {chip('Formatif '+(data.atur?.formatifMin||3)+'×', n.jenis.formatif, n.siswa)}
-                {chip('STS', n.jenis.sts, n.siswa)}
-                {chip('Proyek', n.jenis.proyek, n.siswa)}
-                {chip('SAS', n.jenis.sas, n.siswa)}
+                {chip('Formatif '+(data.atur?.formatifMin||3)+'×', n.jenis.formatif, n.siswa, true, true)}
+                {chip('STS', n.jenis.sts, n.siswa, wj.sts)}
+                {data.atur?.slm?.proyek!==false && chip('Proyek', n.jenis.proyek, n.siswa, wj.proyek)}
+                {chip('SAS', n.jenis.sas, n.siswa, wj.sas)}
               </div>
             ))}
           </div>
